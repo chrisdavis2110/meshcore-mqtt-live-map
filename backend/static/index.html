@@ -44,6 +44,8 @@
     .legend-trace { border-color: #ff7a1a; border-top-style: dashed; }
     .legend-message { border-color: #2b8cff; border-top-style: solid; }
     .legend-advert { border-color: #2ecc71; border-top-style: dotted; }
+    .legend-los-clear { border-color: #22c55e; border-top-style: solid; }
+    .legend-los-blocked { border-color: #ef4444; border-top-style: dashed; }
     .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid; display: inline-block; }
     .legend-repeater { border-color: #1d4ed8; background: #2b8cff; }
     .legend-companion { border-color: #6b21a8; background: #a855f7; }
@@ -114,6 +116,8 @@
       <div class="legend-item"><span class="legend-line legend-trace"></span> Trace/path</div>
       <div class="legend-item"><span class="legend-line legend-message"></span> Message</div>
       <div class="legend-item"><span class="legend-line legend-advert"></span> Advert</div>
+      <div class="legend-item"><span class="legend-line legend-los-clear"></span> LOS clear</div>
+      <div class="legend-item"><span class="legend-line legend-los-blocked"></span> LOS blocked</div>
       <div class="legend-item"><span class="legend-heat"></span> Heat (last 10 min)</div>
       <div class="legend-item"><span class="legend-dot legend-repeater"></span> Repeater</div>
       <div class="legend-item"><span class="legend-dot legend-companion"></span> Companion</div>
@@ -220,7 +224,7 @@
       if (!active) {
         clearLos();
       } else {
-        setLosStatus('LOS: select first point');
+        setLosStatus('LOS: select first point (Shift+click nodes too)');
       }
     }
 
