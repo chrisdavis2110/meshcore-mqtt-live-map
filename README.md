@@ -106,6 +106,23 @@ Map + LOS:
 - Snapshot: `curl -s http://localhost:8080/snapshot`
 - Stats: `curl -s http://localhost:8080/stats`
 
+## Production Token
+Enable protection by setting:
+```
+PROD_MODE=true
+PROD_TOKEN=<random-string>
+```
+
+Generate a token:
+```
+openssl rand -hex 32
+```
+
+Use it:
+- HTTP: `http://host:8080/snapshot?token=YOUR_TOKEN`
+- WS: `ws://host:8080/ws?token=YOUR_TOKEN`
+- Or send `Authorization: Bearer YOUR_TOKEN`
+
 ## Notes
 - The map can only draw routes for hops that appear in your MQTT feed.
 - To see full paths, the feed must include Path/Trace packets (payload types 8/9) or multiple observers for fanout.
