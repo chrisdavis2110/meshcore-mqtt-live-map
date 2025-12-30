@@ -7,6 +7,7 @@ import html
 import math
 import subprocess
 import time
+from datetime import datetime, timezone
 import urllib.parse
 import urllib.request
 from collections import deque
@@ -51,6 +52,7 @@ ROUTE_HISTORY_HOURS = float(os.getenv("ROUTE_HISTORY_HOURS", "24"))
 ROUTE_HISTORY_MAX_SEGMENTS = int(os.getenv("ROUTE_HISTORY_MAX_SEGMENTS", "40000"))
 ROUTE_HISTORY_FILE = os.getenv("ROUTE_HISTORY_FILE", os.path.join(STATE_DIR, "route_history.jsonl"))
 ROUTE_HISTORY_PAYLOAD_TYPES = os.getenv("ROUTE_HISTORY_PAYLOAD_TYPES", ROUTE_PAYLOAD_TYPES)
+ROUTE_HISTORY_ALLOWED_MODES = os.getenv("ROUTE_HISTORY_ALLOWED_MODES", "path,direct,fanout")
 ROUTE_HISTORY_COMPACT_INTERVAL = float(os.getenv("ROUTE_HISTORY_COMPACT_INTERVAL", "120"))
 HISTORY_EDGE_SAMPLE_LIMIT = 3
 MESSAGE_ORIGIN_TTL_SECONDS = int(os.getenv("MESSAGE_ORIGIN_TTL_SECONDS", "300"))
@@ -72,6 +74,8 @@ PAYLOAD_PREVIEW_MAX = int(os.getenv("PAYLOAD_PREVIEW_MAX", "800"))
 DIRECT_COORDS_MODE = os.getenv("DIRECT_COORDS_MODE", "topic").strip().lower()
 DIRECT_COORDS_TOPIC_REGEX = os.getenv("DIRECT_COORDS_TOPIC_REGEX", r"(position|location|gps|coords)")
 DIRECT_COORDS_ALLOW_ZERO = os.getenv("DIRECT_COORDS_ALLOW_ZERO", "false").lower() == "true"
+
+ROUTE_HISTORY_ALLOWED_MODES_SET = {s.strip() for s in ROUTE_HISTORY_ALLOWED_MODES.split(",") if s.strip()}
 
 SITE_TITLE = os.getenv("SITE_TITLE", "Greater Boston Mesh Live Map")
 SITE_DESCRIPTION = os.getenv("SITE_DESCRIPTION", "Live view of Greater Boston Mesh nodes, message routes, and advert paths.")
@@ -163,6 +167,7 @@ route_history_edges: Dict[str, Dict[str, Any]] = {}
 route_history_compact = False
 route_history_last_compact = 0.0
 node_hash_to_device: Dict[str, str] = {}
+node_hash_collisions: Set[str] = set()
 elevation_cache: Dict[str, Tuple[float, float]] = {}
 device_names: Dict[str, str] = {}
 message_origins: Dict[str, Dict[str, Any]] = {}
@@ -392,6 +397,28 @@ def _node_hash_from_device_id(device_id: str) -> Optional[str]:
   if not device_id or len(device_id) < 2:
     return None
   return _normalize_node_hash(device_id[:2])
+
+
+def _rebuild_node_hash_map() -> None:
+  global node_hash_to_device, node_hash_collisions
+  mapping: Dict[str, Optional[str]] = {}
+  collisions: Set[str] = set()
+  for device_id in devices.keys():
+    node_hash = _node_hash_from_device_id(device_id)
+    if not node_hash:
+      continue
+    existing = mapping.get(node_hash)
+    if existing and existing != device_id:
+      mapping[node_hash] = None
+      collisions.add(node_hash)
+    elif existing is None:
+      collisions.add(node_hash)
+    else:
+      mapping[node_hash] = device_id
+  for node_hash in collisions:
+    mapping[node_hash] = None
+  node_hash_to_device = {k: v for k, v in mapping.items() if v}
+  node_hash_collisions = collisions
 
 
 def _route_points_from_hashes(path_hashes: List[Any], origin_id: Optional[str], receiver_id: Optional[str]) -> Tuple[Optional[List[List[float]]], List[str]]:
@@ -802,6 +829,73 @@ def _device_payload(device_id: str, state: "DeviceState") -> Dict[str, Any]:
   return payload
 
 
+def _iso_from_ts(ts: Optional[float]) -> Optional[str]:
+  if ts is None:
+    return None
+  try:
+    return datetime.fromtimestamp(float(ts), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+  except Exception:
+    return None
+
+
+def _device_role_code(value: Any) -> int:
+  if isinstance(value, int):
+    if value in (1, 2, 3):
+      return value
+    return 1
+  if isinstance(value, str):
+    trimmed = value.strip()
+    if trimmed.isdigit():
+      num = int(trimmed)
+      if num in (1, 2, 3):
+        return num
+      return 1
+    normalized = _normalize_role(trimmed)
+    if normalized == "repeater":
+      return 2
+    if normalized == "room":
+      return 3
+    if normalized == "companion":
+      return 1
+  return 1
+
+
+def _parse_updated_since(value: Optional[str]) -> Optional[float]:
+  if not value:
+    return None
+  try:
+    text = value.strip()
+    if text.endswith("Z"):
+      text = text[:-1] + "+00:00"
+    return datetime.fromisoformat(text).timestamp()
+  except Exception:
+    return None
+
+
+def _node_api_payload(device_id: str, state: "DeviceState") -> Dict[str, Any]:
+  last_seen = seen_devices.get(device_id) or state.ts
+  last_seen_iso = _iso_from_ts(last_seen)
+  role_value = state.role or device_roles.get(device_id)
+  device_role = _device_role_code(role_value)
+  return {
+    "public_key": device_id,
+    "name": (state.name or device_names.get(device_id) or ""),
+    "device_role": device_role,
+    "role": role_value,
+    "location": {
+      "latitude": float(state.lat),
+      "longitude": float(state.lon),
+    },
+    "lat": state.lat,
+    "lon": state.lon,
+    "last_seen_ts": last_seen,
+    "last_seen": last_seen_iso,
+    "timestamp": int(last_seen) if last_seen else None,
+    "first_seen": last_seen_iso,
+    "battery_voltage": 0,
+  }
+
+
 def _route_payload(route: Dict[str, Any]) -> Dict[str, Any]:
   if not PROD_MODE:
     return route
@@ -957,11 +1051,7 @@ def _load_state() -> None:
   if dropped_ids:
     for device_id in dropped_ids:
       device_roles.pop(device_id, None)
-  node_hash_to_device = {}
-  for device_id in devices.keys():
-    node_hash = _node_hash_from_device_id(device_id)
-    if node_hash:
-      node_hash_to_device[node_hash] = device_id
+  _rebuild_node_hash_map()
 
   for device_id, state in devices.items():
     if not state.name and device_id in device_names:
@@ -1049,6 +1139,10 @@ def _update_history_edge_recent(edge: Dict[str, Any], sample: Dict[str, Any]) ->
 def _record_route_history(route: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
   if not ROUTE_HISTORY_ENABLED:
     return [], []
+  if ROUTE_HISTORY_ALLOWED_MODES_SET:
+    route_mode = route.get("route_mode")
+    if not route_mode or route_mode not in ROUTE_HISTORY_ALLOWED_MODES_SET:
+      return [], []
   payload_type = route.get("payload_type")
   if not _history_payload_allowed(payload_type):
     return [], []
@@ -2151,6 +2245,7 @@ async def broadcaster():
     upd = event.get("data") if isinstance(event, dict) and event.get("type") == "device" else event
 
     device_id = upd["device_id"]
+    is_new_device = device_id not in devices
     state = DeviceState(
       device_id=device_id,
       lat=upd["lat"],
@@ -2167,9 +2262,8 @@ async def broadcaster():
     devices[device_id] = state
     seen_devices[device_id] = time.time()
     state_dirty = True
-    node_hash = _node_hash_from_device_id(device_id)
-    if node_hash:
-      node_hash_to_device[node_hash] = device_id
+    if is_new_device:
+      _rebuild_node_hash_map()
     if state.name:
       device_names[device_id] = state.name
     if state.role:
@@ -2215,6 +2309,7 @@ async def reaper():
           devices.pop(dev_id, None)
           trails.pop(dev_id, None)
           state_dirty = True
+        _rebuild_node_hash_map()
 
     if routes:
       bad_routes = []
@@ -2388,6 +2483,43 @@ def get_stats():
     },
     "server_time": time.time(),
   }
+
+
+@app.get("/api/nodes")
+def api_nodes(request: Request, updated_since: Optional[str] = None, mode: Optional[str] = None, format: Optional[str] = None):
+  _require_prod_token(request)
+  cutoff = _parse_updated_since(updated_since)
+  mode_value = (mode or "").strip().lower()
+  apply_delta = mode_value in ("delta", "updates", "since")
+  format_value = (format or "").strip().lower()
+  format_flat = format_value in ("flat", "list", "legacy", "v1")
+  nodes: List[Dict[str, Any]] = []
+  all_nodes: List[Dict[str, Any]] = []
+  max_last_seen = 0.0
+  for device_id, state in devices.items():
+    payload = _node_api_payload(device_id, state)
+    last_seen = payload.get("last_seen_ts") or 0
+    if float(last_seen) > max_last_seen:
+      max_last_seen = float(last_seen)
+    all_nodes.append(payload)
+    if apply_delta and cutoff is not None and float(last_seen) < cutoff:
+      continue
+    nodes.append(payload)
+  nodes.sort(key=lambda item: item.get("public_key") or "")
+  if not apply_delta:
+    all_nodes.sort(key=lambda item: item.get("public_key") or "")
+    nodes = all_nodes
+  payload: Dict[str, Any] = {
+    "server_time": time.time(),
+    "max_last_seen_ts": max_last_seen or None,
+    "updated_since_applied": bool(apply_delta and cutoff is not None),
+    "updated_since_ignored": bool(updated_since and not apply_delta),
+  }
+  if format_flat:
+    payload["data"] = nodes
+  else:
+    payload["data"] = {"nodes": nodes}
+  return payload
 
 
 @app.get("/los")

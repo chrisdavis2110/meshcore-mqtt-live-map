@@ -2547,7 +2547,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     function historyWeight(count) {
       const n = Math.max(1, Number(count) || 1);
-      return Math.min(10, 1.5 + Math.log1p(n) * 2);
+      return Math.min(6, 0.9 + Math.log1p(n) * 1.1);
     }
 
     function computeHistoryThresholds() {
