@@ -46,7 +46,26 @@
     }
     .hud-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .hud-brand { display: flex; align-items: center; gap: 8px; }
+    .hud-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
     .hud-logo { width: 28px; height: 28px; border-radius: 6px; object-fit: contain; background: rgba(255,255,255,.08); padding: 2px; }
+    .hud.panel-hidden {
+      background: transparent;
+      border: none;
+      padding: 0;
+      width: auto;
+      max-width: none;
+    }
+    .hud.panel-hidden .hud-body { display: none; }
+    .hud.panel-hidden .hud-github { display: none; }
+    .hud.panel-hidden .hud-title { display: none; }
     .hud-github {
       display: inline-flex;
       align-items: center;
@@ -349,8 +368,10 @@
   <div class="hud">
     <div class="hud-header">
       <div class="hud-brand">
-        <img class="hud-logo" src="/static/logo.png" alt="Greater Boston Mesh" />
-        <div><span class="pill">Live</span> {{SITE_TITLE}}</div>
+        <button class="hud-toggle" id="hud-toggle" type="button" aria-label="Toggle panel">
+          <img class="hud-logo" src="/static/logo.png" alt="Greater Boston Mesh" />
+        </button>
+        <div class="hud-title"><span class="pill">Live</span> {{SITE_TITLE}}</div>
       </div>
       <a class="hud-github" href="https://github.com/yellowcooln/meshcore-mqtt-live-map/" target="_blank" rel="noopener" aria-label="GitHub repository">
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -358,44 +379,45 @@
         </svg>
       </a>
     </div>
-    <div class="small">MeshCore node map.</div>
-    <div class="small">Markers update in real time.{{TRAIL_INFO_SUFFIX}}</div>
-    <div class="small">{{SITE_FEED_NOTE}}</div>
-    <div class="small" id="stats"></div>
-    <div class="node-search">
-      <input class="node-search-input" id="node-search" type="text" placeholder="Search nodes by name or key..." autocomplete="off" />
-      <div class="node-search-results" id="node-search-results" hidden></div>
-    </div>
-    <button class="legend-toggle" id="legend-toggle" type="button">Hide legend</button>
-    <button class="map-toggle" id="map-toggle" type="button">Dark map</button>
-    <button class="map-toggle" id="topo-toggle" type="button">Topo map</button>
-    <button class="map-toggle" id="units-toggle" type="button">Units: km</button>
-    <button class="map-toggle" id="labels-toggle" type="button">Labels Off</button>
-    <button class="map-toggle" id="nodes-toggle" type="button">Hide nodes</button>
-    <button class="map-toggle" id="history-toggle" type="button">Hide history</button>
-    <button class="map-toggle" id="heat-toggle" type="button">Hide heat</button>
-    <button class="map-toggle" id="los-toggle" type="button">LOS tool</button>
-    <button class="map-toggle" id="prop-toggle" type="button">Propagation</button>
-    <div class="legend">
-      <div class="legend-item"><span class="legend-line legend-trace"></span> Trace/path</div>
-      <div class="legend-item"><span class="legend-line legend-message"></span> Message</div>
-      <div class="legend-item"><span class="legend-line legend-advert"></span> Advert</div>
-      <div class="legend-item">
-        <span class="legend-history-swatch"></span>
-        <span id="history-window-label">History (24h • volume)</span>
+    <div class="hud-body">
+      <div class="small">MeshCore live map • markers update in real time{{TRAIL_INFO_SUFFIX}} • click logo to hide/show</div>
+      <div class="small">{{SITE_FEED_NOTE}}</div>
+      <div class="small" id="stats"></div>
+      <div class="node-search">
+        <input class="node-search-input" id="node-search" type="text" placeholder="Search nodes by name or key..." autocomplete="off" />
+        <div class="node-search-results" id="node-search-results" hidden></div>
       </div>
-      <div class="legend-los-group" id="legend-los-group">
-        <div class="legend-item"><span class="legend-line legend-los-clear"></span> LOS clear</div>
-        <div class="legend-item"><span class="legend-line legend-los-blocked"></span> LOS blocked</div>
-        <div class="legend-item"><span class="legend-dot legend-los-peak"></span> LOS peak</div>
-        <div class="legend-item"><span class="legend-dot legend-los-relay"></span> Relay suggested</div>
+      <button class="legend-toggle" id="legend-toggle" type="button">Hide legend</button>
+      <button class="map-toggle" id="map-toggle" type="button">Dark map</button>
+      <button class="map-toggle" id="topo-toggle" type="button">Topo map</button>
+      <button class="map-toggle" id="units-toggle" type="button">Units: km</button>
+      <button class="map-toggle" id="labels-toggle" type="button">Labels Off</button>
+      <button class="map-toggle" id="nodes-toggle" type="button">Hide nodes</button>
+      <button class="map-toggle" id="history-toggle" type="button">Hide history</button>
+      <button class="map-toggle" id="heat-toggle" type="button">Hide heat</button>
+      <button class="map-toggle" id="los-toggle" type="button">LOS tool</button>
+      <button class="map-toggle" id="prop-toggle" type="button">Propagation</button>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-line legend-trace"></span> Trace/path</div>
+        <div class="legend-item"><span class="legend-line legend-message"></span> Message</div>
+        <div class="legend-item"><span class="legend-line legend-advert"></span> Advert</div>
+        <div class="legend-item">
+          <span class="legend-history-swatch"></span>
+          <span id="history-window-label">History (24h • volume)</span>
+        </div>
+        <div class="legend-los-group" id="legend-los-group">
+          <div class="legend-item"><span class="legend-line legend-los-clear"></span> LOS clear</div>
+          <div class="legend-item"><span class="legend-line legend-los-blocked"></span> LOS blocked</div>
+          <div class="legend-item"><span class="legend-dot legend-los-peak"></span> LOS peak</div>
+          <div class="legend-item"><span class="legend-dot legend-los-relay"></span> Relay suggested</div>
+        </div>
+        <div class="legend-item"><span class="legend-heat"></span> Heat (last 10 min)</div>
+        <div class="legend-item"><span class="legend-dot legend-online"></span><span id="mqtt-online-label">MQTT online (last 5 min)</span></div>
+        <div class="legend-item"><span class="legend-dot legend-repeater"></span> Repeater</div>
+        <div class="legend-item"><span class="legend-dot legend-companion"></span> Companion</div>
+        <div class="legend-item"><span class="legend-dot legend-room"></span> Room server</div>
+        <div class="legend-item"><span class="legend-dot legend-unknown"></span> Unknown</div>
       </div>
-      <div class="legend-item"><span class="legend-heat"></span> Heat (last 10 min)</div>
-      <div class="legend-item"><span class="legend-dot legend-online"></span><span id="mqtt-online-label">MQTT online (last 5 min)</span></div>
-      <div class="legend-item"><span class="legend-dot legend-repeater"></span> Repeater</div>
-      <div class="legend-item"><span class="legend-dot legend-companion"></span> Companion</div>
-      <div class="legend-item"><span class="legend-dot legend-room"></span> Room server</div>
-      <div class="legend-item"><span class="legend-dot legend-unknown"></span> Unknown</div>
     </div>
   </div>
   <div class="los-panel" id="los-panel">
@@ -3312,6 +3334,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     const legendToggle = document.getElementById('legend-toggle');
     const hud = document.querySelector('.hud');
+    const hudToggle = document.getElementById('hud-toggle');
+    if (hud && hudToggle) {
+      hudToggle.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        hud.classList.toggle('panel-hidden');
+      });
+    }
     if (legendToggle && hud) {
       const storedLegend = localStorage.getItem('meshmapLegendCollapsed');
       if (storedLegend === 'true') {
