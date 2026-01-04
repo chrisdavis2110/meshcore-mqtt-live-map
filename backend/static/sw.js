@@ -1,4 +1,4 @@
-const CACHE_NAME = 'meshmap-pwa-v1';
+const CACHE_NAME = 'meshmap-pwa-v3';
 const CORE_ASSETS = ['/', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

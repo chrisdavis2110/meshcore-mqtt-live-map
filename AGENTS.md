@@ -65,7 +65,8 @@
 - History line weight was reduced for a lighter map overlay.
 - HUD logo uses `SITE_ICON`; if missing/invalid it falls back to a small "Map" badge to keep the toggle usable.
 - Route styling now keys off payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
-- 24h route history persists to `data/route_history.jsonl`, renders as a volume heatline, and defaults off (toggle in HUD).
+- 24h route history persists to `data/route_history.jsonl`, renders as a volume heatline, and defaults off (History tool panel).
+- History tool opens a right-side panel with a 5-step heat filter slider: All, Blue, Yellow, Yellow+Red, Red; legend swatch hides unless active.
 - History records routes for `path`, `direct`, and `fanout` modes by default; adjust with `ROUTE_HISTORY_ALLOWED_MODES`.
 - Propagation render stays visible until a new render; origin changes only mark it dirty.
 - Units toggle (km/mi) is stored in localStorage and defaults to `DISTANCE_UNITS`.

@@ -58,6 +58,21 @@
     .hud-github svg { width: 16px; height: 16px; fill: currentColor; }
     .small { opacity: .85; font-size: 12px; }
     .pill { display:inline-block; padding:2px 8px; border-radius:999px; background: rgba(255,255,255,.12); margin-right:6px; }
+    .js-error {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      max-width: min(360px, calc(100vw - 24px));
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(248, 113, 113, 0.6);
+      color: #fee2e2;
+      font-size: 12px;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      z-index: 1200;
+      white-space: pre-wrap;
+    }
     .legend { margin-top: 8px; display: grid; gap: 6px; }
     .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.9; }
     .legend-line { width: 30px; height: 0; border-top: 4px solid; display: inline-block; }
@@ -75,6 +90,8 @@
     }
     .legend-los-clear { border-color: #22c55e; border-top-style: solid; }
     .legend-los-blocked { border-color: #ef4444; border-top-style: dashed; }
+    .legend-history-group { display: none; }
+    .legend-history-group.active { display: block; }
     .legend-los-group { display: none; }
     .legend-los-group.active { display: block; }
     .legend-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid; display: inline-block; }
@@ -229,9 +246,48 @@
     .los-panel.active { display: block; }
     .los-panel .los-profile { margin-top: 6px; }
     .los-panel .map-toggle { width: 100%; margin-top: 6px; }
+    .history-panel {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 320px;
+      max-height: 50vh;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(15,23,42,.78);
+      border: 1px solid rgba(255,255,255,.2);
+      color: #fff;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      display: none;
+      z-index: 890;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .history-panel.active { display: block; }
+    .history-field {
+      display: grid;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 12px;
+    }
+    .history-panel input {
+      background: rgba(0,0,0,.35);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .history-panel input[type="range"] {
+      padding: 0;
+      accent-color: #f59e0b;
+      width: 100%;
+    }
     @media (max-width: 900px) {
       .los-panel,
-      .prop-panel {
+      .prop-panel,
+      .history-panel {
         top: auto;
         right: 12px;
         left: 12px;

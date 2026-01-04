@@ -25,7 +25,7 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=historytool3" />
 </head>
 <body
   data-map-start-lat="{{MAP_START_LAT}}"
@@ -44,11 +44,34 @@
   data-mqtt-online-seconds="{{MQTT_ONLINE_SECONDS}}"
   data-distance-units="{{DISTANCE_UNITS}}"
 >
+  <div class="js-error" id="js-error" hidden></div>
+  <script>
+    (function () {
+      const errorBox = document.getElementById('js-error');
+      function showError(message) {
+        if (!errorBox) return;
+        errorBox.textContent = message;
+        errorBox.hidden = false;
+      }
+      window.__meshmapStarted = false;
+      window.addEventListener('error', (ev) => {
+        showError(`JS error: ${ev.message || 'unknown'}`);
+      });
+      window.addEventListener('unhandledrejection', (ev) => {
+        showError(`JS error: ${ev.reason || 'promise rejection'}`);
+      });
+      setTimeout(() => {
+        if (!window.__meshmapStarted) {
+          showError('JS error: app failed to start');
+        }
+      }, 3000);
+    })();
+  </script>
   <div class="hud">
     <div class="hud-header">
       <div class="hud-brand">
         <button class="hud-toggle" id="hud-toggle" type="button" aria-label="Toggle panel">
-          <img class="hud-logo" src="/static/logo.png" alt="Greater Boston Mesh" />
+          <img class="hud-logo" src="{{SITE_ICON}}" alt="{{SITE_TITLE}}" />
         </button>
         <div class="hud-title"><span class="pill">Live</span> {{SITE_TITLE}}</div>
       </div>
@@ -72,17 +95,19 @@
       <button class="map-toggle" id="units-toggle" type="button">Units: km</button>
       <button class="map-toggle" id="labels-toggle" type="button">Labels Off</button>
       <button class="map-toggle" id="nodes-toggle" type="button">Hide nodes</button>
-      <button class="map-toggle" id="history-toggle" type="button">Hide history</button>
       <button class="map-toggle" id="heat-toggle" type="button">Hide heat</button>
+      <button class="map-toggle" id="history-toggle" type="button">History tool</button>
       <button class="map-toggle" id="los-toggle" type="button">LOS tool</button>
       <button class="map-toggle" id="prop-toggle" type="button">Propagation</button>
       <div class="legend">
         <div class="legend-item"><span class="legend-line legend-trace"></span> Trace/path</div>
         <div class="legend-item"><span class="legend-line legend-message"></span> Message</div>
         <div class="legend-item"><span class="legend-line legend-advert"></span> Advert</div>
-        <div class="legend-item">
-          <span class="legend-history-swatch"></span>
-          <span id="history-window-label">History (24h • volume)</span>
+        <div class="legend-history-group" id="legend-history-group">
+          <div class="legend-item">
+            <span class="legend-history-swatch"></span>
+            <span id="history-window-label">History (24h • volume)</span>
+          </div>
         </div>
         <div class="legend-los-group" id="legend-los-group">
           <div class="legend-item"><span class="legend-line legend-los-clear"></span> LOS clear</div>
@@ -109,6 +134,15 @@
       <svg id="los-profile-svg" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>
       <div class="los-profile-tooltip" id="los-profile-tooltip" hidden></div>
     </div>
+  </div>
+  <div class="history-panel" id="history-panel" hidden>
+    <div class="small"><strong>History</strong></div>
+    <div class="small" id="history-panel-label">History (24h • volume)</div>
+    <label class="history-field">
+      <span>Filter by heat</span>
+      <input id="history-filter" type="range" min="0" max="4" step="1" value="0" />
+    </label>
+    <div class="small" id="history-filter-label">All links</div>
   </div>
   <div class="prop-panel" id="prop-panel">
     <div class="small"><strong>Propagation estimate</strong></div>
@@ -207,6 +241,6 @@
   ></script>
   <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=historytool3" defer></script>
 </body>
 </html>

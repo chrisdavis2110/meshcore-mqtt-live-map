@@ -1,3 +1,4 @@
+    window.__meshmapStarted = true;
     const config = document.body ? document.body.dataset : {};
     const mapStartLat = parseFloat(config.mapStartLat) || 42.3601;
     const mapStartLon = parseFloat(config.mapStartLon) || -71.1500;
@@ -95,6 +96,9 @@
     const losClearButton = document.getElementById('los-clear');
     const losPanel = document.getElementById('los-panel');
     const propPanel = document.getElementById('prop-panel');
+    const historyPanel = document.getElementById('history-panel');
+    const historyLegendGroup = document.getElementById('legend-history-group');
+    const historyPanelLabel = document.getElementById('history-panel-label');
     let losProfileData = [];
     let losProfileMeta = null;
     const deviceData = new Map();
@@ -113,11 +117,27 @@
       localStorage.setItem('meshmapDistanceUnits', distanceUnits);
     }
     const historyLabel = document.getElementById('history-window-label');
+    const historyFilter = document.getElementById('history-filter');
+    const historyFilterLabel = document.getElementById('history-filter-label');
     let historyWindowSeconds = null;
+    const historyToolVersion = '1';
+    const storedHistoryToolVersion = localStorage.getItem('meshmapHistoryToolVersion');
+    if (storedHistoryToolVersion !== historyToolVersion) {
+      localStorage.setItem('meshmapShowHistory', 'false');
+      localStorage.setItem('meshmapHistoryToolVersion', historyToolVersion);
+    }
     const storedHistory = localStorage.getItem('meshmapShowHistory');
     let historyVisible = storedHistory === 'true';
     if (storedHistory === null) {
       localStorage.setItem('meshmapShowHistory', 'false');
+    }
+    let historyFilterMode = Number(localStorage.getItem('meshmapHistoryFilter') || '0');
+    if (![0, 1, 2, 3, 4].includes(historyFilterMode)) {
+      historyFilterMode = 0;
+      localStorage.setItem('meshmapHistoryFilter', '0');
+    }
+    if (historyFilter) {
+      historyFilter.value = String(historyFilterMode);
     }
     const storedHeat = localStorage.getItem('meshmapShowHeat');
     let heatVisible = storedHeat !== 'false';
@@ -275,17 +295,32 @@
       const btn = document.getElementById('history-toggle');
       if (btn) {
         btn.classList.toggle('active', visible);
-        btn.textContent = visible ? 'Hide history' : 'Show history';
+        btn.textContent = visible ? 'History: on' : 'History tool';
+      }
+      if (historyPanel) {
+        historyPanel.classList.toggle('active', visible);
+        if (visible) {
+          historyPanel.removeAttribute('hidden');
+          historyPanel.style.display = 'block';
+        } else {
+          historyPanel.setAttribute('hidden', 'hidden');
+          historyPanel.style.display = 'none';
+        }
+      }
+      if (historyLegendGroup) {
+        historyLegendGroup.classList.toggle('active', visible);
       }
       if (visible) {
         if (!map.hasLayer(historyLayer)) {
           historyLayer.addTo(map);
         }
         renderHistoryFromCache();
+        updateHistoryRendering();
       } else if (map.hasLayer(historyLayer)) {
         map.removeLayer(historyLayer);
         clearHistoryLayer();
       }
+      layoutSidePanels();
     }
 
     function setHeatVisible(visible) {
@@ -476,44 +511,31 @@
       }
     }
     function layoutSidePanels() {
-      if (!propPanel || !losPanel) return;
+      if (!losPanel || !propPanel) return;
+      const panels = [];
+      if (losActive && losPanel.classList.contains('active')) panels.push(losPanel);
+      if (historyVisible && historyPanel && historyPanel.classList.contains('active')) panels.push(historyPanel);
+      if (propagationActive && propPanel.classList.contains('active')) panels.push(propPanel);
+      [losPanel, historyPanel, propPanel].forEach(panel => {
+        if (!panel) return;
+        panel.style.top = '';
+        panel.style.bottom = '';
+      });
+      if (!panels.length) return;
       const isMobile = window.matchMedia('(max-width: 900px)').matches;
       if (isMobile) {
-        propPanel.style.top = '';
-        losPanel.style.top = '';
-        if (losActive && losPanel.classList.contains('active') && propagationActive && propPanel.classList.contains('active')) {
-          const propHeight = propPanel.offsetHeight || 0;
-          propPanel.style.bottom = '12px';
-          losPanel.style.bottom = `${Math.max(12, propHeight + 24)}px`;
-        } else {
-          if (losActive && losPanel.classList.contains('active')) {
-            losPanel.style.bottom = '12px';
-          } else {
-            losPanel.style.bottom = '';
-          }
-          if (propagationActive && propPanel.classList.contains('active')) {
-            propPanel.style.bottom = '12px';
-          } else {
-            propPanel.style.bottom = '';
-          }
-        }
-        return;
-      }
-      losPanel.style.bottom = '';
-      propPanel.style.bottom = '';
-      if (!propagationActive || !propPanel.classList.contains('active')) {
-        propPanel.style.top = '';
+        let bottom = 12;
+        panels.slice().reverse().forEach(panel => {
+          panel.style.bottom = `${bottom}px`;
+          bottom += (panel.offsetHeight || 0) + 12;
+        });
         return;
       }
       let top = 18;
-      if (losActive && losPanel.classList.contains('active')) {
-        const losRect = losPanel.getBoundingClientRect();
-        const panelHeight = propPanel.offsetHeight || 0;
-        const candidate = Math.round(losRect.bottom + 12);
-        const maxTop = Math.max(12, window.innerHeight - panelHeight - 12);
-        top = candidate <= maxTop ? candidate : maxTop;
-      }
-      propPanel.style.top = `${top}px`;
+      panels.forEach(panel => {
+        panel.style.top = `${top}px`;
+        top += (panel.offsetHeight || 0) + 12;
+      });
     }
     function clearLos() {
       losPoints = [];
@@ -2462,9 +2484,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     function computeHistoryThresholds() {
       const counts = [];
-      historyLines.forEach(entry => {
-        if (entry && Number.isFinite(entry.count)) {
-          counts.push(entry.count);
+      historyCache.forEach(edge => {
+        if (edge && Number.isFinite(edge.count)) {
+          counts.push(edge.count);
         }
       });
       if (!counts.length) {
@@ -2475,7 +2497,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         const idx = Math.max(0, Math.min(counts.length - 1, Math.floor(pct * (counts.length - 1))));
         return counts[idx];
       };
-      return { p70: pick(0.7), p90: pick(0.9) };
+      const min = counts[0];
+      const max = counts[counts.length - 1];
+      let p70 = pick(0.7);
+      let p90 = pick(0.9);
+      if (p70 <= min) p70 = min + 1;
+      if (p90 <= p70) p90 = p70 + 1;
+      if (p70 > max) {
+        p70 = max + 1;
+        p90 = max + 2;
+      } else if (p90 > max) {
+        p90 = max + 1;
+      }
+      return { p70, p90 };
     }
 
     function historyColor(count, thresholds) {
@@ -2487,19 +2521,67 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       return '#7dd3fc';
     }
 
-    function refreshHistoryStyles() {
+    function historyBand(count, thresholds) {
+      if (!thresholds || thresholds.p90 == null || thresholds.p70 == null) {
+        return 'cool';
+      }
+      if (count >= thresholds.p90) return 'hot';
+      if (count >= thresholds.p70) return 'warm';
+      return 'cool';
+    }
+
+    function historyFilterAllows(count, thresholds) {
+      if (historyFilterMode === 0) return true;
+      const band = historyBand(count, thresholds);
+      if (historyFilterMode === 1) return band === 'cool';
+      if (historyFilterMode === 2) return band === 'warm';
+      if (historyFilterMode === 3) return band === 'warm' || band === 'hot';
+      if (historyFilterMode === 4) return band === 'hot';
+      return true;
+    }
+
+    function updateHistoryFilterLabel() {
+      if (!historyFilterLabel) return;
+      let text = 'All links';
+      if (historyFilterMode === 1) text = 'Blue links only';
+      if (historyFilterMode === 2) text = 'Yellow links only';
+      if (historyFilterMode === 3) text = 'Yellow + Red links';
+      if (historyFilterMode === 4) text = 'Red links only';
+      historyFilterLabel.textContent = text;
+    }
+
+    function updateHistoryRendering() {
+      if (!historyVisible || !nodesVisible) return;
       const thresholds = computeHistoryThresholds();
       historyLines.forEach(entry => {
         if (!entry || !entry.line) return;
         const count = Number(entry.count) || 1;
+        const shouldShow = historyFilterAllows(count, thresholds);
         entry.line.setStyle({
           color: historyColor(count, thresholds),
-          weight: historyWeight(count),
-          opacity: 0.6,
+          weight: shouldShow ? historyWeight(count) : 0.1,
+          opacity: shouldShow ? 0.6 : 0.0,
           lineCap: 'round',
           lineJoin: 'round'
         });
+        entry.hidden = !shouldShow;
       });
+    }
+
+    function refreshHistoryStyles() {
+      updateHistoryRendering();
+    }
+
+    function updateHistoryFilter(mode) {
+      historyFilterMode = Number(mode);
+      if (![0, 1, 2, 3, 4].includes(historyFilterMode)) {
+        historyFilterMode = 0;
+      }
+      localStorage.setItem('meshmapHistoryFilter', String(historyFilterMode));
+      updateHistoryFilterLabel();
+      if (historyVisible && nodesVisible) {
+        updateHistoryRendering();
+      }
     }
 
     function historyEdgeId(edge) {
@@ -2544,6 +2626,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     function renderHistoryFromCache() {
       historyCache.forEach(edge => renderHistoryEdge(edge));
+      updateHistoryRendering();
       setStats();
     }
 
@@ -2560,19 +2643,22 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     function updateHistoryWindowLabel(seconds) {
-      if (!historyLabel) return;
-      if (!seconds || seconds <= 0) {
-        historyLabel.textContent = 'History';
-        return;
+      const targets = [historyLabel, historyPanelLabel].filter(Boolean);
+      if (!targets.length) return;
+      let text = 'History';
+      if (seconds && seconds > 0) {
+        const hours = seconds / 3600;
+        if (hours >= 24) {
+          text = `History (${Math.round(hours)}h)`;
+        } else if (hours >= 1) {
+          text = `History (${Math.round(hours * 10) / 10}h)`;
+        } else {
+          text = `History (${Math.max(1, Math.round(seconds / 60))}m)`;
+        }
       }
-      const hours = seconds / 3600;
-      if (hours >= 24) {
-        historyLabel.textContent = `History (${Math.round(hours)}h)`;
-      } else if (hours >= 1) {
-        historyLabel.textContent = `History (${Math.round(hours * 10) / 10}h)`;
-      } else {
-        historyLabel.textContent = `History (${Math.max(1, Math.round(seconds / 60))}m)`;
-      }
+      targets.forEach(el => {
+        el.textContent = text;
+      });
     }
 
     function refreshHeatLayer() {
@@ -3025,6 +3111,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       historyToggle.addEventListener('click', () => {
         setHistoryVisible(!historyVisible);
         localStorage.setItem('meshmapShowHistory', historyVisible ? 'true' : 'false');
+      });
+    }
+    updateHistoryFilterLabel();
+    if (historyFilter) {
+      historyFilter.addEventListener('input', (ev) => {
+        updateHistoryFilter(ev.target.value);
       });
     }
 
