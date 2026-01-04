@@ -1,5 +1,6 @@
 .env
 example.gif
+backend/static/logo.png
 
 # runtime state
 /data/state.json
