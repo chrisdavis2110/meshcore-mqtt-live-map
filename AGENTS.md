@@ -61,6 +61,7 @@
 - LOS legend items (clear/blocked/peaks/relay) are hidden until the LOS tool is active.
 - Mobile LOS supports long-press on nodes (Shift+click on desktop).
 - MQTT online status uses `mqtt_seen_ts` from `MQTT_ONLINE_TOPIC_SUFFIXES` (default `/status,/packets`); markers get a green outline + popup status.
+- `MQTT_ONLINE_FORCE_NAMES` (comma-separated device names) forces selected nodes to always appear MQTT online.
 - Service worker fetches navigations with `no-store` to avoid stale UI/env toggles (e.g., radius debug ring).
 - Node search + labels toggle (persisted in localStorage) and a GitHub link in the HUD.
 - Hide-nodes toggle hides markers, trails, heat, routes, and history layers.
@@ -77,6 +78,6 @@
 - Clicking the logo toggles the left HUD panel while LOS/Propagation panels remain open.
 - Node popups do not auto-pan; dragging the map won’t snap back to keep a popup in view.
 - MQTT disconnect handler tolerates extra Paho args so the loop doesn’t crash; reconnects resume ingest.
-- Share button copies a URL with `lat`, `lon`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `units`, and `history_filter` params.
+- Share button copies a URL with `lat`, `lon`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, and `history_filter` params.
 - URL params override localStorage on load (`history=on` is the only way to load History open).
 - Node size slider persists in localStorage (`meshmapNodeRadius`) and can be reset by clearing site data.

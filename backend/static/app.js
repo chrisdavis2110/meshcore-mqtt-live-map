@@ -38,6 +38,9 @@
     const queryLabelsVisible = parseBoolParam(queryParams.get('labels'));
     const queryNodesVisible = parseBoolParam(queryParams.get('nodes'));
     const queryLegendVisible = parseBoolParam(queryParams.get('legend'));
+    const queryMenuVisible = parseBoolParam(
+      queryParams.get('menu') || queryParams.get('hud') || queryParams.get('panel')
+    );
     const queryUnits = String(queryParams.get('units') || queryParams.get('unit') || '').toLowerCase();
     const queryHistoryFilter = parseHistoryFilterParam(
       queryParams.get('history_filter') || queryParams.get('historyFilter') || queryParams.get('historyfilter')
@@ -502,6 +505,7 @@
     }
 
     function isMqttOnline(d) {
+      if (d.mqtt_forced) return true;
       const lastSeen = d.mqtt_seen_ts || null;
       if (!lastSeen) return false;
       return (Date.now() / 1000 - lastSeen) <= mqttOnlineSeconds;
@@ -3069,6 +3073,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         hud.classList.toggle('panel-hidden');
       });
     }
+    if (hud && queryMenuVisible !== null) {
+      hud.classList.toggle('panel-hidden', !queryMenuVisible);
+    }
     if (legendToggle && hud) {
       const storedLegend = localStorage.getItem('meshmapLegendCollapsed');
       const overrideLegend = queryLegendVisible === null ? null : !queryLegendVisible;
@@ -3106,6 +3113,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         url.searchParams.set('labels', showLabels ? 'on' : 'off');
         url.searchParams.set('nodes', nodesVisible ? 'on' : 'off');
         url.searchParams.set('legend', hud && hud.classList.contains('legend-collapsed') ? 'off' : 'on');
+        url.searchParams.set('menu', hud && hud.classList.contains('panel-hidden') ? 'off' : 'on');
         url.searchParams.set('units', distanceUnits);
         url.searchParams.set('history_filter', String(historyFilterMode));
         const shareUrl = url.toString();

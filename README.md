@@ -158,7 +158,7 @@ Use it:
 - On mobile, long‑press a node to select it for LOS.
 - LOS runs server-side via `/los` (no client-side elevation fetch).
 - History tool always loads off (use the button or `history=on` in the URL).
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `units`, `history_filter`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - If hop hashes collide, the backend skips those hashes (unique-only mapping).

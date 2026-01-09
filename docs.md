@@ -58,10 +58,11 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Propagation overlay keeps heat/routes/trails/markers above it after render; the panel lives on the right and retains the last render until you generate a new one.
 - Heatmap includes all route payload types (adverts are no longer skipped).
 - MQTT online status shows as a green marker outline and popup status; it uses `mqtt_seen_ts` from `/status` or `/packets` topics (configurable).
+- `MQTT_ONLINE_FORCE_NAMES` can force named nodes to show as MQTT online regardless of last seen.
 - PWA install support is enabled via `/manifest.webmanifest` and a service worker at `/sw.js`.
 - Clicking the HUD logo hides/shows the left panel while tool panels stay open.
-- Share button copies a URL with the current view + toggles.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `units`, `history_filter`.
+- Share button copies a URL with the current view + toggles (including HUD visibility).
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
 - Service worker uses `no-store` for navigation requests so env-driven UI toggles (like the radius ring) update without clearing site data.
 
 ## LOS (Line of Sight) Tool
