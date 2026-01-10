@@ -120,6 +120,8 @@
     const historyLines = new Map(); // edge_id -> { line, count }
     const historyCache = new Map(); // edge_id -> raw edge data
     const historyLayer = L.layerGroup();
+    const peerLayer = L.layerGroup();
+    const peerLines = new Map(); // peer_id -> line
     const routeLayer = L.layerGroup().addTo(map);
     const losElevationUrl = config.losElevationUrl || 'https://api.opentopodata.org/v1/srtm90m';
     const losSampleMin = Number(config.losSampleMin) || 10;
@@ -139,6 +141,8 @@
     const heatPoints = [];
     const HEAT_TTL_MS = 10 * 60 * 1000;
     const losLayer = L.layerGroup().addTo(map);
+    const coverageApiUrl = (config.coverageApiUrl || '').trim();
+    const coverageEnabled = Boolean(coverageApiUrl);
     const coverageLayer = L.layerGroup();
     let coverageVisible = false;
     let coverageData = null;
@@ -162,6 +166,13 @@
     const historyPanel = document.getElementById('history-panel');
     const historyLegendGroup = document.getElementById('legend-history-group');
     const historyPanelLabel = document.getElementById('history-panel-label');
+    const peersPanel = document.getElementById('peers-panel');
+    const peersStatus = document.getElementById('peers-status');
+    const peersMeta = document.getElementById('peers-meta');
+    const peersIn = document.getElementById('peers-in');
+    const peersOut = document.getElementById('peers-out');
+    const peersToggle = document.getElementById('peers-toggle');
+    const peersClear = document.getElementById('peers-clear');
     let losProfileData = [];
     let losProfileMeta = null;
     const deviceData = new Map();
@@ -207,6 +218,9 @@
     const historyToolVersion = '1';
     localStorage.setItem('meshmapHistoryToolVersion', historyToolVersion);
     let historyVisible = false;
+    let peersActive = false;
+    let peersSelectedId = null;
+    let peersData = null;
     let historyFilterMode = Number(localStorage.getItem('meshmapHistoryFilter') || '0');
     if (queryHistoryFilter != null) {
       historyFilterMode = queryHistoryFilter;
@@ -612,6 +626,16 @@
         if (coverageVisible && !map.hasLayer(coverageLayer)) {
           coverageLayer.addTo(map);
         }
+        if (peersActive && !map.hasLayer(peerLayer)) {
+          peerLayer.addTo(map);
+        }
+        if (peersActive && peersData) {
+          renderPeerLines(
+            { lat: peersData.lat, lon: peersData.lon },
+            peersData.incoming || [],
+            peersData.outgoing || []
+          );
+        }
       } else if (map.hasLayer(markerLayer)) {
         map.removeLayer(markerLayer);
         if (map.hasLayer(trailLayer)) {
@@ -630,6 +654,9 @@
         if (coverageLayer && map.hasLayer(coverageLayer)) {
           map.removeLayer(coverageLayer);
         }
+        if (map.hasLayer(peerLayer)) {
+          map.removeLayer(peerLayer);
+        }
       } else if (map.hasLayer(trailLayer)) {
         map.removeLayer(trailLayer);
       } else {
@@ -642,6 +669,9 @@
         }
         if (heatLayer && map.hasLayer(heatLayer)) {
           map.removeLayer(heatLayer);
+        }
+        if (map.hasLayer(peerLayer)) {
+          map.removeLayer(peerLayer);
         }
       }
     }
@@ -675,6 +705,150 @@
       } else if (map.hasLayer(historyLayer)) {
         map.removeLayer(historyLayer);
         clearHistoryLayer();
+      }
+      layoutSidePanels();
+    }
+
+    function setPeersStatus(text) {
+      if (peersStatus) {
+        peersStatus.textContent = text || '';
+      }
+    }
+
+    function clearPeerLines() {
+      peerLines.forEach(line => {
+        if (line && peerLayer.hasLayer(line)) {
+          peerLayer.removeLayer(line);
+        }
+      });
+      peerLines.clear();
+      if (map.hasLayer(peerLayer)) {
+        map.removeLayer(peerLayer);
+      }
+    }
+
+    function renderPeerLines(origin, incoming, outgoing) {
+      clearPeerLines();
+      if (!peersActive || !nodesVisible) return;
+      if (!origin || origin.lat == null || origin.lon == null) return;
+      if (!map.hasLayer(peerLayer)) {
+        peerLayer.addTo(map);
+      }
+      const originLatLng = [origin.lat, origin.lon];
+      const drawLine = (peer, color, dash) => {
+        if (peer.lat == null || peer.lon == null) return;
+        const line = L.polyline([originLatLng, [peer.lat, peer.lon]], {
+          color,
+          weight: 3,
+          opacity: 0.85,
+          dashArray: dash
+        }).addTo(peerLayer);
+        peerLines.set(peer.peer_id, line);
+      };
+      incoming.forEach(peer => drawLine(peer, '#38bdf8', '6 8'));
+      outgoing.forEach(peer => drawLine(peer, '#a855f7', '2 6'));
+      if (peerLayer.bringToFront) {
+        peerLayer.bringToFront();
+      }
+    }
+
+    function renderPeerList(target, peers, total, label) {
+      if (!target) return;
+      target.innerHTML = '';
+      if (!peers || peers.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'small';
+        empty.textContent = `No ${label} data yet.`;
+        target.appendChild(empty);
+        return;
+      }
+      peers.forEach(peer => {
+        const item = document.createElement('div');
+        item.className = 'peer-item';
+        const name = peer.name || (peer.peer_id ? `${peer.peer_id.slice(0, 8)}…` : 'Unknown');
+        const percent = total > 0 ? `${peer.percent.toFixed(1)}%` : '0%';
+        item.innerHTML = `<span class="peer-name">${name}</span><span class="peer-count">${peer.count} • ${percent}</span>`;
+        item.addEventListener('click', () => {
+          if (peer.peer_id) {
+            focusDevice(peer.peer_id);
+          }
+        });
+        target.appendChild(item);
+      });
+    }
+
+    async function selectPeerNode(deviceId) {
+      if (!deviceId) return;
+      peersSelectedId = deviceId;
+      if (!peersActive) return;
+      setPeersStatus('Loading peers…');
+      if (peersMeta) peersMeta.textContent = '';
+      try {
+        const res = await fetch(withToken(`/peers/${encodeURIComponent(deviceId)}`), { headers: tokenHeaders() });
+        if (!res.ok) {
+          throw new Error(`peers ${res.status}`);
+        }
+        const data = await res.json();
+        peersData = data;
+        const name = data.name || (deviceId ? `${deviceId.slice(0, 8)}…` : 'Unknown');
+        const inboundTotal = data.incoming_total || 0;
+        const outboundTotal = data.outgoing_total || 0;
+        setPeersStatus(`${name} peers`);
+        if (peersMeta) {
+          peersMeta.textContent = `Incoming ${inboundTotal} • Outgoing ${outboundTotal} • ${data.window_hours || 24}h window`;
+        }
+        renderPeerList(peersIn, data.incoming || [], inboundTotal, 'incoming');
+        renderPeerList(peersOut, data.outgoing || [], outboundTotal, 'outgoing');
+        renderPeerLines(
+          { lat: data.lat, lon: data.lon },
+          data.incoming || [],
+          data.outgoing || []
+        );
+      } catch (err) {
+        setPeersStatus('Peer lookup failed.');
+        if (peersMeta) peersMeta.textContent = '';
+        renderPeerList(peersIn, [], 0, 'incoming');
+        renderPeerList(peersOut, [], 0, 'outgoing');
+        peersData = null;
+        clearPeerLines();
+      }
+    }
+
+    function clearPeers() {
+      peersSelectedId = null;
+      peersData = null;
+      setPeersStatus('Select a node to view peers.');
+      if (peersMeta) peersMeta.textContent = '';
+      renderPeerList(peersIn, [], 0, 'incoming');
+      renderPeerList(peersOut, [], 0, 'outgoing');
+      clearPeerLines();
+    }
+
+    function setPeersActive(active) {
+      peersActive = active;
+      if (peersToggle) {
+        peersToggle.classList.toggle('active', active);
+        peersToggle.textContent = active ? 'Peers: select node' : 'Peers tool';
+      }
+      if (peersPanel) {
+        peersPanel.classList.toggle('active', active);
+        if (active) {
+          peersPanel.removeAttribute('hidden');
+          peersPanel.style.display = 'block';
+        } else {
+          peersPanel.setAttribute('hidden', 'hidden');
+          peersPanel.style.display = 'none';
+        }
+      }
+      if (active && peersData) {
+        renderPeerLines(
+          { lat: peersData.lat, lon: peersData.lon },
+          peersData.incoming || [],
+          peersData.outgoing || []
+        );
+      }
+      if (!active) {
+        clearPeers();
       }
       layoutSidePanels();
     }
@@ -782,7 +956,12 @@
         const item = document.createElement('div');
         item.className = 'node-search-item';
         item.innerHTML = `<span>${deviceDisplayName(d)}</span><span class="node-search-id">${id.slice(0, 8)}…</span>`;
-        item.addEventListener('click', () => focusDevice(id));
+        item.addEventListener('click', () => {
+          if (peersActive) {
+            selectPeerNode(id);
+          }
+          focusDevice(id);
+        });
         searchResults.appendChild(item);
       });
       searchResults.hidden = false;
@@ -881,8 +1060,9 @@
       const panels = [];
       if (losActive && losPanel.classList.contains('active')) panels.push(losPanel);
       if (historyVisible && historyPanel && historyPanel.classList.contains('active')) panels.push(historyPanel);
+      if (peersActive && peersPanel && peersPanel.classList.contains('active')) panels.push(peersPanel);
       if (propagationActive && propPanel.classList.contains('active')) panels.push(propPanel);
-      [losPanel, historyPanel, propPanel].forEach(panel => {
+      [losPanel, historyPanel, peersPanel, propPanel].forEach(panel => {
         if (!panel) return;
         panel.style.top = '';
         panel.style.bottom = '';
@@ -2646,6 +2826,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             L.DomEvent.stop(ev);
             return;
           }
+          if (peersActive) {
+            selectPeerNode(id);
+            m.openPopup();
+            if (original) {
+              original.preventDefault();
+              original.stopPropagation();
+            }
+            L.DomEvent.stop(ev);
+            return;
+          }
           if (propagationActive) {
             setPropagationOrigin(m.getLatLng(), id);
             m.openPopup();
@@ -3567,6 +3757,18 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       });
     }
 
+    if (peersToggle) {
+      setPeersActive(false);
+      peersToggle.addEventListener('click', () => {
+        setPeersActive(!peersActive);
+      });
+    }
+    if (peersClear) {
+      peersClear.addEventListener('click', () => {
+        clearPeers();
+      });
+    }
+
     const heatToggle = document.getElementById('heat-toggle');
     if (heatToggle) {
       const storedHeatVisible = localStorage.getItem('meshmapShowHeat');
@@ -3588,7 +3790,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     const coverageToggle = document.getElementById('coverage-toggle');
-    if (coverageToggle) {
+    if (coverageToggle && !coverageEnabled) {
+      coverageToggle.setAttribute('hidden', 'hidden');
+    }
+    if (coverageToggle && coverageEnabled) {
       const storedCoverageVisible = localStorage.getItem('meshmapShowCoverage');
       let initialCoverage = storedCoverageVisible !== null ? storedCoverageVisible === 'true' : false;
       setCoverageVisible(initialCoverage);

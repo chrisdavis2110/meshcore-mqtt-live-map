@@ -45,6 +45,7 @@
   data-distance-units="{{DISTANCE_UNITS}}"
   data-node-radius="{{NODE_MARKER_RADIUS}}"
   data-history-link-scale="{{HISTORY_LINK_SCALE}}"
+  data-coverage-api-url="{{COVERAGE_API_URL}}"
 >
   <script>
     window.__meshmapStarted = false;
@@ -91,6 +92,7 @@
       <button class="map-toggle" id="heat-toggle" type="button">Hide heat</button>
       <button class="map-toggle" id="coverage-toggle" type="button">Coverage</button>
       <button class="map-toggle" id="history-toggle" type="button">History tool</button>
+      <button class="map-toggle" id="peers-toggle" type="button">Peers tool</button>
       <button class="map-toggle" id="los-toggle" type="button">LOS tool</button>
       <button class="map-toggle" id="prop-toggle" type="button">Propagation</button>
       <div class="legend">
@@ -142,6 +144,20 @@
       <input id="history-link-size" type="range" min="0" max="100" step="1" value="50" />
     </label>
     <div class="small" id="history-link-size-value">1.0x</div>
+  </div>
+  <div class="peers-panel" id="peers-panel" hidden>
+    <div class="small"><strong>Node peers</strong></div>
+    <div class="small" id="peers-status">Select a node to view peers.</div>
+    <div class="small" id="peers-meta"></div>
+    <div class="peer-section">
+      <div class="small peer-heading">Incoming (heard from)</div>
+      <div class="peer-list" id="peers-in"></div>
+    </div>
+    <div class="peer-section">
+      <div class="small peer-heading">Outgoing (heard by)</div>
+      <div class="peer-list" id="peers-out"></div>
+    </div>
+    <button class="map-toggle" id="peers-clear" type="button">Clear peers</button>
   </div>
   <div class="prop-panel" id="prop-panel">
     <div class="small"><strong>Propagation estimate</strong></div>
@@ -240,6 +256,6 @@
   ></script>
   <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js" crossorigin="anonymous"></script>
 
-  <script src="/static/app.js?v=linksize2" defer></script>
+  <script src="/static/app.js?v=peers1" defer></script>
 </body>
 </html>

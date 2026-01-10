@@ -106,6 +106,7 @@ def _record_route_history(route: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], 
   if not _history_payload_allowed(payload_type):
     return [], []
   points = route.get("points")
+  point_ids = route.get("point_ids") if isinstance(route.get("point_ids"), list) else None
   if not isinstance(points, list) or len(points) < 2:
     return [], []
 
@@ -119,11 +120,18 @@ def _record_route_history(route: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], 
     b = _normalize_history_point(points[idx + 1])
     if not a or not b:
       continue
+    a_id = None
+    b_id = None
+    if point_ids and idx < len(point_ids) - 1:
+      a_id = point_ids[idx]
+      b_id = point_ids[idx + 1]
     key, first, second = _history_edge_key(a, b)
     new_entries.append({
       "ts": float(ts),
       "a": [first[0], first[1]],
       "b": [second[0], second[1]],
+      "a_id": a_id,
+      "b_id": b_id,
       "message_hash": sample.get("message_hash"),
       "payload_type": sample.get("payload_type"),
       "origin_id": sample.get("origin_id"),
@@ -273,6 +281,8 @@ def _load_route_history() -> None:
           "ts": float(ts),
           "a": [first[0], first[1]],
           "b": [second[0], second[1]],
+          "a_id": entry.get("a_id"),
+          "b_id": entry.get("b_id"),
           "message_hash": sample.get("message_hash"),
           "payload_type": sample.get("payload_type"),
           "origin_id": sample.get("origin_id"),

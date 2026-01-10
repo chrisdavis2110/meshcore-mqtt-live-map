@@ -1085,8 +1085,9 @@ def root():
     "LOS_SAMPLE_MIN": LOS_SAMPLE_MIN,
     "LOS_SAMPLE_MAX": LOS_SAMPLE_MAX,
     "LOS_SAMPLE_STEP_METERS": LOS_SAMPLE_STEP_METERS,
-    "LOS_PEAKS_MAX": LOS_PEAKS_MAX,
-    "MQTT_ONLINE_SECONDS": MQTT_ONLINE_SECONDS,
+  "LOS_PEAKS_MAX": LOS_PEAKS_MAX,
+  "MQTT_ONLINE_SECONDS": MQTT_ONLINE_SECONDS,
+  "COVERAGE_API_URL": COVERAGE_API_URL,
   }
   for key, value in replacements.items():
     safe_value = html.escape(str(value), quote=True)

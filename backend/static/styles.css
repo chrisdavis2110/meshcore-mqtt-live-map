@@ -284,10 +284,54 @@
       accent-color: #f59e0b;
       width: 100%;
     }
+    .peers-panel {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 320px;
+      max-height: 60vh;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(15,23,42,.78);
+      border: 1px solid rgba(255,255,255,.2);
+      color: #fff;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      display: none;
+      z-index: 885;
+      overflow-y: auto;
+      overflow-x: hidden;
+      box-sizing: border-box;
+    }
+    .peers-panel.active { display: block; }
+    .peer-section {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .peer-heading { opacity: 0.8; }
+    .peer-list {
+      display: grid;
+      gap: 4px;
+    }
+    .peer-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 6px;
+      border-radius: 8px;
+      background: rgba(0,0,0,.25);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .peer-item:hover { background: rgba(255,255,255,.08); }
+    .peer-item .peer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .peer-item .peer-count { opacity: 0.8; font-variant-numeric: tabular-nums; }
     @media (max-width: 900px) {
       .los-panel,
       .prop-panel,
-      .history-panel {
+      .history-panel,
+      .peers-panel {
         top: auto;
         right: 12px;
         left: 12px;

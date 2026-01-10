@@ -299,7 +299,7 @@ def _choose_device_for_hash(node_hash: str, ts: float) -> Optional[str]:
   return best_id
 
 
-def _route_points_from_hashes(path_hashes: List[Any], origin_id: Optional[str], receiver_id: Optional[str], ts: float) -> Tuple[Optional[List[List[float]]], List[str]]:
+def _route_points_from_hashes(path_hashes: List[Any], origin_id: Optional[str], receiver_id: Optional[str], ts: float) -> Tuple[Optional[List[List[float]]], List[str], List[Optional[str]]]:
   normalized: List[str] = []
   for raw in path_hashes:
     key = _normalize_node_hash(raw)
@@ -320,6 +320,7 @@ def _route_points_from_hashes(path_hashes: List[Any], origin_id: Optional[str], 
 
   points: List[List[float]] = []
   used_hashes: List[str] = []
+  point_ids: List[Optional[str]] = []
 
   for key in normalized:
     device_id = node_hash_to_device.get(key)
@@ -335,6 +336,7 @@ def _route_points_from_hashes(path_hashes: List[Any], origin_id: Optional[str], 
       continue
     points.append(point)
     used_hashes.append(key)
+    point_ids.append(device_id)
 
   origin_point = None
   if origin_id:
@@ -343,6 +345,9 @@ def _route_points_from_hashes(path_hashes: List[Any], origin_id: Optional[str], 
       origin_point = [origin_state.lat, origin_state.lon]
       if not points or points[0] != origin_point:
         points.insert(0, origin_point)
+        point_ids.insert(0, origin_id)
+      elif point_ids:
+        point_ids[0] = origin_id
 
   receiver_point = None
   if receiver_id:
@@ -351,11 +356,14 @@ def _route_points_from_hashes(path_hashes: List[Any], origin_id: Optional[str], 
       receiver_point = [receiver_state.lat, receiver_state.lon]
       if points and receiver_point != points[-1]:
         points.append(receiver_point)
+        point_ids.append(receiver_id)
+      elif point_ids:
+        point_ids[-1] = receiver_id
 
   if len(points) < 2:
-    return None, used_hashes
+    return None, used_hashes, point_ids
 
-  return points, used_hashes
+  return points, used_hashes, point_ids
 
 
 def _route_points_from_device_ids(origin_id: Optional[str], receiver_id: Optional[str]) -> Optional[List[List[float]]]:
