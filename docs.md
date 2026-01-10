@@ -27,6 +27,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `curl -s http://localhost:8080/snapshot` (current device map).
 - `curl -s http://localhost:8080/stats` (counters, route types).
 - `curl -s http://localhost:8080/debug/last` (recent MQTT decode/debug entries).
+- `curl -s http://localhost:8080/peers/<device_id>` (peer counts for a node; uses route history).
 
 ## MQTT + Decoder
 - MQTT is **WebSockets + TLS** (`MQTT_TRANSPORT=websockets`, `MQTT_TLS=true`, `MQTT_WS_PATH=/` or `/mqtt`).
@@ -50,6 +51,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - History tool defaults off and opens a right-side panel with a heat filter slider (visibility is not persisted).
 - History slider modes: 0 = All, 1 = Blue only, 2 = Yellow only, 3 = Yellow + Red, 4 = Red only.
 - History legend swatch is hidden unless the History tool is active.
+- Peers tool shows incoming/outgoing neighbors for a selected node, with counts and percentages pulled from route history.
+- Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
 - Trail text in the HUD is only shown when `TRAIL_LEN > 0`; `TRAIL_LEN=0` disables trails entirely.
 - Hide Nodes toggle hides markers, trails, heat, routes, and history layers.
 - Heat toggle can hide the heatmap; it defaults on and the button turns green when heat is off.

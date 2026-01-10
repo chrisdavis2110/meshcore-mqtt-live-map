@@ -73,6 +73,8 @@
 - History tool opens a right-side panel with a 5-step heat filter slider: All, Blue, Yellow, Yellow+Red, Red; legend swatch hides unless active.
 - History records routes for `path`, `direct`, and `fanout` modes by default; adjust with `ROUTE_HISTORY_ALLOWED_MODES`.
 - Propagation render stays visible until a new render; origin changes only mark it dirty.
+- Peers tool opens a right-side panel showing incoming/outgoing neighbors (counts + %) based on recent route history; selecting a node draws peer lines on the map.
+- Peers tool ignores nodes listed in `MQTT_ONLINE_FORCE_NAMES` (used for observer listeners).
 - Units toggle (km/mi) is stored in localStorage and defaults to `DISTANCE_UNITS`.
 - PWA support is enabled via `/manifest.webmanifest` + `/sw.js` so mobile browsers can install the app.
 - Clicking the logo toggles the left HUD panel while LOS/Propagation panels remain open.

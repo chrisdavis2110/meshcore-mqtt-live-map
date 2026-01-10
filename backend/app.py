@@ -80,6 +80,7 @@ from config import (
   MQTT_ONLINE_SECONDS,
   MQTT_SEEN_BROADCAST_MIN_SECONDS,
   MQTT_ONLINE_TOPIC_SUFFIXES,
+  MQTT_ONLINE_FORCE_NAMES_SET,
   DEBUG_PAYLOAD,
   DEBUG_PAYLOAD_MAX,
   DECODE_WITH_NODE,
@@ -198,6 +199,10 @@ def _device_payload(device_id: str, state: "DeviceState") -> Dict[str, Any]:
   mqtt_seen_ts = mqtt_seen.get(device_id)
   if mqtt_seen_ts:
     payload["mqtt_seen_ts"] = mqtt_seen_ts
+  if MQTT_ONLINE_FORCE_NAMES_SET:
+    name_value = (state.name or device_names.get(device_id) or "").strip().lower()
+    if name_value and name_value in MQTT_ONLINE_FORCE_NAMES_SET:
+      payload["mqtt_forced"] = True
   if PROD_MODE:
     payload.pop("raw_topic", None)
   return payload
@@ -790,10 +795,11 @@ async def broadcaster():
       route_mode = event.get("route_mode")
       points = event.get("points")
       used_hashes: List[str] = []
+      point_ids: List[Optional[str]] = []
 
       if not points:
         path_hashes = event.get("path_hashes") or []
-        points, used_hashes = _route_points_from_hashes(
+        points, used_hashes, point_ids = _route_points_from_hashes(
           list(path_hashes),
           event.get("origin_id"),
           event.get("receiver_id"),
@@ -802,12 +808,16 @@ async def broadcaster():
 
       if not points and route_mode == "fanout":
         points = _route_points_from_device_ids(event.get("origin_id"), event.get("receiver_id"))
+        if points and event.get("origin_id") and event.get("receiver_id") and len(points) == 2:
+          point_ids = [event.get("origin_id"), event.get("receiver_id")]
 
       # Fallback: if path hashes are missing/unknown, draw a direct link when possible.
       if not points:
         points = _route_points_from_device_ids(event.get("origin_id"), event.get("receiver_id"))
         if points:
           route_mode = "direct"
+          if event.get("origin_id") and event.get("receiver_id") and len(points) == 2:
+            point_ids = [event.get("origin_id"), event.get("receiver_id")]
 
       if not points:
         continue
@@ -827,6 +837,7 @@ async def broadcaster():
         "id": route_id,
         "points": points,
         "hashes": used_hashes,
+        "point_ids": point_ids,
         "route_mode": route_mode or ("path" if used_hashes else "direct"),
         "ts": event.get("ts") or time.time(),
         "expires_at": expires_at,
@@ -1215,6 +1226,117 @@ def api_nodes(request: Request, updated_since: Optional[str] = None, mode: Optio
   else:
     payload["data"] = {"nodes": nodes}
   return payload
+
+
+@app.get("/peers/{device_id}")
+def get_peers(device_id: str, request: Request, limit: int = 8):
+  _require_prod_token(request)
+  if not device_id:
+    raise HTTPException(status_code=400, detail="device_id required")
+  limit_value = max(1, min(int(limit or 8), 50))
+  payload = _peer_stats_for_device(device_id, limit_value)
+  state = devices.get(device_id)
+  if state and not _coords_are_zero(state.lat, state.lon):
+    payload["lat"] = float(state.lat)
+    payload["lon"] = float(state.lon)
+  payload["name"] = (state.name if state else None) or device_names.get(device_id) or ""
+  payload["role"] = (state.role if state else None) or device_roles.get(device_id)
+  payload["last_seen_ts"] = seen_devices.get(device_id) or (state.ts if state else None)
+  payload["server_time"] = time.time()
+  return payload
+
+
+def _peer_device_payload(peer_id: str, count: int, total: int, last_ts: Optional[float]) -> Dict[str, Any]:
+  state = devices.get(peer_id)
+  name = None
+  role = None
+  lat = None
+  lon = None
+  if state:
+    name = state.name or device_names.get(peer_id)
+    role = state.role or device_roles.get(peer_id)
+    if not _coords_are_zero(state.lat, state.lon):
+      lat = float(state.lat)
+      lon = float(state.lon)
+  if not name:
+    name = device_names.get(peer_id)
+  percent = (count / total * 100.0) if total > 0 else 0.0
+  return {
+    "peer_id": peer_id,
+    "name": name or "",
+    "role": role,
+    "lat": lat,
+    "lon": lon,
+    "count": int(count),
+    "percent": round(percent, 1),
+    "last_seen_ts": last_ts,
+  }
+
+
+def _peer_is_excluded(peer_id: str) -> bool:
+  if not MQTT_ONLINE_FORCE_NAMES_SET:
+    return False
+  state = devices.get(peer_id)
+  name_value = ""
+  if state and state.name:
+    name_value = state.name
+  if not name_value:
+    name_value = device_names.get(peer_id) or ""
+  if not name_value:
+    return False
+  return name_value.strip().lower() in MQTT_ONLINE_FORCE_NAMES_SET
+
+
+def _peer_stats_for_device(device_id: str, limit: int) -> Dict[str, Any]:
+  inbound: Dict[str, int] = {}
+  outbound: Dict[str, int] = {}
+  inbound_last: Dict[str, float] = {}
+  outbound_last: Dict[str, float] = {}
+  for entry in route_history_segments:
+    if not isinstance(entry, dict):
+      continue
+    a_id = entry.get("a_id")
+    b_id = entry.get("b_id")
+    if not a_id or not b_id:
+      continue
+    ts = entry.get("ts") or 0
+    if a_id == device_id and b_id != device_id:
+      if _peer_is_excluded(b_id):
+        continue
+      outbound[b_id] = outbound.get(b_id, 0) + 1
+      outbound_last[b_id] = max(outbound_last.get(b_id, 0), float(ts))
+    if b_id == device_id and a_id != device_id:
+      if _peer_is_excluded(a_id):
+        continue
+      inbound[a_id] = inbound.get(a_id, 0) + 1
+      inbound_last[a_id] = max(inbound_last.get(a_id, 0), float(ts))
+
+  inbound_total = sum(inbound.values())
+  outbound_total = sum(outbound.values())
+
+  inbound_items = [
+    _peer_device_payload(peer_id, count, inbound_total, inbound_last.get(peer_id))
+    for peer_id, count in inbound.items()
+  ]
+  outbound_items = [
+    _peer_device_payload(peer_id, count, outbound_total, outbound_last.get(peer_id))
+    for peer_id, count in outbound.items()
+  ]
+  inbound_items.sort(key=lambda item: item.get("count", 0), reverse=True)
+  outbound_items.sort(key=lambda item: item.get("count", 0), reverse=True)
+
+  if limit > 0:
+    inbound_items = inbound_items[:limit]
+    outbound_items = outbound_items[:limit]
+
+  return {
+    "device_id": device_id,
+    "incoming_total": inbound_total,
+    "outgoing_total": outbound_total,
+    "incoming": inbound_items,
+    "outgoing": outbound_items,
+    "window_hours": ROUTE_HISTORY_HOURS,
+  }
 
 
 @app.get("/los")
