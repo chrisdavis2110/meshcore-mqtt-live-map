@@ -6,6 +6,7 @@
 - Update banner rendered from HTML dataset to avoid JS/token fetch issues
 - Git repo mounted into container for update checks; safe.directory configured automatically
 - Update banner Hide button styled to match HUD controls
+- New envs: `CUSTOM_LINK_URL`, `MQTT_ONLINE_FORCE_NAMES`, `GIT_CHECK_ENABLED`, `GIT_CHECK_FETCH`, `GIT_CHECK_PATH`, `GIT_CHECK_INTERVAL_SECONDS`
 
 ## v1.0.0 (01-10-2025)
 - Live MeshCore node map with MQTT ingest, websocket updates, and Leaflet UI
