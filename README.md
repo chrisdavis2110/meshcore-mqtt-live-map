@@ -6,6 +6,7 @@ Live example sites:
 - https://live.bostonme.sh/ - Greater Boston Mesh Map
 - https://map.eastmesh.au/ - Aus Eastern Mesh Live Map
 - https://mesh-map.e-l33t.org/ - NSW Mesh - Live Mesh Traffic Map
+Update check marker: 2025-01-11
 
 
 ![Live map preview](example.gif)
