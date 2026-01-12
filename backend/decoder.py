@@ -306,7 +306,7 @@ def _route_points_from_hashes(path_hashes: List[Any], origin_id: Optional[str], 
     if key:
       normalized.append(key)
   if ROUTE_PATH_MAX_LEN > 0 and len(normalized) > ROUTE_PATH_MAX_LEN:
-    return None, []
+    return None, [], []
 
   receiver_hash = _node_hash_from_device_id(receiver_id) if receiver_id else None
   origin_hash = _node_hash_from_device_id(origin_id) if origin_id else None
