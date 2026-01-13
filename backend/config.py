@@ -33,6 +33,7 @@ ROUTE_TTL_SECONDS = int(os.getenv("ROUTE_TTL_SECONDS", "120"))
 ROUTE_PAYLOAD_TYPES = os.getenv("ROUTE_PAYLOAD_TYPES", "8,9,2,5,4")
 ROUTE_PATH_MAX_LEN = int(os.getenv("ROUTE_PATH_MAX_LEN", "16"))
 ROUTE_MAX_HOP_DISTANCE = float(os.getenv("ROUTE_MAX_HOP_DISTANCE", "100"))
+ROUTE_INFRA_ONLY = os.getenv("ROUTE_INFRA_ONLY", "false").lower() == "true"
 ROUTE_HISTORY_ENABLED = os.getenv("ROUTE_HISTORY_ENABLED",
                                   "true").lower() == "true"
 ROUTE_HISTORY_HOURS = float(os.getenv("ROUTE_HISTORY_HOURS", "24"))

@@ -19,6 +19,7 @@ from config import (
   PAYLOAD_PREVIEW_MAX,
   ROUTE_PATH_MAX_LEN,
   ROUTE_MAX_HOP_DISTANCE,
+  ROUTE_INFRA_ONLY,
   ROUTE_PAYLOAD_TYPES,
 )
 from state import (
@@ -300,6 +301,12 @@ def _choose_closest_device(node_hash: str, ref_lat: float, ref_lon: float,
     state = devices.get(device_id)
     if not state:
       continue
+
+    # If infrastructure-only mode is active, only allow repeaters and rooms
+    if ROUTE_INFRA_ONLY and (not state.role or
+                             state.role not in ("repeater", "room")):
+      continue
+
     # skip invalid coords
     if _coords_are_zero(state.lat, state.lon):
       continue
@@ -335,6 +342,12 @@ def _choose_device_for_hash(node_hash: str, ts: float) -> Optional[str]:
     state = devices.get(device_id)
     if not state:
       continue
+
+    # If infrastructure-only mode is active, only allow repeaters and rooms
+    if ROUTE_INFRA_ONLY and (not state.role or
+                             state.role not in ("repeater", "room")):
+      continue
+
     if _coords_are_zero(state.lat, state.lon):
       continue
     last_seen = seen_devices.get(device_id) or state.ts or 0.0
@@ -482,6 +495,14 @@ def _route_points_from_device_ids(
   receiver_state = devices.get(receiver_id)
   if not origin_state or not receiver_state:
     return None
+
+  # If infrastructure-only mode is active, only allow repeaters and rooms
+  if ROUTE_INFRA_ONLY and (
+    (not origin_state.role or origin_state.role not in ("repeater", "room")) or
+    (not receiver_state.role or
+     receiver_state.role not in ("repeater", "room"))):
+    return None
+
   if _coords_are_zero(origin_state.lat, origin_state.lon) or _coords_are_zero(
       receiver_state.lat, receiver_state.lon):
     return None
