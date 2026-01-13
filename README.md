@@ -8,6 +8,8 @@ Live example sites:
 - https://live.bostonme.sh/ - Greater Boston Mesh Map
 - https://map.eastmesh.au/ - Aus Eastern Mesh Live Map
 - https://mesh-map.e-l33t.org/ - NSW Mesh - Live Mesh Traffic Map
+- https://livemap.wcmesh.com/ - West Coast Mesh Live Map
+- https://mapa.meshcore.cz - Czech Republic Live Map
 
 
 ![Live map preview](example.gif)
