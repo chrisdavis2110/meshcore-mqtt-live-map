@@ -1,5 +1,8 @@
 # Versions
 
+## v1.0.3 (01-12-2026)
+- Fix route decoding to return the correct tuple when paths exceed max length (credit: https://github.com/sefator)
+
 ## v1.0.2 (01-11-2026)
 - Fix update banner Hide action by honoring the hidden state in CSS
 - Remove update banner debug logging after verification

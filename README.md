@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.0.2` (see `VERSION.txt`)
+Version: `1.0.3` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets + TLS, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
