@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+Current version: `1.0.4` (see `VERSIONS.md`).
+
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
 - `backend/config.py` centralizes env configuration.
@@ -15,7 +17,7 @@
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), and optional role overrides (`device_roles.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version; append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.0.4`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -78,6 +80,7 @@
 - History tool opens a right-side panel with a 5-step heat filter slider: All, Blue, Yellow, Yellow+Red, Red; legend swatch hides unless active.
 - History records routes for `path`, `direct`, and `fanout` modes by default; adjust with `ROUTE_HISTORY_ALLOWED_MODES`.
 - Propagation render stays visible until a new render; origin changes only mark it dirty.
+- Preview image endpoint renders in-bounds device dots for shared links.
 - Peers tool opens a right-side panel showing incoming/outgoing neighbors (counts + %) based on recent route history; selecting a node draws peer lines on the map.
 - Peers tool ignores nodes listed in `MQTT_ONLINE_FORCE_NAMES` (used for observer listeners).
 - Units toggle (km/mi) is stored in localStorage and defaults to `DISTANCE_UNITS`.

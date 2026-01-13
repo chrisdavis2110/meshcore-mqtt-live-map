@@ -1,12 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
+Current version: `1.0.4` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string.
+- `VERSION.txt` holds the current version string (`1.0.4`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -74,6 +75,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - MQTT online status shows as a green marker outline and popup status; it uses `mqtt_seen_ts` from `/status` or `/packets` topics (configurable).
 - `MQTT_ONLINE_FORCE_NAMES` can force named nodes to show as MQTT online regardless of last seen.
 - PWA install support is enabled via `/manifest.webmanifest` and a service worker at `/sw.js`.
+- Preview image (`/preview.png`) renders in-bounds device dots for shared links.
 - Clicking the HUD logo hides/shows the left panel while tool panels stay open.
 - Share button copies a URL with the current view + toggles (including HUD visibility).
 - Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.

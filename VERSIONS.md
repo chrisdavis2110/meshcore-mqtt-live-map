@@ -1,5 +1,10 @@
 # Versions
 
+## v1.0.4 (01-13-2026)
+- Open Graph preview URL no longer double-slashes the `/preview.png` path (credit: https://github.com/chrisdavis2110)
+- Preview image now renders in-bounds device dots (not just the center pin; credit: https://github.com/chrisdavis2110)
+- Fix preview renderer NameError by importing `Tuple`
+
 ## v1.0.3 (01-12-2026)
 - Fix route decoding to return the correct tuple when paths exceed max length (credit: https://github.com/sefator)
 

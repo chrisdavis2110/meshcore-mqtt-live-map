@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.0.3` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.0.4` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets + TLS, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -31,6 +31,7 @@ Live example sites:
 - Adjustable node size slider (defaults from env, saves locally)
 - LOS tool with elevation profile + peak markers and hover sync (Shift+click or long‑press nodes)
 - Embeddable metadata (Open Graph/Twitter tags) driven by env vars
+- Preview image renders in-bounds device dots for shared links
 - Propagation panel lives on the right and keeps the last render until you generate a new one
 - Installable PWA (manifest + service worker) for Add to Home Screen
 - Click the logo to hide/show the left HUD panel while tools stay open
