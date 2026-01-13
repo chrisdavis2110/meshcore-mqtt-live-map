@@ -70,6 +70,14 @@ SITE_OG_IMAGE = os.getenv("SITE_OG_IMAGE", "")
 SITE_URL = os.getenv("SITE_URL", "/")
 SITE_ICON = os.getenv("SITE_ICON", "/static/logo.png")
 SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "Feed: Boston MQTT.")
+CUSTOM_LINK_URL = os.getenv("CUSTOM_LINK_URL", "").strip()
+GIT_CHECK_ENABLED = os.getenv("GIT_CHECK_ENABLED", "false").lower() == "true"
+GIT_CHECK_FETCH = os.getenv("GIT_CHECK_FETCH", "false").lower() == "true"
+GIT_CHECK_PATH = os.getenv("GIT_CHECK_PATH", os.getcwd()).strip()
+try:
+  GIT_CHECK_INTERVAL_SECONDS = float(os.getenv("GIT_CHECK_INTERVAL_SECONDS", "43200"))
+except ValueError:
+  GIT_CHECK_INTERVAL_SECONDS = 43200.0
 DISTANCE_UNITS = os.getenv("DISTANCE_UNITS", "km").strip().lower()
 if DISTANCE_UNITS not in ("km", "mi"):
   DISTANCE_UNITS = "km"

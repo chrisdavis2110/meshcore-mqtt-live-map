@@ -1,5 +1,7 @@
 # Mesh Live Map
 
+Version: `1.0.3` (see [VERSIONS.md](VERSIONS.md))
+
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets + TLS, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
 Live example sites:
@@ -21,6 +23,7 @@ Live example sites:
 - 24-hour route history tool with volume-based coloring, click-to-view packet details, a heat-band slider, and a link-size slider
 - Peers tool showing incoming/outgoing neighbors with on-map lines
 - Coverage layer from a coverage map API (button hidden when not configured)
+- Update available banner (git local vs upstream) with dismiss
 - UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle
 - Share button that copies a URL with current view + settings
 - URL parameters to open the map at a specific view (center, zoom, toggles)
@@ -83,6 +86,7 @@ Site metadata (page title + embeds):
 - `SITE_URL` (public URL)
 - `SITE_ICON`
 - `SITE_FEED_NOTE`
+- `CUSTOM_LINK_URL` (optional extra HUD link; hidden when blank)
 - `DISTANCE_UNITS` (`km` or `mi`, default display units)
 - `NODE_MARKER_RADIUS` (default node marker size in pixels)
 
@@ -122,6 +126,12 @@ Heat + online status:
 - `MQTT_ONLINE_TOPIC_SUFFIXES` (comma-separated topics that count as “online”)
 - `MQTT_SEEN_BROADCAST_MIN_SECONDS`
 - `MQTT_ONLINE_FORCE_NAMES` (comma-separated names to force as MQTT online; also excluded from peers)
+
+Update checks:
+- `GIT_CHECK_ENABLED` (show update banner if repo is behind)
+- `GIT_CHECK_FETCH` (fetch before comparing)
+- `GIT_CHECK_PATH` (path to git repo in the container)
+- `GIT_CHECK_INTERVAL_SECONDS` (defaults to 43200 = 12h)
 
 Map + LOS:
 - `MAP_START_LAT` / `MAP_START_LON` / `MAP_START_ZOOM` (default map view)

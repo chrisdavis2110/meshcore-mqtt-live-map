@@ -5,6 +5,10 @@ This document captures the state of the project and the key changes made so far,
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
+## Versioning
+- `VERSION.txt` holds the current version string.
+- `VERSIONS.md` is an append-only changelog by version.
+
 ## Key Paths
 - `backend/app.py`: FastAPI server + MQTT lifecycle and websocket broadcasting.
 - `backend/config.py`: environment/config constants (shared across backend modules).
@@ -28,6 +32,12 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `curl -s http://localhost:8080/stats` (counters, route types).
 - `curl -s http://localhost:8080/debug/last` (recent MQTT decode/debug entries).
 - `curl -s http://localhost:8080/peers/<device_id>` (peer counts for a node; uses route history).
+
+## Env Notes (Recent Additions)
+- `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
+- `MQTT_ONLINE_FORCE_NAMES` forces named nodes to show MQTT online and skips them in peers.
+- `GIT_CHECK_ENABLED`, `GIT_CHECK_FETCH`, `GIT_CHECK_PATH` enable update checks.
+- `GIT_CHECK_INTERVAL_SECONDS` controls how often the server re-checks for updates.
 
 ## MQTT + Decoder
 - MQTT is **WebSockets + TLS** (`MQTT_TRANSPORT=websockets`, `MQTT_TLS=true`, `MQTT_WS_PATH=/` or `/mqtt`).
@@ -66,6 +76,9 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - PWA install support is enabled via `/manifest.webmanifest` and a service worker at `/sw.js`.
 - Clicking the HUD logo hides/shows the left panel while tool panels stay open.
 - Share button copies a URL with the current view + toggles (including HUD visibility).
+- Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.
+- Update banner shows when `GIT_CHECK_ENABLED=true` and the repo is behind; users can dismiss it per remote SHA.
+- Update banner dismissal relies on `.hud-update[hidden]` to ensure the banner actually disappears.
 - URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
 - Service worker uses `no-store` for navigation requests so env-driven UI toggles (like the radius ring) update without clearing site data.
 

@@ -16,6 +16,11 @@ services:
       SITE_URL: "${SITE_URL:-/}"
       SITE_ICON: "${SITE_ICON:-/static/logo.png}"
       SITE_FEED_NOTE: "${SITE_FEED_NOTE:-Feed: Boston MQTT.}"
+      CUSTOM_LINK_URL: "${CUSTOM_LINK_URL:-}"
+      GIT_CHECK_ENABLED: "${GIT_CHECK_ENABLED:-false}"
+      GIT_CHECK_FETCH: "${GIT_CHECK_FETCH:-false}"
+      GIT_CHECK_PATH: "${GIT_CHECK_PATH:-/app}"
+      GIT_CHECK_INTERVAL_SECONDS: "${GIT_CHECK_INTERVAL_SECONDS:-43200}"
       DISTANCE_UNITS: "${DISTANCE_UNITS:-km}"
       NODE_MARKER_RADIUS: "${NODE_MARKER_RADIUS:-8}"
       MQTT_HOST: "${MQTT_HOST:-localhost}"
@@ -44,3 +49,4 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/data
+      - ./:/repo:ro

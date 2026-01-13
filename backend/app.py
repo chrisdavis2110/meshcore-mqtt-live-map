@@ -3,6 +3,7 @@ import json
 import os
 import html
 import time
+import subprocess
 from datetime import datetime, timezone
 from dataclasses import asdict
 from typing import Any, Dict, Optional, Set, List
@@ -98,6 +99,11 @@ from config import (
   SITE_URL,
   SITE_ICON,
   SITE_FEED_NOTE,
+  CUSTOM_LINK_URL,
+  GIT_CHECK_ENABLED,
+  GIT_CHECK_FETCH,
+  GIT_CHECK_PATH,
+  GIT_CHECK_INTERVAL_SECONDS,
   DISTANCE_UNITS,
   NODE_MARKER_RADIUS,
   HISTORY_LINK_SCALE,
@@ -154,6 +160,14 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 mqtt_client: Optional[mqtt.Client] = None
 clients: Set[WebSocket] = set()
 update_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+git_update_info = {
+  "available": False,
+  "local": None,
+  "remote": None,
+  "local_short": None,
+  "remote_short": None,
+  "error": None,
+}
 
 # =========================
 # Helpers: coordinate hunting
@@ -190,6 +204,71 @@ def _serialize_state() -> Dict[str, Any]:
     "device_roles": device_roles,
     "device_role_sources": device_role_sources,
   }
+
+
+def _check_git_updates() -> None:
+  if not GIT_CHECK_ENABLED:
+    return
+
+  if not GIT_CHECK_PATH or not os.path.isdir(GIT_CHECK_PATH):
+    git_update_info["error"] = "git_path_missing"
+    return
+
+  def _run_git(args: List[str]) -> str:
+    result = subprocess.run(
+      args,
+      check=True,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+      text=True,
+    )
+    return result.stdout.strip()
+
+  try:
+    subprocess.run(
+      ["git", "config", "--global", "--add", "safe.directory", GIT_CHECK_PATH],
+      check=False,
+      stdout=subprocess.DEVNULL,
+      stderr=subprocess.DEVNULL,
+    )
+    inside = _run_git(["git", "-C", GIT_CHECK_PATH, "rev-parse", "--is-inside-work-tree"])
+    if inside.lower() != "true":
+      git_update_info["error"] = "not_git_repo"
+      return
+  except Exception:
+    git_update_info["error"] = "git_unavailable"
+    return
+
+  try:
+    if GIT_CHECK_FETCH:
+      subprocess.run(
+        ["git", "-C", GIT_CHECK_PATH, "fetch", "--quiet", "--prune"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+      )
+
+    local_sha = _run_git(["git", "-C", GIT_CHECK_PATH, "rev-parse", "HEAD"])
+    remote_sha = _run_git(["git", "-C", GIT_CHECK_PATH, "rev-parse", "@{u}"])
+    git_update_info["local"] = local_sha
+    git_update_info["remote"] = remote_sha
+    git_update_info["local_short"] = local_sha[:7]
+    git_update_info["remote_short"] = remote_sha[:7]
+    git_update_info["available"] = local_sha != remote_sha
+    if git_update_info["available"]:
+      print(f"[update] available {git_update_info['local_short']} -> {git_update_info['remote_short']}")
+  except Exception:
+    git_update_info["error"] = "git_compare_failed"
+
+
+async def _git_check_loop() -> None:
+  if not GIT_CHECK_ENABLED:
+    return
+  if GIT_CHECK_INTERVAL_SECONDS <= 0:
+    return
+  while True:
+    await asyncio.sleep(GIT_CHECK_INTERVAL_SECONDS)
+    _check_git_updates()
 
 
 def _device_payload(device_id: str, state: "DeviceState") -> Dict[str, Any]:
@@ -1069,6 +1148,7 @@ def root():
     "SITE_URL": SITE_URL,
     "SITE_ICON": SITE_ICON,
     "SITE_FEED_NOTE": SITE_FEED_NOTE,
+    "CUSTOM_LINK_URL": CUSTOM_LINK_URL,
     "DISTANCE_UNITS": DISTANCE_UNITS,
     "NODE_MARKER_RADIUS": NODE_MARKER_RADIUS,
     "HISTORY_LINK_SCALE": HISTORY_LINK_SCALE,
@@ -1088,6 +1168,10 @@ def root():
   "LOS_PEAKS_MAX": LOS_PEAKS_MAX,
   "MQTT_ONLINE_SECONDS": MQTT_ONLINE_SECONDS,
   "COVERAGE_API_URL": COVERAGE_API_URL,
+  "UPDATE_AVAILABLE": str(bool(git_update_info.get("available"))).lower(),
+  "UPDATE_LOCAL": git_update_info.get("local_short") or "",
+  "UPDATE_REMOTE": git_update_info.get("remote_short") or "",
+  "UPDATE_BANNER_HIDDEN": "" if git_update_info.get("available") else "hidden",
   }
   for key, value in replacements.items():
     safe_value = html.escape(str(value), quote=True)
@@ -1147,6 +1231,7 @@ def snapshot(request: Request):
     "history_edges": [_history_edge_payload(e) for e in route_history_edges.values()],
     "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
     "heat": _serialize_heat_events(),
+    "update": git_update_info,
     "server_time": time.time(),
   }
 
@@ -1472,6 +1557,7 @@ async def ws_endpoint(ws: WebSocket):
     "history_edges": [_history_edge_payload(e) for e in route_history_edges.values()],
     "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
     "heat": _serialize_heat_events(),
+    "update": git_update_info,
   }))
 
   try:
@@ -1495,6 +1581,7 @@ async def startup():
   _load_state()
   _load_route_history()
   _ensure_node_decoder()
+  _check_git_updates()
 
   loop = asyncio.get_event_loop()
   transport = "websockets" if MQTT_TRANSPORT == "websockets" else "tcp"
@@ -1537,6 +1624,7 @@ async def startup():
   asyncio.create_task(reaper())
   asyncio.create_task(_state_saver())
   asyncio.create_task(_route_history_saver())
+  asyncio.create_task(_git_check_loop())
 
 
 @app.on_event("shutdown")

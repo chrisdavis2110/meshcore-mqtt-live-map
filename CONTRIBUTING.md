@@ -7,6 +7,10 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 2) Rebuild: `docker compose up -d --build`
 3) Verify: `curl -s http://localhost:8080/snapshot`
 
+## Versioning
+- Update `VERSION.txt` when adding features.
+- Append a new section to `VERSIONS.md` describing the change set.
+
 ## Project Layout
 - `backend/app.py` handles MQTT ingest, decoding, routing, and API endpoints.
 - `backend/static/index.html` is the HTML shell + template placeholders.
@@ -26,6 +30,8 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - If `COVERAGE_API_URL` is blank, confirm the Coverage button is hidden.
 - Note: coordinates at `0,0` (even as strings) are filtered and won’t render.
 - Radius filter: `MAP_RADIUS_KM` defaults to 241.4 km (150mi); set `0` to disable.
+- `CUSTOM_LINK_URL` shows an extra HUD link when set; leave blank to hide.
+- Update banner uses `GIT_CHECK_ENABLED` + `GIT_CHECK_PATH` to compare local vs upstream.
 
 ## UI Changes
 When adding UI controls:

@@ -15,6 +15,7 @@
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), and optional role overrides (`device_roles.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
+- `VERSION.txt` tracks the current version; append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -46,6 +47,9 @@
 - `MAP_RADIUS_SHOW=true` draws a debug circle centered on `MAP_START_LAT/LON`.
 - Set `TRAIL_LEN=0` to disable trails entirely; the HUD trail hint is removed when trails are off.
 - Coverage button only appears when `COVERAGE_API_URL` is set.
+- Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.
+- Update banner uses `GIT_CHECK_ENABLED` (compare local vs upstream) with `GIT_CHECK_PATH` pointing at a git repo.
+- `GIT_CHECK_FETCH` controls whether the server fetches before comparing; `GIT_CHECK_INTERVAL_SECONDS` sets the recheck interval.
 - Route history modes default to `path,direct,fanout` via `ROUTE_HISTORY_ALLOWED_MODES`.
 - `ROUTE_PATH_MAX_LEN` caps oversized path-hash lists (prevents bogus long routes).
 - Persisted state in `data/state.json` is loaded on startup; edit with care.
