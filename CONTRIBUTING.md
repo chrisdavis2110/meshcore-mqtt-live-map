@@ -8,7 +8,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 3) Verify: `curl -s http://localhost:8080/snapshot`
 
 ## Versioning
-- Current version: `1.0.4` (see `VERSIONS.md`).
+- Current version: `1.0.5` (see `VERSIONS.md`).
 - Update `VERSION.txt` when adding features.
 - Append a new section to `VERSIONS.md` describing the change set.
 
@@ -34,6 +34,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - `CUSTOM_LINK_URL` shows an extra HUD link when set; leave blank to hide.
 - Update banner uses `GIT_CHECK_ENABLED` + `GIT_CHECK_PATH` to compare local vs upstream.
 - Preview check: `/preview.png?lat=...&lon=...&zoom=...` shows tiles + device dots.
+- Routing controls: `ROUTE_MAX_HOP_DISTANCE` (km) and `ROUTE_INFRA_ONLY` (repeaters/rooms only).
 
 ## UI Changes
 When adding UI controls:

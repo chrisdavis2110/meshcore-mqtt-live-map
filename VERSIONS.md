@@ -1,5 +1,11 @@
 # Versions
 
+## v1.0.5 (01-13-2026)
+- Resolve short-hash collisions by choosing the closest node in the route chain (credit: https://github.com/sefator)
+- Drop hops that exceed `ROUTE_MAX_HOP_DISTANCE` to avoid unrealistic jumps
+- Add `ROUTE_INFRA_ONLY` to restrict route lines to repeaters/rooms
+- Document new route env defaults in `.env.example`
+
 ## v1.0.4 (01-13-2026)
 - Open Graph preview URL no longer double-slashes the `/preview.png` path (credit: https://github.com/chrisdavis2110)
 - Preview image now renders in-bounds device dots (not just the center pin; credit: https://github.com/chrisdavis2110)
