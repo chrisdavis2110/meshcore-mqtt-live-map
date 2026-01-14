@@ -1,5 +1,8 @@
 # Versions
 
+## v1.0.8 (01-14-2026)
+- Enforce `ROUTE_MAX_HOP_DISTANCE` across fallback hops, direct routes, and receiver appends to prevent cross-region path jumps.
+
 ## v1.0.7 (01-14-2026)
 - Route hash collisions now prefer known neighbor pairs before falling back to closest-hop selection.
 - Add optional neighbor override map via `NEIGHBOR_OVERRIDES_FILE` (default `data/neighbor_overrides.json`).

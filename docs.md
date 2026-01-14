@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.0.7` (see `VERSIONS.md`).
+Current version: `1.0.8` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.0.7`).
+- `VERSION.txt` holds the current version string (`1.0.8`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -117,6 +117,7 @@ Routes are drawn when:
 - Multiple observers see the same message hash (fanout), or
 - As a fallback, when one hash maps to a known device, a direct line is drawn to the receiver.
 When a hop hash collides, the backend prefers neighbor pairs (or overrides) before falling back to closest-hop selection; oversized path lists are ignored via `ROUTE_PATH_MAX_LEN`.
+All route modes enforce `ROUTE_MAX_HOP_DISTANCE` for every hop (including direct and receiver appends) to prevent cross‑region jumps.
 
 ### 24h History Layer
 - Every route segment is persisted to `data/route_history.jsonl` and kept for the last `ROUTE_HISTORY_HOURS`.

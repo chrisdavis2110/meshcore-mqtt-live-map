@@ -509,6 +509,11 @@ def _route_points_from_hashes(
     except (TypeError, ValueError):
       continue
 
+    if current_lat is not None and current_lon is not None:
+      dist = _haversine_m(current_lat, current_lon, p_lat, p_lon)
+      if dist > (ROUTE_MAX_HOP_DISTANCE * 1000.0):
+        continue
+
     point = [p_lat, p_lon]
     # Update our "current" reference for the next hop
     current_lat = p_lat
@@ -560,8 +565,11 @@ def _route_points_from_hashes(
             float(receiver_state.lon),
           ]
           if points and receiver_point != points[-1]:
-            points.append(receiver_point)
-            point_ids.append(receiver_id)
+            dist = _haversine_m(points[-1][0], points[-1][1],
+                                receiver_point[0], receiver_point[1])
+            if dist <= (ROUTE_MAX_HOP_DISTANCE * 1000.0):
+              points.append(receiver_point)
+              point_ids.append(receiver_id)
           elif point_ids:
             point_ids[-1] = receiver_id
         except (TypeError, ValueError):
@@ -597,6 +605,9 @@ def _route_points_from_device_ids(
     [origin_state.lat, origin_state.lon],
     [receiver_state.lat, receiver_state.lon],
   ]
+  dist = _haversine_m(points[0][0], points[0][1], points[1][0], points[1][1])
+  if dist > (ROUTE_MAX_HOP_DISTANCE * 1000.0):
+    return None
   if points[0] == points[1]:
     return None
   return points
