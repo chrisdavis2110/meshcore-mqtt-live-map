@@ -75,6 +75,7 @@ from config import (
   STATE_DIR,
   STATE_FILE,
   DEVICE_ROLES_FILE,
+  DEVICE_COORDS_FILE,
   NEIGHBOR_OVERRIDES_FILE,
   STATE_SAVE_INTERVAL,
   DEVICE_TTL_SECONDS,
@@ -161,6 +162,7 @@ from state import (
   message_origins,
   device_roles,
   device_role_sources,
+  device_coords,
   neighbor_edges,
 )
 
@@ -205,6 +207,27 @@ def _load_role_overrides() -> Dict[str, str]:
       continue
     roles[key.strip()] = role
   return roles
+
+
+def _load_coord_overrides() -> Dict[str, Dict[str, float]]:
+  if not DEVICE_COORDS_FILE or not os.path.exists(DEVICE_COORDS_FILE):
+    return {}
+  try:
+    with open(DEVICE_COORDS_FILE, "r", encoding="utf-8") as handle:
+      data = json.load(handle)
+  except Exception:
+    return {}
+  if not isinstance(data, dict):
+    return {}
+  coords: Dict[str, Dict[str, float]] = {}
+  for key, value in data.items():
+    if not isinstance(key, str) or not isinstance(value, dict):
+      continue
+    lat = value.get("lat")
+    lon = value.get("lon")
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+      coords[key.strip()] = {"lat": float(lat), "lon": float(lon)}
+  return coords
 
 
 def _load_neighbor_overrides() -> None:
@@ -680,6 +703,14 @@ def _load_state() -> None:
   if dropped_ids:
     for device_id in dropped_ids:
       device_roles.pop(device_id, None)
+  # Load and apply coordinate overrides
+  coord_overrides = _load_coord_overrides()
+  if coord_overrides:
+    device_coords.clear()
+    device_coords.update(coord_overrides)
+  if dropped_ids:
+    for device_id in dropped_ids:
+      device_coords.pop(device_id, None)
   _rebuild_node_hash_map()
 
   for device_id, state in devices.items():
@@ -687,6 +718,11 @@ def _load_state() -> None:
       state.name = device_names[device_id]
     role_value = device_roles.get(device_id)
     state.role = role_value if role_value else None
+    # Apply coordinate overrides to loaded devices
+    coord_override = device_coords.get(device_id)
+    if coord_override:
+      state.lat = coord_override["lat"]
+      state.lon = coord_override["lon"]
 
 
 async def _state_saver() -> None:
@@ -747,18 +783,80 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
 
   parsed, debug = _try_parse_payload(msg.topic, msg.payload)
   device_id_hint = parsed.get("device_id") if parsed else None
-  if parsed and _coords_are_zero(parsed.get("lat", 0), parsed.get("lon", 0)):
+  # Also try to get device_id from topic if parsing failed or no device_id in parsed data
+  topic_device_id = _device_id_from_topic(msg.topic)
+  device_id_for_override = device_id_hint or topic_device_id
+
+  # Check if device has coordinate override - try multiple ways to match device_id
+  coord_override = None
+  matched_device_id = None
+
+  # Try 1: device_id_for_override (parsed or topic-based)
+  if device_id_for_override and device_id_for_override in device_coords:
+    coord_override = device_coords[device_id_for_override]
+    matched_device_id = device_id_for_override
+  # Try 2: topic_device_id directly
+  elif topic_device_id and topic_device_id in device_coords:
+    coord_override = device_coords[topic_device_id]
+    matched_device_id = topic_device_id
+  # Try 3: device_id_hint directly
+  elif device_id_hint and device_id_hint in device_coords:
+    coord_override = device_coords[device_id_hint]
+    matched_device_id = device_id_hint
+  # Try 4: Check all parts of the topic path
+  else:
+    topic_parts = msg.topic.split("/")
+    for part in topic_parts:
+      if part and len(part) > 10 and part in device_coords:  # Only check parts that look like device IDs (long hex strings)
+        coord_override = device_coords[part]
+        matched_device_id = part
+        if DEBUG_PAYLOAD:
+          print(f"[mqtt] Found coord override in topic path: topic={msg.topic} device_id={part}")
+        break
+
+  has_coord_override = coord_override is not None
+  if has_coord_override and matched_device_id:
+    # Use override coordinates for filtering checks and inject into parsed data
+    check_lat = coord_override["lat"]
+    check_lon = coord_override["lon"]
+    # If parsing failed or has no location, create/update parsed data with override coords
+    if not parsed:
+      parsed = {
+        "device_id": matched_device_id,
+        "lat": coord_override["lat"],
+        "lon": coord_override["lon"],
+        "ts": time.time(),
+      }
+      device_id_hint = matched_device_id
+      debug["result"] = "coord_override_created"
+    elif parsed:
+      # If parsing succeeded but no location, inject override coordinates
+      if not parsed.get("lat") or not parsed.get("lon") or _coords_are_zero(parsed.get("lat", 0), parsed.get("lon", 0)):
+        parsed["lat"] = coord_override["lat"]
+        parsed["lon"] = coord_override["lon"]
+        if not device_id_hint:
+          parsed["device_id"] = matched_device_id
+          device_id_hint = matched_device_id
+        debug["result"] = debug.get("result") or "coord_override_applied"
+  else:
+    check_lat = parsed.get("lat") if parsed else None
+    check_lon = parsed.get("lon") if parsed else None
+
+  # Don't filter 0,0 coordinates if device has a coordinate override
+  if parsed and _coords_are_zero(parsed.get("lat", 0), parsed.get("lon", 0)) and not has_coord_override:
     debug["result"] = "filtered_zero_coords"
     parsed = None
-  if parsed and not _within_map_radius(parsed.get("lat"), parsed.get("lon")):
+  # Check radius using override coordinates if available
+  if parsed and check_lat is not None and check_lon is not None and not _within_map_radius(check_lat, check_lon):
     debug["result"] = "filtered_radius"
     parsed = None
-    if device_id_hint:
+    if matched_device_id or device_id_for_override:
+      remove_id = matched_device_id or device_id_for_override
       loop.call_soon_threadsafe(
         update_queue.put_nowait,
         {
           "type": "device_remove",
-          "device_id": device_id_hint,
+          "device_id": remove_id,
           "reason": "radius",
         },
       )
@@ -1184,7 +1282,16 @@ async def broadcaster():
     )
 
     device_id = upd["device_id"]
-    if not _within_map_radius(upd.get("lat"), upd.get("lon")):
+    # Check if device has coordinate override before filtering by radius
+    coord_override = device_coords.get(device_id)
+    if coord_override:
+      # Use override coordinates for radius check
+      check_lat = coord_override["lat"]
+      check_lon = coord_override["lon"]
+    else:
+      check_lat = upd.get("lat")
+      check_lon = upd.get("lon")
+    if not _within_map_radius(check_lat, check_lon):
       if _evict_device(device_id):
         payload = {"type": "stale", "device_ids": [device_id]}
         dead = []
@@ -1210,6 +1317,11 @@ async def broadcaster():
       role=upd.get("role") or device_roles.get(device_id),
       raw_topic=upd.get("raw_topic"),
     )
+    # Apply coordinate overrides
+    coord_override = device_coords.get(device_id)
+    if coord_override:
+      device_state.lat = coord_override["lat"]
+      device_state.lon = coord_override["lon"]
     devices[device_id] = device_state
     seen_devices[device_id] = time.time()
     state.state_dirty = True

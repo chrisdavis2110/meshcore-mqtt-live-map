@@ -4,5 +4,4 @@ example2.gif
 backend/static/logo.png
 
 # runtime state
-/data/state.json
-/data/*.json
+/data
