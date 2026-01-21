@@ -296,6 +296,7 @@
       z-index: 890;
       overflow: hidden;
       box-sizing: border-box;
+      pointer-events: auto;
     }
     .history-panel.active { display: block; }
     .panel-close {
@@ -311,6 +312,8 @@
       font-size: 18px;
       line-height: 24px;
       cursor: pointer;
+      pointer-events: auto;
+      z-index: 1;
     }
     .panel-close:hover {
       background: rgba(255,255,255,.18);

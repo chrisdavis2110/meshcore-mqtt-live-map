@@ -3870,9 +3870,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       });
     }
     if (historyHideButton) {
-      historyHideButton.addEventListener('click', () => {
+      const hideHistoryPanel = (ev) => {
+        if (ev) {
+          if (ev.preventDefault) ev.preventDefault();
+          if (ev.stopPropagation) ev.stopPropagation();
+          if (typeof L !== 'undefined' && L.DomEvent) L.DomEvent.stop(ev);
+        }
         setHistoryPanelHidden(true);
-      });
+      };
+      historyHideButton.addEventListener('click', hideHistoryPanel);
+      historyHideButton.addEventListener('pointerdown', hideHistoryPanel);
     }
     updateHistoryFilterLabel();
     if (historyFilter) {
