@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.0.9` (see `VERSIONS.md`).
+Current version: `1.1.0` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -17,7 +17,7 @@ Current version: `1.0.9` (see `VERSIONS.md`).
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.0.9`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.1.0`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -48,7 +48,7 @@ Current version: `1.0.9` (see `VERSIONS.md`).
 - Current dev defaults: `DEVICE_TTL_SECONDS=259200`, `MQTT_ONLINE_SECONDS=600`, `ROUTE_TTL_SECONDS=60`, `TRAIL_LEN=0`, `DISTANCE_UNITS=km`.
 - Node size default is `NODE_MARKER_RADIUS` (pixels); users can override via the HUD slider.
 - History link size default is `HISTORY_LINK_SCALE`; users can override via the History panel slider.
-- Map radius filter: `MAP_RADIUS_KM=241.4` (150mi). Set `0` to disable; applies to nodes, trails, routes, and history edges.
+- Map radius filter: `MAP_RADIUS_KM=0` disables filtering; `.env.example` uses `241.4` km (150mi). Applies to nodes, trails, routes, and history edges.
 - `MAP_RADIUS_SHOW=true` draws a debug circle centered on `MAP_START_LAT/LON`.
 - Set `TRAIL_LEN=0` to disable trails entirely; the HUD trail hint is removed when trails are off.
 - Coverage button only appears when `COVERAGE_API_URL` is set.
@@ -56,14 +56,14 @@ Current version: `1.0.9` (see `VERSIONS.md`).
 - Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.
 - Update banner uses `GIT_CHECK_ENABLED` (compare local vs upstream) with `GIT_CHECK_PATH` pointing at a git repo.
 - `GIT_CHECK_FETCH` controls whether the server fetches before comparing; `GIT_CHECK_INTERVAL_SECONDS` sets the recheck interval.
-- Route history modes default to `path,direct,fanout` via `ROUTE_HISTORY_ALLOWED_MODES`.
+- Route history modes default to `path` via `ROUTE_HISTORY_ALLOWED_MODES`.
 - `ROUTE_PATH_MAX_LEN` caps oversized path-hash lists (prevents bogus long routes).
 - Persisted state in `data/state.json` is loaded on startup; edit with care.
 - After editing `backend/*.py` or `backend/static/*`, rebuild with `docker compose up -d --build`.
 - History tool visibility is not persisted; it always loads off unless `history=on` is in the URL.
 
 ## Feature Notes
-- MQTT is WSS/TLS with meshcore-decoder in a Node helper for advert/location parsing.
+- MQTT supports WSS/TLS or TCP; meshcore-decoder runs via a Node helper for advert/location parsing.
 - Routes are rendered as trace/message/advert lines with TTL cleanup; 0,0 coords (including stringy zeros) are filtered from trails/routes.
 - Route hash collisions prefer known neighbors (and optional overrides); long path lists are skipped via `ROUTE_PATH_MAX_LEN`.
 - Route collisions fall back to closest-hop selection and drop hops beyond `ROUTE_MAX_HOP_DISTANCE`.
@@ -84,7 +84,8 @@ Current version: `1.0.9` (see `VERSIONS.md`).
 - Route styling now keys off payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - 24h route history persists to `data/route_history.jsonl`, renders as a volume heatline, and defaults off (History tool panel).
 - History tool opens a right-side panel with a 5-step heat filter slider: All, Blue, Yellow, Yellow+Red, Red; legend swatch hides unless active.
-- History records routes for `path`, `direct`, and `fanout` modes by default; adjust with `ROUTE_HISTORY_ALLOWED_MODES`.
+- History panel can be dismissed with the X button while leaving history lines visible (History tool brings it back).
+- History records route modes from `ROUTE_HISTORY_ALLOWED_MODES` (default: `path`).
 - Propagation render stays visible until a new render; origin changes only mark it dirty.
 - Preview image endpoint renders in-bounds device dots for shared links.
 - Peers tool opens a right-side panel showing incoming/outgoing neighbors (counts + %) based on recent route history; selecting a node draws peer lines on the map.

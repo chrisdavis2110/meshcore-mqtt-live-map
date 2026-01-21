@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.0.9` (see `VERSIONS.md`).
+Current version: `1.1.0` (see `VERSIONS.md`).
 
 ## Overview
-This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
+This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.0.9`).
+- `VERSION.txt` holds the current version string (`1.1.0`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -45,7 +45,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `NEIGHBOR_OVERRIDES_FILE` points at an optional JSON file with neighbor pairs to resolve hash collisions.
 
 ## MQTT + Decoder
-- MQTT is **WebSockets + TLS** (`MQTT_TRANSPORT=websockets`, `MQTT_TLS=true`, `MQTT_WS_PATH=/` or `/mqtt`).
+- MQTT supports **WebSockets + TLS** or plain TCP. Typical deployments use `MQTT_TRANSPORT=websockets`, `MQTT_TLS=true`, and `MQTT_WS_PATH=/` or `/mqtt`.
 - Decoder uses Node + `@michaelhart/meshcore-decoder` installed in the container.
 - `backend/decoder.py` writes a small Node helper and calls it to decode MeshCore packets.
 
@@ -57,13 +57,14 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Legend is collapsible and persisted to localStorage.
 - HUD is capped to `90vh` and scrolls to avoid running off-screen.
 - Map start position is configurable with `MAP_START_LAT`, `MAP_START_LON`, `MAP_START_ZOOM`.
-- Radius filter: `MAP_RADIUS_KM=241.4` (150mi) drops nodes/routes/history outside the circle; set `0` to disable. `MAP_RADIUS_SHOW=true` draws a debug circle.
+- Radius filter: `MAP_RADIUS_KM=0` disables filtering; `.env.example` uses `241.4` km (150mi). `MAP_RADIUS_SHOW=true` draws a debug circle.
 - Default base layer can be set with `MAP_DEFAULT_LAYER` (localStorage overrides).
 - Units toggle (km/mi) is site-wide; default from `DISTANCE_UNITS` and stored in localStorage.
 - Node size slider defaults from `NODE_MARKER_RADIUS` and persists in localStorage.
 - History link size slider defaults from `HISTORY_LINK_SCALE` and persists in localStorage.
 - Node search (name or key) and a labels toggle (persisted to localStorage).
 - History tool defaults off and opens a right-side panel with a heat filter slider (visibility is not persisted).
+- History panel can be dismissed with the X button while keeping history lines visible (toggle History tool to show it again).
 - History slider modes: 0 = All, 1 = Blue only, 2 = Yellow only, 3 = Yellow + Red, 4 = Red only.
 - History legend swatch is hidden unless the History tool is active.
 - Peers tool shows incoming/outgoing neighbors for a selected node, with counts and percentages pulled from route history.
@@ -124,7 +125,7 @@ All route modes enforce `ROUTE_MAX_HOP_DISTANCE` for every hop (including direct
 - History lines are color‑coded by volume (blue = low, orange = mid, red = high) and weight scales with counts.
 - History is hidden by default; the History tool opens a right panel with a slider to filter by heat band.
 - The History tool also includes a link size slider; it scales line weight without changing counts.
-- History records `path`, `direct`, and `fanout` route modes by default (configure `ROUTE_HISTORY_ALLOWED_MODES`).
+- History records route modes from `ROUTE_HISTORY_ALLOWED_MODES` (default: `path`).
 
 If routes aren’t visible:
 - The packet may only include a single hop (`path: ["24"]`).
@@ -171,7 +172,7 @@ If routes aren’t visible:
 - Added 24h route history storage + history toggle with volume-based colors.
 - Hide nodes now hides heat/routes/history along with markers/trails.
 - Fixed MQTT disconnect callback signature so broker drops don’t crash the MQTT loop.
-- Route hash collisions are now ignored (unique-only) and long path lists are skipped (`ROUTE_PATH_MAX_LEN`).
+- Route hash collisions prefer known neighbors (or overrides) before closest-hop selection; long path lists are skipped (`ROUTE_PATH_MAX_LEN`).
 - Trails can be disabled by setting `TRAIL_LEN=0` (HUD trail text is removed).
 - Node marker size can be tuned via `NODE_MARKER_RADIUS` (users can override locally).
 - Units toggle defaults from `DISTANCE_UNITS` and persists in localStorage.

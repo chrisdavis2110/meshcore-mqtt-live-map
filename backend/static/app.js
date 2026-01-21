@@ -170,6 +170,7 @@
     const historyPanel = document.getElementById('history-panel');
     const historyLegendGroup = document.getElementById('legend-history-group');
     const historyPanelLabel = document.getElementById('history-panel-label');
+    const historyHideButton = document.getElementById('history-hide');
     const peersPanel = document.getElementById('peers-panel');
     const peersStatus = document.getElementById('peers-status');
     const peersMeta = document.getElementById('peers-meta');
@@ -222,6 +223,7 @@
     const historyToolVersion = '1';
     localStorage.setItem('meshmapHistoryToolVersion', historyToolVersion);
     let historyVisible = false;
+    let historyPanelHidden = false;
     let peersActive = false;
     let peersSelectedId = null;
     let peersData = null;
@@ -680,23 +682,36 @@
       }
     }
 
+    function updateHistoryPanelVisibility() {
+      if (!historyPanel) return;
+      const shouldShow = historyVisible && !historyPanelHidden;
+      historyPanel.classList.toggle('active', shouldShow);
+      if (shouldShow) {
+        historyPanel.removeAttribute('hidden');
+        historyPanel.style.display = 'block';
+      } else {
+        historyPanel.setAttribute('hidden', 'hidden');
+        historyPanel.style.display = 'none';
+      }
+    }
+
+    function setHistoryPanelHidden(hidden) {
+      historyPanelHidden = Boolean(hidden);
+      updateHistoryPanelVisibility();
+      layoutSidePanels();
+    }
+
     function setHistoryVisible(visible) {
       historyVisible = visible;
+      if (visible) {
+        historyPanelHidden = false;
+      }
       const btn = document.getElementById('history-toggle');
       if (btn) {
         btn.classList.toggle('active', visible);
         btn.textContent = visible ? 'History: on' : 'History tool';
       }
-      if (historyPanel) {
-        historyPanel.classList.toggle('active', visible);
-        if (visible) {
-          historyPanel.removeAttribute('hidden');
-          historyPanel.style.display = 'block';
-        } else {
-          historyPanel.setAttribute('hidden', 'hidden');
-          historyPanel.style.display = 'none';
-        }
-      }
+      updateHistoryPanelVisibility();
       if (historyLegendGroup) {
         historyLegendGroup.classList.toggle('active', visible);
       }
@@ -2833,7 +2848,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         m.__longPressFired = false;
         const triggerLosSelect = () => {
           if (!losActive) {
-            setLosActive(true);
+            return;
           }
           handleLosPoint(m.getLatLng());
           m.closePopup();
@@ -3847,7 +3862,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       }
       setHistoryVisible(initialHistory);
       historyToggle.addEventListener('click', () => {
+        if (historyVisible && historyPanelHidden) {
+          setHistoryPanelHidden(false);
+          return;
+        }
         setHistoryVisible(!historyVisible);
+      });
+    }
+    if (historyHideButton) {
+      historyHideButton.addEventListener('click', () => {
+        setHistoryPanelHidden(true);
       });
     }
     updateHistoryFilterLabel();

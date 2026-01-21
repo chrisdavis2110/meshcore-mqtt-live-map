@@ -298,6 +298,23 @@
       box-sizing: border-box;
     }
     .history-panel.active { display: block; }
+    .panel-close {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.2);
+      background: rgba(15,23,42,.5);
+      color: #fff;
+      font-size: 18px;
+      line-height: 24px;
+      cursor: pointer;
+    }
+    .panel-close:hover {
+      background: rgba(255,255,255,.18);
+    }
     .history-field {
       display: grid;
       gap: 6px;

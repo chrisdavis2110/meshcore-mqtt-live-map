@@ -1,8 +1,8 @@
 # Mesh Live Map
 
-Version: `1.0.9` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.1.0` (see [VERSIONS.md](VERSIONS.md))
 
-Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets + TLS, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
+Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
 Live example sites:
 - https://live.bostonme.sh/ - Greater Boston Mesh Map
@@ -22,6 +22,7 @@ Live example sites:
 - Heat map for the last 10 minutes of message activity (includes adverts)
 - Persistent device state and optional trails (disable with `TRAIL_LEN=0`)
 - 24-hour route history tool with volume-based coloring, click-to-view packet details, a heat-band slider, and a link-size slider
+- History panel can be dismissed with an X without hiding history lines (re-open via History tool)
 - Peers tool showing incoming/outgoing neighbors with on-map lines (blue = incoming, purple = outgoing)
 - Coverage layer from a coverage map API (button hidden when not configured)
 - Update available banner (git local vs upstream) with dismiss
@@ -74,9 +75,12 @@ docker compose up -d --build
 Debugging:
 - `DEBUG_PAYLOAD` (verbose decode logs)
 - `DEBUG_PAYLOAD_MAX` / `PAYLOAD_PREVIEW_MAX` (log truncation limits)
+- `DEBUG_LAST_MAX` / `DEBUG_STATUS_MAX` (debug endpoint entry caps)
 
 Storage + server:
 - `STATE_DIR` (persisted state path)
+- `STATE_FILE` (full state file path override)
+- `DEVICE_ROLES_FILE` (optional role override JSON file)
 - `NEIGHBOR_OVERRIDES_FILE` (optional JSON mapping for neighbor overrides)
 - `STATE_SAVE_INTERVAL` (seconds between state saves)
 - `WEB_PORT` (host port for the web UI)
@@ -99,9 +103,12 @@ MQTT:
 - `MQTT_PORT`
 - `MQTT_USERNAME`
 - `MQTT_PASSWORD`
-- `MQTT_TRANSPORT` (`websockets`)
+- `MQTT_TRANSPORT` (`tcp` or `websockets`)
 - `MQTT_WS_PATH` (usually `/` or `/mqtt`)
 - `MQTT_TLS` (`true`)
+- `MQTT_TLS_INSECURE` (allow invalid TLS certs)
+- `MQTT_CA_CERT` (custom CA bundle path)
+- `MQTT_CLIENT_ID` (optional client id override)
 - `MQTT_TOPIC` (e.g. `meshcore/#` or `meshcore/#,other/topic/+` for multiple topics)
 
 Coverage layer:
@@ -124,6 +131,7 @@ History overlay:
 - `ROUTE_HISTORY_COMPACT_INTERVAL`
 - `ROUTE_HISTORY_FILE`
 - `ROUTE_HISTORY_PAYLOAD_TYPES`
+- `ROUTE_HISTORY_ALLOWED_MODES` (comma-separated route modes; default `path`)
 - `HISTORY_LINK_SCALE` (default history line weight multiplier)
 
 Heat + online status:
@@ -142,12 +150,19 @@ Update checks:
 Map + LOS:
 - `MAP_START_LAT` / `MAP_START_LON` / `MAP_START_ZOOM` (default map view)
 - `MAP_DEFAULT_LAYER` (`light`, `dark`, or `topo`; localStorage overrides)
-- `MAP_RADIUS_KM` (default `241.4` km ≈ 150mi; `0` disables radius filtering)
+- `MAP_RADIUS_KM` (`0` disables radius filtering; `.env.example` uses `241.4` km ≈ 150mi)
 - `MAP_RADIUS_SHOW` (`true` draws the radius debug circle)
 - `LOS_ELEVATION_URL` (elevation API for LOS tool)
 - `LOS_SAMPLE_MIN` / `LOS_SAMPLE_MAX` / `LOS_SAMPLE_STEP_METERS`
 - `ELEVATION_CACHE_TTL` (seconds)
 - `LOS_PEAKS_MAX` (max peaks shown on LOS profile)
+
+Decoder helpers:
+- `DECODE_WITH_NODE` (toggle meshcore-decoder usage)
+- `NODE_DECODE_TIMEOUT_SECONDS`
+- `DIRECT_COORDS_MODE` (`topic` or `payload`)
+- `DIRECT_COORDS_TOPIC_REGEX` (topic matcher for direct coords)
+- `DIRECT_COORDS_ALLOW_ZERO` (allow `0,0` coords if `true`)
 
 ## Common Commands
 - Rebuild/restart: `docker compose up -d --build`

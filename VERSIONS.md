@@ -1,5 +1,9 @@
 # Versions
 
+## v1.1.0 (01-21-2026)
+- History panel can be dismissed with an X while keeping history lines visible (re-open via History tool).
+- Bump service worker cache and asset version to ensure the new History panel behavior loads.
+
 ## v1.0.9 (01-16-2026)
 - Enforce `ROUTE_MAX_HOP_DISTANCE` for fallback-selected hops to prevent unrealistic jumps (credit: https://github.com/sefator).
 

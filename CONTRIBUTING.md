@@ -8,7 +8,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 3) Verify: `curl -s http://localhost:8080/snapshot`
 
 ## Versioning
-- Current version: `1.0.9` (see `VERSIONS.md`).
+- Current version: `1.1.0` (see `VERSIONS.md`).
 - Update `VERSION.txt` when adding features.
 - Append a new section to `VERSIONS.md` describing the change set.
 
@@ -30,7 +30,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - Open the map: confirm markers, LOS, and propagation behave as expected.
 - If `COVERAGE_API_URL` is blank, confirm the Coverage button is hidden.
 - Note: coordinates at `0,0` (even as strings) are filtered and won’t render.
-- Radius filter: `MAP_RADIUS_KM` defaults to 241.4 km (150mi); set `0` to disable.
+- Radius filter: `MAP_RADIUS_KM=0` disables filtering; `.env.example` uses 241.4 km (150mi).
 - `CUSTOM_LINK_URL` shows an extra HUD link when set; leave blank to hide.
 - Update banner uses `GIT_CHECK_ENABLED` + `GIT_CHECK_PATH` to compare local vs upstream.
 - Preview check: `/preview.png?lat=...&lon=...&zoom=...` shows tiles + device dots.
@@ -46,6 +46,7 @@ When adding UI controls:
 - If you add view state, decide whether it should persist in localStorage or only via URL params (History tool defaults off).
 - Node marker size defaults to `NODE_MARKER_RADIUS` and can be overridden by the HUD slider (persisted in localStorage).
 - History link size defaults to `HISTORY_LINK_SCALE` and can be overridden in the History panel (persisted in localStorage).
+- History panel supports a dismiss (X) button; hiding the panel should not remove history lines.
 - Peers tool uses `/peers/{device_id}`; keep the response stable when modifying route history logic.
 
 ## API Changes
