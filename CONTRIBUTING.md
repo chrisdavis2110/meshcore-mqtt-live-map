@@ -33,7 +33,6 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - Radius filter: `MAP_RADIUS_KM=0` disables filtering; `.env.example` uses 241.4 km (150mi).
 - `CUSTOM_LINK_URL` shows an extra HUD link when set; leave blank to hide.
 - Update banner uses `GIT_CHECK_ENABLED` + `GIT_CHECK_PATH` to compare local vs upstream.
-- Asset cache busting uses `ASSET_VERSION` (no manual query-string bumps needed).
 - Preview check: `/preview.png?lat=...&lon=...&zoom=...` shows tiles + device dots.
 - Routing controls: `ROUTE_MAX_HOP_DISTANCE` (km) and `ROUTE_INFRA_ONLY` (repeaters/rooms only).
 - Neighbor overrides: `NEIGHBOR_OVERRIDES_FILE` can force adjacency pairs for hash collisions.

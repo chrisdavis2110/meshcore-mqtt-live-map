@@ -38,7 +38,6 @@ Current version: `1.1.1` (see `VERSIONS.md`).
 ## Testing Guidelines
 - No automated test suite is present.
 - Validate changes manually with the `/snapshot`, `/stats`, and `/debug/last` endpoints.
-- LOS tool: verify Point A/B height offsets and Keep A on Clear behavior.
 
 ## Commit & Pull Request Guidelines
 - No git history is available in this workspace, so there is no established commit convention.

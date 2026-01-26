@@ -1,9 +1,7 @@
 # Versions
 
 ## v1.1.1 (01-26-2026)
-- LOS tool supports Point A/B height offsets and "Keep A on Clear" behavior (credit: Zaos from Boston Mesh).
-- LOS peak markers render only when LOS is blocked to reduce map clutter.
-- Asset URLs now include an auto-generated cache buster (`ASSET_VERSION`) so updates load on next refresh.
+- Fix: First-hop route selection now prefers the closest repeater/room to the origin when short-hash collisions occur, preventing cross-city mis-picks (Issue: https://github.com/yellowcooln/meshcore-mqtt-live-map/issues/11).
 
 ## v1.1.0 (01-21-2026)
 - History panel can be dismissed with an X while keeping history lines visible (re-open via History tool).

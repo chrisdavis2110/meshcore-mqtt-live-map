@@ -478,20 +478,24 @@ def _route_points_from_hashes(
 
     if current_id and current_lat is not None and current_lon is not None:
       if len(candidates) > 1:
-        neighbor_id = _choose_neighbor_device(
-          current_id,
-          candidates,
-          current_lat,
-          current_lon,
-          ts,
-        )
-        if neighbor_id:
-          device_id = neighbor_id
-          edge = neighbor_edges.get(current_id, {}).get(neighbor_id, {})
-          manual = " manual" if edge.get("manual") else ""
-          print(
-            f"[route] neighbor pick{manual} hash={key} {current_id[:8]} -> {neighbor_id[:8]}"
+        # For the first hop, prefer the closest candidate to the origin.
+        if not points:
+          device_id = _choose_closest_device(key, current_lat, current_lon, ts)
+        if not device_id:
+          neighbor_id = _choose_neighbor_device(
+            current_id,
+            candidates,
+            current_lat,
+            current_lon,
+            ts,
           )
+          if neighbor_id:
+            device_id = neighbor_id
+            edge = neighbor_edges.get(current_id, {}).get(neighbor_id, {})
+            manual = " manual" if edge.get("manual") else ""
+            print(
+              f"[route] neighbor pick{manual} hash={key} {current_id[:8]} -> {neighbor_id[:8]}"
+            )
 
     # If we have a location fix, try to find the "closest" candidate for this hash
     if not device_id and current_lat is not None and current_lon is not None:
