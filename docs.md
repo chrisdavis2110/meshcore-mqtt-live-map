@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.1.0` (see `VERSIONS.md`).
+Current version: `1.1.1` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.1.0`).
+- `VERSION.txt` holds the current version string (`1.1.1`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -173,6 +173,7 @@ If routes aren’t visible:
 - Hide nodes now hides heat/routes/history along with markers/trails.
 - Fixed MQTT disconnect callback signature so broker drops don’t crash the MQTT loop.
 - Route hash collisions prefer known neighbors (or overrides) before closest-hop selection; long path lists are skipped (`ROUTE_PATH_MAX_LEN`).
+- First-hop hash collisions now prefer the closest node to the origin to avoid cross-city mis-picks (Issue #11).
 - Trails can be disabled by setting `TRAIL_LEN=0` (HUD trail text is removed).
 - Node marker size can be tuned via `NODE_MARKER_RADIUS` (users can override locally).
 - Units toggle defaults from `DISTANCE_UNITS` and persists in localStorage.

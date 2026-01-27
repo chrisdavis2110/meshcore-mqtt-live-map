@@ -280,6 +280,27 @@
     .los-panel.active { display: block; }
     .los-panel .los-profile { margin-top: 6px; }
     .los-panel .map-toggle { width: 100%; margin-top: 6px; }
+    .los-field {
+      display: grid;
+      gap: 6px;
+      margin-top: 6px;
+      font-size: 12px;
+    }
+    .los-field.los-inline {
+      grid-auto-flow: column;
+      grid-auto-columns: max-content;
+      align-items: center;
+      gap: 8px;
+    }
+    .los-panel input {
+      background: rgba(0,0,0,.35);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-family: inherit;
+    }
     .history-panel {
       position: absolute;
       top: 18px;

@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.1.0` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.1.1` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -35,6 +35,7 @@ Live example sites:
 - Embeddable metadata (Open Graph/Twitter tags) driven by env vars
 - Preview image renders in-bounds device dots for shared links
 - Route pruning via neighbor-aware closest-hop selection + max hop distance (configurable)
+- First-hop collision fix prefers the closest repeater/room to the sender (Issue #11)
 - Propagation panel lives on the right and keeps the last render until you generate a new one (click an origin marker to remove it)
 - Installable PWA (manifest + service worker) for Add to Home Screen
 - Click the logo to hide/show the left HUD panel while tools stay open
@@ -231,3 +232,7 @@ Peer summary:
 ---
 
 This project was vibe-coded with Codex—please expect rough edges and the occasional bug.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=yellowcooln/meshcore-mqtt-live-map&type=date&legend=top-left)](https://www.star-history.com/#yellowcooln/meshcore-mqtt-live-map&type=date&legend=top-left)

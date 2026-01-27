@@ -183,6 +183,22 @@ git_update_info = {
   "remote_short": None,
   "error": None,
 }
+def _compute_asset_version() -> str:
+  paths = [
+    os.path.join(APP_DIR, "static", "app.js"),
+    os.path.join(APP_DIR, "static", "styles.css"),
+    os.path.join(APP_DIR, "static", "sw.js"),
+  ]
+  mtimes = []
+  for path in paths:
+    try:
+      mtimes.append(int(os.path.getmtime(path)))
+    except Exception:
+      continue
+  return str(max(mtimes)) if mtimes else "1"
+
+
+ASSET_VERSION = _compute_asset_version()
 
 
 # =========================
@@ -1591,6 +1607,8 @@ def root(request: Request):
       SITE_FEED_NOTE,
     "CUSTOM_LINK_URL":
       CUSTOM_LINK_URL,
+    "ASSET_VERSION":
+      ASSET_VERSION,
     "DISTANCE_UNITS":
       DISTANCE_UNITS,
     "NODE_MARKER_RADIUS":
@@ -2227,7 +2245,13 @@ def _peer_stats_for_device(device_id: str, limit: int) -> Dict[str, Any]:
 
 @app.get("/los")
 def line_of_sight(
-  lat1: float, lon1: float, lat2: float, lon2: float, profile: bool = False
+  lat1: float,
+  lon1: float,
+  lat2: float,
+  lon2: float,
+  profile: bool = False,
+  h1: float = 0.0,
+  h2: float = 0.0,
 ):
   include_points = bool(profile)
   start = _normalize_lat_lon(lat1, lon1)
@@ -2244,12 +2268,17 @@ def line_of_sight(
   if distance_m <= 0:
     return {"ok": False, "error": "zero_distance"}
 
-  start_elev = elevations[0]
-  end_elev = elevations[-1]
-  max_obstruction = _los_max_obstruction(points, elevations, 0, len(points) - 1)
+  safe_h1 = h1 if math.isfinite(h1) else 0.0
+  safe_h2 = h2 if math.isfinite(h2) else 0.0
+  start_elev = elevations[0] + safe_h1
+  end_elev = elevations[-1] + safe_h2
+  adjusted = list(elevations)
+  adjusted[0] = start_elev
+  adjusted[-1] = end_elev
+  max_obstruction = _los_max_obstruction(points, adjusted, 0, len(points) - 1)
   max_terrain = max(elevations)
   blocked = max_obstruction > 0.0
-  suggestion = _find_los_suggestion(points, elevations) if blocked else None
+  suggestion = _find_los_suggestion(points, adjusted) if blocked else None
   profile_samples = []
   if distance_m > 0:
     for (lat, lon, t), elev in zip(points, elevations):
