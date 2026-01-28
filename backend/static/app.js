@@ -798,10 +798,10 @@ function renderHopMarkers(routeId, meta) {
 
   meta.points.forEach((pt, index) => {
     // Skip 0 (origin) and last (destination) if we only want hops?
-    // "displays the hop number" - usually means 1, 2, 3... 
-    // The request says "route path on the map". 
+    // "displays the hop number" - usually means 1, 2, 3...
+    // The request says "route path on the map".
     // "User clicks on ... hop number ... displays hop number alongside repeater name"
-    // Usually we want to see intermediate hops. 
+    // Usually we want to see intermediate hops.
     // If points includes origin and dest, index 0 is origin (hop 0?), index N is dest.
     // Let's show all for completeness or just intermediates?
     // "Route Details" implies showing the whole path.
@@ -850,7 +850,6 @@ function showRouteDetails(meta) {
     const color = stringHashColor(meta.id);
 
     // Detect direction and normalize to Sender -> Receiver
-    // We have meta.origin_id (Sender) and meta.receiver_id (Receiver)
     // But we only have coordinates in points.
     // We can try to match points[0] to receiver or origin deviceData logic?
     // Heuristic: If we are the observer, and it's an inbound packet,
@@ -984,12 +983,6 @@ function showRouteDetails(meta) {
       let badgeContent = displayIdx;
       let badgeClass = 'hop-badge';
       let badgeStyle = `background-color: ${color}`;
-
-      if (isFirst) {
-        badgeStyle = 'background-color: #22c55e'; // Green
-      } else if (isLast) {
-        badgeStyle = 'background-color: #3b82f6'; // Blue
-      }
 
       row.innerHTML = `
                    <div class="${badgeClass}" style="${badgeStyle}">${badgeContent}</div>
