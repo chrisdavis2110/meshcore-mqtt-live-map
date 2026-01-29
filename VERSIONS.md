@@ -1,10 +1,11 @@
 # Versions
 
-## v1.2.1 (01-28-2026)
+## v1.2.1 (01-29-2026)
 - Feature: Display hop numbers on route paths with a toggle button.
 - Feature: Consistent hop coloring based on route hash.
-- Feature: Route details widget showing hop information and repeater names.
-- Fix: Enhanced route click handling to show details panel.
+- Feature: Route details panel with hop list, hash byte IDs, and per-hop/cumulative distance.
+- Fix: Route details updates live when hops arrive and respects km/mi unit toggles.
+- Fix: Route details panel now stacks with other tools (no overlap); LOS panel is scrollable.
 
 ## v1.2.0 (01-27-2026)
 - Add Cloudflare Turnstile protection with a landing/verification flow and auth cookie.
