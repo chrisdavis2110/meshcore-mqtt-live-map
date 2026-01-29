@@ -478,7 +478,8 @@
       font-family: ui-sans-serif, system-ui, sans-serif;
       display: none;
       z-index: 900;
-      overflow: hidden;
+      overflow-y: auto;
+      overflow-x: hidden;
       box-sizing: border-box;
     }
 

@@ -188,6 +188,8 @@ const routeDetailsPanel = document.getElementById('route-details-panel');
 const routeDetailsTitle = document.getElementById('route-details-title');
 const routeDetailsContent = document.getElementById('route-details-content');
 const routeDetailsHide = document.getElementById('route-details-hide');
+let activeRouteDetailsMeta = null;
+let activeRouteDetailsId = null;
 let losProfileData = [];
 let losProfileMeta = null;
 let losPointMarkers = [];
@@ -831,6 +833,8 @@ function renderHopMarkers(routeId, meta) {
 
 function showRouteDetails(meta) {
   if (!meta) return;
+  activeRouteDetailsMeta = meta;
+  activeRouteDetailsId = meta.id || null;
 
   // Show panel
   if (routeDetailsPanel) {
@@ -962,7 +966,9 @@ function showRouteDetails(meta) {
         paramName = 'Unknown Repeater';
       }
 
-      const distInfo = pt.hop_distance_label ? `${pt.hop_distance_label}` : '';
+      const distInfo = Number.isFinite(pt.hop_distance_m)
+        ? formatDistanceUnits(pt.hop_distance_m)
+        : '';
 
       // Use originalIndex to access hashes directly to avoid shifts.
       const originalIdx = (pt.originalIndex !== undefined) ? pt.originalIndex : displayIdx;
@@ -994,6 +1000,7 @@ function showRouteDetails(meta) {
       routeDetailsContent.appendChild(row);
     });
   }
+  layoutSidePanels();
 }
 
 function setPeersStatus(text) {
@@ -1348,26 +1355,42 @@ function layoutSidePanels() {
   if (losActive && losPanel.classList.contains('active')) panels.push(losPanel);
   if (historyVisible && historyPanel && historyPanel.classList.contains('active')) panels.push(historyPanel);
   if (peersActive && peersPanel && peersPanel.classList.contains('active')) panels.push(peersPanel);
+  if (routeDetailsPanel && routeDetailsPanel.classList.contains('active')) panels.push(routeDetailsPanel);
   if (propagationActive && propPanel.classList.contains('active')) panels.push(propPanel);
-  [losPanel, historyPanel, peersPanel, propPanel].forEach(panel => {
+  const allPanels = [losPanel, historyPanel, peersPanel, routeDetailsPanel, propPanel];
+  allPanels.forEach(panel => {
     if (!panel) return;
     panel.style.top = '';
     panel.style.bottom = '';
+    panel.style.maxHeight = '';
   });
   if (!panels.length) return;
+  const gap = 12;
+  const availableHeight = Math.max(200, window.innerHeight - 24);
+  const totalHeight = panels.reduce((sum, panel) => sum + (panel.offsetHeight || 0), 0)
+    + (panels.length - 1) * gap;
+  if (totalHeight > availableHeight) {
+    const maxPer = Math.max(
+      140,
+      Math.floor((availableHeight - (panels.length - 1) * gap) / panels.length)
+    );
+    panels.forEach(panel => {
+      panel.style.maxHeight = `${maxPer}px`;
+    });
+  }
   const isMobile = window.matchMedia('(max-width: 900px)').matches;
   if (isMobile) {
     let bottom = 12;
     panels.slice().reverse().forEach(panel => {
       panel.style.bottom = `${bottom}px`;
-      bottom += (panel.offsetHeight || 0) + 12;
+      bottom += (panel.offsetHeight || 0) + gap;
     });
     return;
   }
   let top = 18;
   panels.forEach(panel => {
     panel.style.top = `${top}px`;
-    top += (panel.offsetHeight || 0) + 12;
+    top += (panel.offsetHeight || 0) + gap;
   });
 }
 function clearLos() {
@@ -3839,6 +3862,9 @@ function upsertRoute(r, skipHeat = false) {
   if (lineEl) {
     lineEl.classList.add('route-animated');
   }
+  if (routeDetailsPanel && !routeDetailsPanel.hidden && activeRouteDetailsId === id) {
+    showRouteDetails(entry.meta);
+  }
 
   if (entry.timeout) clearTimeout(entry.timeout);
   if (r.expires_at) {
@@ -4025,6 +4051,9 @@ if (routeDetailsHide) {
       routeDetailsPanel.classList.remove('active');
       routeDetailsPanel.style.display = 'none';
     }
+    activeRouteDetailsMeta = null;
+    activeRouteDetailsId = null;
+    layoutSidePanels();
   });
 }
 
@@ -4232,6 +4261,9 @@ function setDistanceUnits(units, persist = true) {
   updatePropagationSummary();
   if (propagationRasterMeta && propagationOrigins.length) {
     updatePropagationStatusFromRaster();
+  }
+  if (activeRouteDetailsMeta && routeDetailsPanel && !routeDetailsPanel.hidden) {
+    showRouteDetails(activeRouteDetailsMeta);
   }
 }
 setUnitsLabel();
