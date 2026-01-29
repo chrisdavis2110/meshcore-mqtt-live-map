@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.2.1` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.2.2` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -18,7 +18,7 @@ Live example sites:
 ## Features
 - Live node markers with roles (Repeater, Companion, Room Server, Unknown)
 - MQTT online indicator (green outline + popup status)
-- Animated route/trace lines and message fanout
+- Animated route/trace lines
 - Dev route inspection: click a route line in dev (`PROD_MODE=false`) to log hop-by-hop details in the browser console (PR #14, credit: https://github.com/sefator)
 - Heat map for the last 10 minutes of message activity (includes adverts)
 - Persistent device state and optional trails (disable with `TRAIL_LEN=0`)
@@ -36,6 +36,7 @@ Live example sites:
 - Embeddable metadata (Open Graph/Twitter tags) driven by env vars
 - Preview image renders in-bounds device dots for shared links
 - Route pruning via neighbor-aware closest-hop selection + max hop distance (configurable)
+- Route lines are derived from decoded packet paths only (no MQTT observer/receiver fallback)
 - First-hop collision fix prefers the closest repeater/room to the sender (Issue #11)
 - Propagation panel lives on the right and keeps the last render until you generate a new one (click an origin marker to remove it)
 - Installable PWA (manifest + service worker) for Add to Home Screen
@@ -190,6 +191,7 @@ PROD_TOKEN=<random-string>
 
 Turnstile protection is also gated by `PROD_MODE=true`. If `PROD_MODE=false`,
 Turnstile stays off even when `TURNSTILE_ENABLED=true`.
+Ensure `PROD_MODE`/`PROD_TOKEN` are set in `.env` (docker-compose passes them through).
 
 Generate a token:
 ```
@@ -203,7 +205,7 @@ Use it:
 
 ## Notes
 - The map can only draw routes for hops that appear in your MQTT feed.
-- To see full paths, the feed must include Path/Trace packets (payload types 8/9) or multiple observers for fanout.
+- To see full paths, the feed must include Path/Trace packets (payload types 8/9).
 - Runtime state is persisted to `data/state.json`.
 - MQTT disconnects are handled; the client will reconnect when the broker returns.
 - Line-of-sight tool: click **LOS tool** and pick two points, or **Shift+click** two nodes to measure LOS between them.

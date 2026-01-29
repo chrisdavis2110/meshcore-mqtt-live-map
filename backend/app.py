@@ -915,15 +915,6 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
       cache["receivers"].add(receiver_id)
       if not cache.get("first_rx"):
         cache["first_rx"] = receiver_id
-    cached_origin = cache.get("origin_id")
-    if not route_origin_id and cached_origin:
-      route_origin_id = cached_origin
-    if not route_origin_id and direction_value == "rx":
-      first_rx = cache.get("first_rx")
-      if first_rx and receiver_id and receiver_id != first_rx:
-        route_origin_id = first_rx
-  if not route_origin_id:
-    route_origin_id = origin_id
   loop: asyncio.AbstractEventLoop = userdata["loop"]
   try:
     payload_type = int(payload_type) if payload_type is not None else None
@@ -951,7 +942,7 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
         "payload_type": payload_type,
         "message_hash": message_hash,
         "origin_id": route_origin_id,
-        "receiver_id": receiver_id,
+        "receiver_id": None,
         "snr_values": snr_values,
         "route_type": route_type,
         "ts": time.time(),
@@ -959,49 +950,6 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
       },
     )
     route_emitted = True
-  elif message_hash and route_origin_id and receiver_id:
-    if direction_value == "rx" and msg.topic.endswith("/packets"):
-      loop.call_soon_threadsafe(
-        update_queue.put_nowait,
-        {
-          "type": "route",
-          "route_mode": "fanout",
-          "route_id": f"{message_hash}-{receiver_id}",
-          "origin_id": route_origin_id,
-          "receiver_id": receiver_id,
-          "message_hash": message_hash,
-          "route_type": route_type,
-          "payload_type": payload_type,
-          "ts": time.time(),
-          "topic": msg.topic,
-        },
-      )
-      route_emitted = True
-
-  if (
-    not route_emitted and direction_value == "rx" and
-    msg.topic.endswith("/packets") and receiver_id and route_origin_id and
-    receiver_id != route_origin_id and payload_type in ROUTE_PAYLOAD_TYPES_SET
-  ):
-    fallback_id = (
-      message_hash or
-      f"{route_origin_id}-{receiver_id}-{int(time.time() * 1000)}"
-    )
-    loop.call_soon_threadsafe(
-      update_queue.put_nowait,
-      {
-        "type": "route",
-        "route_mode": "direct",
-        "route_id": f"direct-{fallback_id}",
-        "origin_id": route_origin_id,
-        "receiver_id": receiver_id,
-        "message_hash": message_hash,
-        "route_type": route_type,
-        "payload_type": payload_type,
-        "ts": time.time(),
-        "topic": msg.topic,
-      },
-    )
 
   if not parsed:
     stats["unparsed_total"] += 1

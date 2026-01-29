@@ -17,6 +17,8 @@ services:
       SITE_ICON: "${SITE_ICON:-/static/logo.png}"
       SITE_FEED_NOTE: "${SITE_FEED_NOTE:-Feed: Boston MQTT.}"
       CUSTOM_LINK_URL: "${CUSTOM_LINK_URL:-}"
+      PROD_MODE: "${PROD_MODE:-false}"
+      PROD_TOKEN: "${PROD_TOKEN:-}"
       GIT_CHECK_ENABLED: "${GIT_CHECK_ENABLED:-false}"
       GIT_CHECK_FETCH: "${GIT_CHECK_FETCH:-false}"
       GIT_CHECK_PATH: "${GIT_CHECK_PATH:-/app}"

@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.2.1` (see `VERSIONS.md`).
+Current version: `1.2.2` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -367,4 +367,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.2.1`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.2.2`).

@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.2.1` (see `VERSIONS.md`).
+Current version: `1.2.2` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.2.1`).
+- `VERSION.txt` holds the current version string (`1.2.2`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -46,6 +46,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Turnstile protection is gated by `PROD_MODE=true` and controlled by:
   `TURNSTILE_ENABLED`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`,
   `TURNSTILE_API_URL`, and `TURNSTILE_TOKEN_TTL_SECONDS`.
+- `PROD_MODE`/`PROD_TOKEN` must be passed into the container (compose now forwards them).
 - Discord/social embeds can be preserved under Turnstile with
   `TURNSTILE_BOT_BYPASS` and `TURNSTILE_BOT_ALLOWLIST`.
 
@@ -118,12 +119,9 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Optional overrides: `data/device_roles.json` can force roles per device_id.
 
 ## Routes / Message Paths
-Routes are drawn when:
-- A packet contains a path list (decoder `pathHashes` or `path`), or
-- Multiple observers see the same message hash (fanout), or
-- As a fallback, when one hash maps to a known device, a direct line is drawn to the receiver.
+Routes are drawn when a packet contains a path list (decoder `pathHashes` or `path`).
 When a hop hash collides, the backend prefers neighbor pairs (or overrides) before falling back to closest-hop selection; oversized path lists are ignored via `ROUTE_PATH_MAX_LEN`.
-All route modes enforce `ROUTE_MAX_HOP_DISTANCE` for every hop (including direct and receiver appends) to prevent cross‑region jumps.
+All route hops enforce `ROUTE_MAX_HOP_DISTANCE` to prevent cross‑region jumps.
 
 ### 24h History Layer
 - Every route segment is persisted to `data/route_history.jsonl` and kept for the last `ROUTE_HISTORY_HOURS`.
@@ -134,7 +132,7 @@ All route modes enforce `ROUTE_MAX_HOP_DISTANCE` for every hop (including direct
 
 If routes aren’t visible:
 - The packet may only include a single hop (`path: ["24"]`).
-- Other repeaters might not be publishing to MQTT, so the message is only seen by one observer.
+- Other repeaters might not be publishing Path/Trace packets, so a message may not include hops.
 - Routes and trails drop any `0,0` coordinates (including string values) and will purge bad entries on load.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - If history is empty but routes show, confirm `ROUTE_HISTORY_ALLOWED_MODES` includes the active route mode.
@@ -167,7 +165,6 @@ If routes aren’t visible:
 - Added `/stats`, `/snapshot`, `/debug/last`, `/debug/status` endpoints.
 - Added persistence and state reload logic; safer role restore rules.
 - Added route drawing for traces/paths/messages with TTL cleanup.
-- Added fallback route when only one hop is known.
 - UI: route legend, role legend, and improved marker styles.
 - Roles now apply to advertised pubkey, not receiver.
 - Docker restarts are required after file changes (always run `docker compose up -d --build`).

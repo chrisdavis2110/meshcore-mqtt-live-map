@@ -1,5 +1,10 @@
 # Versions
 
+## v1.2.2 (01-29-2026)
+- Fix: Route lines now rely only on decoded packet paths, avoiding MQTT observer/receiver fallback links.
+- Fix: Turnstile can enable when `PROD_MODE=true` by passing `PROD_MODE`/`PROD_TOKEN` into the container.
+- UI: Added `darkreader-lock` meta on the map + landing pages to prevent Dark Reader overrides.
+
 ## v1.2.1 (01-29-2026)
 - Feature: Display hop numbers on route paths with a toggle button (credit: https://github.com/slack-t).
 - Feature: Consistent hop coloring based on route hash (credit: https://github.com/slack-t).
