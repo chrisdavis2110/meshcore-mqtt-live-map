@@ -187,6 +187,7 @@ const peersClear = document.getElementById('peers-clear');
 const routeDetailsPanel = document.getElementById('route-details-panel');
 const routeDetailsTitle = document.getElementById('route-details-title');
 const routeDetailsContent = document.getElementById('route-details-content');
+const routeDetailsTotal = document.getElementById('route-details-total');
 const routeDetailsHide = document.getElementById('route-details-hide');
 let activeRouteDetailsMeta = null;
 let activeRouteDetailsId = null;
@@ -845,6 +846,12 @@ function showRouteDetails(meta) {
 
   if (routeDetailsTitle) {
     routeDetailsTitle.textContent = `Route: ${meta.id.slice(0, 8)}... (${meta.hop_count} hops)`;
+  }
+  if (routeDetailsTotal) {
+    const totalDistance = Number.isFinite(meta.distance_m)
+      ? formatDistanceUnits(meta.distance_m)
+      : null;
+    routeDetailsTotal.textContent = totalDistance ? `Total distance: ${totalDistance}` : '';
   }
 
   if (routeDetailsContent) {

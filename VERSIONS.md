@@ -1,5 +1,8 @@
 # Versions
 
+## v1.2.3 (01-29-2026)
+- Show Hops panel now includes total route distance (sum of hop-to-hop segments) and updates live with unit toggles.
+
 ## v1.2.2 (01-29-2026)
 - Fix: Route lines now rely only on decoded packet paths, avoiding MQTT observer/receiver fallback links.
 - Fix: Turnstile can enable when `PROD_MODE=true` by passing `PROD_MODE`/`PROD_TOKEN` into the container.
