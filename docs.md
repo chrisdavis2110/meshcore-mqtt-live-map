@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.2.4` (see `VERSIONS.md`).
+Current version: `1.2.5` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.2.4`).
+- `VERSION.txt` holds the current version string (`1.2.5`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -47,8 +47,9 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
   `TURNSTILE_ENABLED`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`,
   `TURNSTILE_API_URL`, and `TURNSTILE_TOKEN_TTL_SECONDS`.
 - `PROD_MODE`/`PROD_TOKEN` must be passed into the container (compose now forwards them).
-- Turnstile auth cookie now grants access to `/snapshot`, `/stats`, `/peers`, and WS
-  without a PROD token, which prevents reconnect spam.
+- Turnstile auth is used for the map page + WebSocket session flow
+  (`meshmap_auth` cookie or `?auth=` on `/ws`), while protected API routes still
+  require `PROD_TOKEN`.
 - Discord/social embeds can be preserved under Turnstile with
   `TURNSTILE_BOT_BYPASS` and `TURNSTILE_BOT_ALLOWLIST`.
 
@@ -184,3 +185,7 @@ If routes aren’t visible:
 - Units toggle defaults from `DISTANCE_UNITS` and persists in localStorage.
 - Mobile LOS selection supports long-press on nodes.
 - History tool visibility no longer persists (always off unless `history=on` in the URL).
+- WebSocket auth accepts `?auth=<turnstile_token>` for Turnstile-gated sessions.
+- Protected API routes keep requiring `PROD_TOKEN` even when Turnstile auth is active.
+- Route IDs are observer-aware (`message_hash:receiver_id`) so multi-observer receptions do not overwrite each other.
+- `ROUTE_INFRA_ONLY` direct-route checks now allow rendering when at least one endpoint is infrastructure.

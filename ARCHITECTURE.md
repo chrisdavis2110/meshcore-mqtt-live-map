@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.2.4` (see `VERSIONS.md`).
+Current version: `1.2.5` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -269,7 +269,7 @@ WebSocket broadcast to all clients
 | `GET /coverage` | Token | Coverage data proxy |
 | `GET /debug/last` | Dev only | Recent MQTT messages |
 | `GET /debug/status` | Dev only | Status messages |
-| `WS /ws` | Token | Real-time updates |
+| `WS /ws` | Token or Turnstile auth | Real-time updates |
 
 ---
 
@@ -367,4 +367,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.2.4`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.2.5`).

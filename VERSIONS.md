@@ -1,5 +1,11 @@
 # Versions
 
+## v1.2.5 (02-02-2026)
+- Route line IDs are now observer-aware (`message_hash:receiver_id`) so simultaneous receptions from multiple MQTT observers do not overwrite each other.
+- WebSocket auth now accepts `?auth=<turnstile_token>` in addition to cookie/header auth, reducing reconnect loops during Turnstile-gated sessions.
+- PROD token checks now always require `PROD_TOKEN` for protected API routes; Turnstile session auth no longer bypasses API token requirements.
+- `ROUTE_INFRA_ONLY` endpoint logic was relaxed so direct routes can still render when at least one endpoint is infrastructure (repeater/room).
+
 ## v1.2.4 (01-29-2026)
 - Turnstile auth now grants access to `/snapshot`, `/stats`, `/peers`, and WebSocket without requiring a PROD token (prevents WS reconnect spam).
 - Show Hops panel now includes total route distance (sum of hop-to-hop segments) and updates live with unit toggles.

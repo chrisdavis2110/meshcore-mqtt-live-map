@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.2.4` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.2.5` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -191,8 +191,10 @@ PROD_TOKEN=<random-string>
 
 Turnstile protection is also gated by `PROD_MODE=true`. If `PROD_MODE=false`,
 Turnstile stays off even when `TURNSTILE_ENABLED=true`.
-When Turnstile is enabled, its auth cookie now grants access to `/snapshot`, `/stats`,
-`/peers`, and the WebSocket without requiring a PROD token (prevents reconnect spam).
+When Turnstile is enabled, browser sessions can authenticate the map + WebSocket
+with a Turnstile auth token (`meshmap_auth` cookie or `?auth=` on `/ws`), but
+protected API routes (`/snapshot`, `/api/nodes`, `/peers/{id}`) still require
+`PROD_TOKEN`.
 Ensure `PROD_MODE`/`PROD_TOKEN` are set in `.env` (docker-compose passes them through).
 
 Generate a token:
@@ -210,6 +212,8 @@ Use it:
 - To see full paths, the feed must include Path/Trace packets (payload types 8/9).
 - Runtime state is persisted to `data/state.json`.
 - MQTT disconnects are handled; the client will reconnect when the broker returns.
+- Live route IDs are observer-aware (`message_hash:receiver_id`) so the same
+  message seen by multiple MQTT observers does not overwrite active lines.
 - Line-of-sight tool: click **LOS tool** and pick two points, or **Shift+click** two nodes to measure LOS between them.
 - On mobile, long‑press a node to select it for LOS.
 - LOS runs server-side via `/los` (no client-side elevation fetch).
@@ -218,6 +222,8 @@ Use it:
 - URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
+- Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;
+  protected API endpoints still require `PROD_TOKEN`.
 - If hop hashes collide, the backend prefers known neighbors (or overrides) before picking the closest hop and pruning beyond `ROUTE_MAX_HOP_DISTANCE`.
 - Coordinates at `0,0` (including string values) are filtered from devices, trails, and routes.
 - With Turnstile enabled, common embed bots (Discord, Slack, etc.) can be
