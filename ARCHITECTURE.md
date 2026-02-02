@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.2.5` (see `VERSIONS.md`).
+Current version: `1.2.6` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -271,6 +271,12 @@ WebSocket broadcast to all clients
 | `GET /debug/status` | Dev only | Status messages |
 | `WS /ws` | Token or Turnstile auth | Real-time updates |
 
+`GET /api/nodes` behavior:
+- Default: flat payload (`data: [...]`) plus top-level alias (`nodes: [...]`).
+- `updated_since` automatically enables delta filtering.
+- `format=nested` returns wrapped payload (`data: { nodes: [...] }`).
+- `mode=full` (or `all`/`snapshot`) forces full snapshots.
+
 ---
 
 ## Configuration Flow
@@ -367,4 +373,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.2.5`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.2.6`).

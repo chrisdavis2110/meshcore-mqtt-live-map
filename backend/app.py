@@ -591,8 +591,6 @@ def _extract_cookie_token(headers: Dict[str, str], key: str) -> Optional[str]:
 def _require_prod_token(request: Request) -> None:
   if not PROD_MODE:
     return
-  if TURNSTILE_ENABLED and _check_turnstile_auth(request):
-    return
   if not PROD_TOKEN:
     raise HTTPException(status_code=503, detail="prod_token_not_set")
   token = request.query_params.get("token"
@@ -606,6 +604,7 @@ def _require_prod_token(request: Request) -> None:
 def _ws_authorized(ws: WebSocket) -> bool:
   if TURNSTILE_ENABLED and turnstile_verifier:
     auth_token = _extract_cookie_token(ws.headers, "meshmap_auth") or \
+                 ws.query_params.get("auth") or \
                  _extract_token(ws.headers)
     if auth_token and turnstile_verifier.verify_auth_token(auth_token):
       return True
@@ -962,7 +961,7 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
         "payload_type": payload_type,
         "message_hash": message_hash,
         "origin_id": route_origin_id,
-        "receiver_id": None,
+        "receiver_id": receiver_id,
         "snr_values": snr_values,
         "route_type": route_type,
         "ts": time.time(),
@@ -1118,10 +1117,19 @@ async def broadcaster():
         if outside:
           continue
 
-      route_id = (
-        event.get("route_id") or event.get("message_hash") or
-        f"{event.get('origin_id', 'route')}-{int(event.get('ts', time.time()) * 1000)}"
-      )
+      route_id = event.get("route_id")
+      if not route_id:
+        message_hash = event.get("message_hash")
+        receiver_key = event.get("receiver_id") or "observer"
+        if message_hash:
+          # Keep one active line per (message, observer) so multi-observer
+          # receptions do not overwrite each other.
+          route_id = f"{message_hash}:{receiver_key}"
+        else:
+          route_id = (
+            f"{event.get('origin_id', 'route')}:{receiver_key}:"
+            f"{int((event.get('ts') or time.time()) * 1000)}"
+          )
       expires_at = (event.get("ts") or time.time()) + ROUTE_TTL_SECONDS
       route = {
         "id": route_id,
@@ -2118,9 +2126,10 @@ def api_nodes(
   _require_prod_token(request)
   cutoff = _parse_updated_since(updated_since)
   mode_value = (mode or "").strip().lower()
-  apply_delta = mode_value in ("delta", "updates", "since")
+  force_full = mode_value in ("full", "all", "snapshot")
+  apply_delta = bool(cutoff is not None and not force_full)
   format_value = (format or "").strip().lower()
-  format_flat = format_value in ("flat", "list", "legacy", "v1")
+  format_nested = format_value in ("nested", "object", "wrapped", "v2")
   nodes: List[Dict[str, Any]] = []
   all_nodes: List[Dict[str, Any]] = []
   max_last_seen = 0.0
@@ -2143,10 +2152,12 @@ def api_nodes(
     "updated_since_applied": bool(apply_delta and cutoff is not None),
     "updated_since_ignored": bool(updated_since and not apply_delta),
   }
-  if format_flat:
-    payload["data"] = nodes
-  else:
+  if format_nested:
     payload["data"] = {"nodes": nodes}
+  else:
+    # Default to the flat list for MeshBuddy compatibility.
+    payload["data"] = nodes
+    payload["nodes"] = nodes
   return payload
 
 

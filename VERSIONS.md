@@ -1,5 +1,13 @@
 # Versions
 
+## v1.2.6 (02-02-2026)
+- API compatibility update for MeshBuddy and similar clients:
+  - `/api/nodes` now defaults to a flat payload (`"data": [...]`).
+  - Added top-level `"nodes": [...]` alias for legacy consumers.
+  - `updated_since` now applies delta filtering automatically.
+  - `mode=full` (or `all`/`snapshot`) forces full list responses.
+  - `format=nested` returns wrapped payloads (`"data":{"nodes":[...]}`).
+
 ## v1.2.5 (02-02-2026)
 - Route line IDs are now observer-aware (`message_hash:receiver_id`) so simultaneous receptions from multiple MQTT observers do not overwrite each other.
 - WebSocket auth now accepts `?auth=<turnstile_token>` in addition to cookie/header auth, reducing reconnect loops during Turnstile-gated sessions.

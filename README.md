@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.2.5` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.2.6` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -233,15 +233,17 @@ Use it:
 The backend exposes a nodes API for external tools (e.g. MeshBuddy):
 
 - `GET /api/nodes?token=YOUR_TOKEN`
-  - Default response: `{"data":{"nodes":[...]}}`
-  - Optional: `format=flat` returns `{"data":[...]}`
-  - Optional: `mode=delta` applies `updated_since` filtering
+  - Default response: `{"data":[...], "nodes":[...]}`
+  - Optional: `format=nested` returns `{"data":{"nodes":[...]}}`
+  - `updated_since` applies delta filtering automatically
+  - Optional: `mode=full` (or `all`/`snapshot`) forces full-list response
 
 Example:
 ```
 https://your-host/api/nodes?token=YOUR_TOKEN
-https://your-host/api/nodes?token=YOUR_TOKEN&mode=delta&updated_since=2025-01-01T12:00:00Z
-https://your-host/api/nodes?token=YOUR_TOKEN&format=flat
+https://your-host/api/nodes?token=YOUR_TOKEN&updated_since=2025-01-01T12:00:00Z
+https://your-host/api/nodes?token=YOUR_TOKEN&format=nested
+https://your-host/api/nodes?token=YOUR_TOKEN&mode=full
 ```
 
 Each node includes:

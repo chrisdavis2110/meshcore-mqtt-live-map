@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.2.5` (see `VERSIONS.md`).
+Current version: `1.2.6` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.2.5`).
+- `VERSION.txt` holds the current version string (`1.2.6`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -187,5 +187,7 @@ If routes aren’t visible:
 - History tool visibility no longer persists (always off unless `history=on` in the URL).
 - WebSocket auth accepts `?auth=<turnstile_token>` for Turnstile-gated sessions.
 - Protected API routes keep requiring `PROD_TOKEN` even when Turnstile auth is active.
+- `/api/nodes` now defaults to flat `data` arrays with a top-level `nodes` alias for client compatibility.
+- `/api/nodes` now applies `updated_since` automatically (use `mode=full` to force full snapshots).
 - Route IDs are observer-aware (`message_hash:receiver_id`) so multi-observer receptions do not overwrite each other.
 - `ROUTE_INFRA_ONLY` direct-route checks now allow rendering when at least one endpoint is infrastructure.
