@@ -25,7 +25,7 @@ Live example sites:
 - 24-hour route history tool with volume-based coloring, click-to-view packet details, a heat-band slider, and a link-size slider
 - History panel can be dismissed with an X without hiding history lines (re-open via History tool)
 - Peers tool showing incoming/outgoing neighbors with on-map lines (blue = incoming, purple = outgoing)
-- Coverage layer from a coverage map API (button hidden when not configured)
+- Coverage layer from a [coverage map API](https://github.com/nullrouten0/meshcore-coverage-map) (button hidden when not configured)
 - Update available banner (git local vs upstream) with dismiss
 - UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle
 - Share button that copies a URL with current view + settings
