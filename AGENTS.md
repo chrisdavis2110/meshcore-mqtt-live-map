@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.2.6` (see `VERSIONS.md`).
+Current version: `1.3.0` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -17,7 +17,7 @@ Current version: `1.2.6` (see `VERSIONS.md`).
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.2.6`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.3.0`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -76,10 +76,10 @@ Current version: `1.2.6` (see `VERSIONS.md`).
 - Route collisions fall back to closest-hop selection and drop hops beyond `ROUTE_MAX_HOP_DISTANCE`.
 - `ROUTE_INFRA_ONLY` restricts route lines to repeaters/rooms (companions still show as markers).
 - Heatmap shows recent traffic points (TTL controlled).
-- LOS tool runs **server-side only** via `/los`, returning the elevation profile + peaks.
+- LOS uses `/los/elevations` for client-side realtime updates (with `/los` fallback).
 - LOS UI includes peak markers, a relay suggestion marker, elevation profile hover, and map-line hover sync.
 - LOS legend items (clear/blocked/peaks/relay) are hidden until the LOS tool is active.
-- Mobile LOS supports long-press on nodes (Shift+click on desktop).
+- Mobile LOS supports long-press on nodes (Shift+click on desktop); endpoints can be dragged or click-selected and moved via map click.
 - MQTT online status uses `mqtt_seen_ts` from `MQTT_ONLINE_TOPIC_SUFFIXES` (default `/status,/packets`); markers get a green outline + popup status.
 - `MQTT_ONLINE_FORCE_NAMES` (comma-separated device names) forces selected nodes to always appear MQTT online.
 - Service worker fetches navigations with `no-store` to avoid stale UI/env toggles (e.g., radius debug ring).

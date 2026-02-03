@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.2.6` (see `VERSIONS.md`).
+Current version: `1.3.0` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.2.6`).
+- `VERSION.txt` holds the current version string (`1.3.0`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -111,6 +111,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Hovering the LOS profile also tracks a cursor on the map and highlights nearby peaks.
 - LOS legend items (clear/blocked/peaks/relay) are hidden unless the LOS tool is active.
 - Shift+click nodes (or long‑press on mobile) or click two points on the map to run LOS. Drag endpoints to update LOS in realtime.
+- After LOS is locked, click a point marker (A/B) to select it, then click the map to reposition that specific endpoint.
 
 ## Device Names + Roles
 - Names come from advert payloads or status messages when available.

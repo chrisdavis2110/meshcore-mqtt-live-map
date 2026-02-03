@@ -1,5 +1,12 @@
 # Versions
 
+## v1.3.0 (02-03-2026)
+- LOS tool now supports realtime endpoint dragging with throttled live recompute for smoother interaction (PR #18, credit: https://github.com/mitchellmoss).
+- Added elevation fetch proxy endpoint (`/los/elevations`) with frontend caching/backoff to reduce API spam and avoid elevation rate-limit failures while dragging.
+- Added `LOS_ELEVATION_PROXY_URL` env/config support so LOS elevation requests can be routed through the backend.
+- Fixed LOS point repositioning so you can click/select point A/B and click the map to move that specific point (plus visual selected-point highlight).
+- Updated LOS docs and feature notes for the new realtime drag + proxy workflow.
+
 ## v1.2.6 (02-02-2026)
 - API compatibility update for MeshBuddy and similar clients:
   - `/api/nodes` now defaults to a flat payload (`"data": [...]`).

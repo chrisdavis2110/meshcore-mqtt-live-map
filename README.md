@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.2.6` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.3.0` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -32,7 +32,7 @@ Live example sites:
 - URL parameters to open the map at a specific view (center, zoom, toggles)
 - Node search by name or public key
 - Adjustable node size slider (defaults from env, saves locally)
-- LOS tool with elevation profile + peak markers and hover sync (Shift+click or long‑press nodes)
+- LOS tool with elevation profile + peak markers, hover sync, and realtime draggable endpoints (Shift+click or long‑press nodes)
 - Embeddable metadata (Open Graph/Twitter tags) driven by env vars
 - Preview image renders in-bounds device dots for shared links
 - Route pruning via neighbor-aware closest-hop selection + max hop distance (configurable)
@@ -215,7 +215,7 @@ Use it:
 - MQTT disconnects are handled; the client will reconnect when the broker returns.
 - Live route IDs are observer-aware (`message_hash:receiver_id`) so the same
   message seen by multiple MQTT observers does not overwrite active lines.
-- Line-of-sight tool: click **LOS tool** and pick two points, or **Shift+click** two nodes to measure LOS between them. Drag endpoints to update in realtime.
+- Line-of-sight tool: click **LOS tool** and pick two points, or **Shift+click** two nodes to measure LOS between them. Drag endpoints or select A/B then click the map to move that point.
 - On mobile, long‑press a node to select it for LOS.
 - LOS elevations are fetched via `/los/elevations` and LOS/relay math runs client-side (with `/los` fallback).
 - History tool always loads off (use the button or `history=on` in the URL).
