@@ -78,7 +78,7 @@ from config import (
   DEVICE_ROLES_FILE,
   NEIGHBOR_OVERRIDES_FILE,
   STATE_SAVE_INTERVAL,
-  DEVICE_TTL_SECONDS,
+  PATH_TTL_SECONDS,
   TRAIL_LEN,
   ROUTE_TTL_SECONDS,
   ROUTE_PAYLOAD_TYPES,
@@ -322,10 +322,19 @@ def _record_neighbors(point_ids: List[Optional[str]], ts: float) -> None:
     _touch_neighbor(dst_id, src_id, ts, manual=False)
 
 
+def _update_path_timestamps(point_ids: List[Optional[str]], ts: float) -> None:
+  """Update last_seen_in_path for all devices in a path."""
+  for device_id in point_ids:
+    if device_id:
+      state.last_seen_in_path[device_id] = max(
+        state.last_seen_in_path.get(device_id, 0.0), float(ts)
+      )
+
+
 def _prune_neighbors(now: float) -> None:
-  if DEVICE_TTL_SECONDS <= 0 or not neighbor_edges:
+  if PATH_TTL_SECONDS <= 0 or not neighbor_edges:
     return
-  cutoff = now - DEVICE_TTL_SECONDS
+  cutoff = now - PATH_TTL_SECONDS
   for src_id, edges in list(neighbor_edges.items()):
     for dst_id, entry in list(edges.items()):
       if entry.get("manual"):
@@ -349,6 +358,7 @@ def _serialize_state() -> Dict[str, Any]:
     "device_names": device_names,
     "device_roles": device_roles,
     "device_role_sources": device_role_sources,
+    "last_seen_in_path": state.last_seen_in_path,
   }
 
 
@@ -636,14 +646,14 @@ def _load_state() -> None:
     if not isinstance(value, dict):
       continue
     try:
-      state = DeviceState(**value)
+      loaded_state = DeviceState(**value)
     except Exception:
       continue
-    if _coords_are_zero(state.lat, state.lon
-                       ) or not _within_map_radius(state.lat, state.lon):
+    if _coords_are_zero(loaded_state.lat, loaded_state.lon
+                       ) or not _within_map_radius(loaded_state.lat, loaded_state.lon):
       dropped_ids.add(str(key))
       continue
-    loaded_devices[key] = state
+    loaded_devices[key] = loaded_state
 
   devices.clear()
   devices.update(loaded_devices)
@@ -736,13 +746,25 @@ def _load_state() -> None:
   if dropped_ids:
     for device_id in dropped_ids:
       device_roles.pop(device_id, None)
+
+  raw_path_timestamps = data.get("last_seen_in_path") or {}
+  state.last_seen_in_path.clear()
+  if isinstance(raw_path_timestamps, dict):
+    for key, value in raw_path_timestamps.items():
+      if dropped_ids and str(key) in dropped_ids:
+        continue
+      try:
+        state.last_seen_in_path[str(key)] = float(value)
+      except (TypeError, ValueError):
+        continue
+
   _rebuild_node_hash_map()
 
-  for device_id, state in devices.items():
-    if not state.name and device_id in device_names:
-      state.name = device_names[device_id]
+  for device_id, dev_state in devices.items():
+    if not dev_state.name and device_id in device_names:
+      dev_state.name = device_names[device_id]
     role_value = device_roles.get(device_id)
-    state.role = role_value if role_value else None
+    dev_state.role = role_value if role_value else None
 
 
 async def _state_saver() -> None:
@@ -1152,6 +1174,7 @@ async def broadcaster():
 
       if point_ids and used_hashes:
         _record_neighbors(point_ids, route["ts"])
+        _update_path_timestamps(point_ids, route["ts"])
 
       history_updates, history_removed = _record_route_history(route)
 
@@ -1265,11 +1288,14 @@ async def reaper():
   while True:
     now = time.time()
 
-    if DEVICE_TTL_SECONDS > 0:
-      stale = [
-        dev_id for dev_id, st in list(devices.items())
-        if now - st.ts > DEVICE_TTL_SECONDS
-      ]
+    if PATH_TTL_SECONDS > 0:
+      stale = []
+      for dev_id, st in list(devices.items()):
+        # Use the more recent of: advert timestamp or path appearance
+        last_path_ts = state.last_seen_in_path.get(dev_id, 0.0)
+        effective_ts = max(st.ts, last_path_ts)
+        if now - effective_ts > PATH_TTL_SECONDS:
+          stale.append(dev_id)
       if stale:
         payload = {"type": "stale", "device_ids": stale}
         dead = []
@@ -1284,6 +1310,7 @@ async def reaper():
         for dev_id in stale:
           devices.pop(dev_id, None)
           trails.pop(dev_id, None)
+          state.last_seen_in_path.pop(dev_id, None)
           state.state_dirty = True
         _rebuild_node_hash_map()
 
@@ -1367,9 +1394,7 @@ async def reaper():
 
     _prune_neighbors(now)
 
-    prune_after = (
-      max(DEVICE_TTL_SECONDS * 3, 900) if DEVICE_TTL_SECONDS > 0 else 86400
-    )
+    prune_after = max(PATH_TTL_SECONDS * 3, 900) if PATH_TTL_SECONDS > 0 else 86400
     for dev_id, last in list(seen_devices.items()):
       if now - last > prune_after:
         seen_devices.pop(dev_id, None)

@@ -32,7 +32,7 @@ NEIGHBOR_OVERRIDES_FILE = os.getenv(
 )
 STATE_SAVE_INTERVAL = float(os.getenv("STATE_SAVE_INTERVAL", "5"))
 
-DEVICE_TTL_SECONDS = int(os.getenv("DEVICE_TTL_SECONDS", "300"))
+PATH_TTL_SECONDS = int(os.getenv("PATH_TTL_SECONDS", "172800"))  # 48 hours
 TRAIL_LEN = int(os.getenv("TRAIL_LEN", "30"))
 ROUTE_TTL_SECONDS = int(os.getenv("ROUTE_TTL_SECONDS", "120"))
 ROUTE_PAYLOAD_TYPES = os.getenv("ROUTE_PAYLOAD_TYPES", "8,9,2,5,4")
