@@ -78,7 +78,6 @@ from config import (
   DEVICE_ROLES_FILE,
   NEIGHBOR_OVERRIDES_FILE,
   STATE_SAVE_INTERVAL,
-  DEVICE_TTL_SECONDS,
   PATH_TTL_SECONDS,
   TRAIL_LEN,
   ROUTE_TTL_SECONDS,
@@ -333,9 +332,9 @@ def _update_path_timestamps(point_ids: List[Optional[str]], ts: float) -> None:
 
 
 def _prune_neighbors(now: float) -> None:
-  if DEVICE_TTL_SECONDS <= 0 or not neighbor_edges:
+  if PATH_TTL_SECONDS <= 0 or not neighbor_edges:
     return
-  cutoff = now - DEVICE_TTL_SECONDS
+  cutoff = now - PATH_TTL_SECONDS
   for src_id, edges in list(neighbor_edges.items()):
     for dst_id, entry in list(edges.items()):
       if entry.get("manual"):
@@ -647,14 +646,14 @@ def _load_state() -> None:
     if not isinstance(value, dict):
       continue
     try:
-      state = DeviceState(**value)
+      loaded_state = DeviceState(**value)
     except Exception:
       continue
-    if _coords_are_zero(state.lat, state.lon
-                       ) or not _within_map_radius(state.lat, state.lon):
+    if _coords_are_zero(loaded_state.lat, loaded_state.lon
+                       ) or not _within_map_radius(loaded_state.lat, loaded_state.lon):
       dropped_ids.add(str(key))
       continue
-    loaded_devices[key] = state
+    loaded_devices[key] = loaded_state
 
   devices.clear()
   devices.update(loaded_devices)
@@ -1395,9 +1394,7 @@ async def reaper():
 
     _prune_neighbors(now)
 
-    prune_after = (
-      max(DEVICE_TTL_SECONDS * 3, 900) if DEVICE_TTL_SECONDS > 0 else 86400
-    )
+    prune_after = max(PATH_TTL_SECONDS * 3, 900) if PATH_TTL_SECONDS > 0 else 86400
     for dev_id, last in list(seen_devices.items()):
       if now - last > prune_after:
         seen_devices.pop(dev_id, None)
