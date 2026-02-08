@@ -1,5 +1,13 @@
 # Versions
 
+## v1.3.5 (02-06-2026)
+- Added dual stale-window support so `DEVICE_TTL_HOURS` and `PATH_TTL_SECONDS` work together instead of replacing each other.
+- Node pruning now supports both windows at once (with 4-day device defaults and 48-hour path defaults in examples/compose).
+- Environment docs and examples now describe the `DEVICE_TTL_HOURS` + `PATH_TTL_SECONDS` model and default values.
+- Added `DEVICE_COORDS_FILE` config path support (default: `/data/device_coords.json`) in compose and env docs.
+- Credit: `PATH_TTL_SECONDS` flow by https://github.com/djp3.
+- Credit: `DEVICE_TTL_HOURS` flow by https://github.com/chrisdavis2110.
+
 ## v1.3.1 (02-03-2026)
 - Propagation tool now includes an adjustable **TX antenna gain (dBi)** field that feeds directly into range and coverage calculations.
 - Propagation defaults now start with **Rx AGL = 1m** (previously 5m).
@@ -76,7 +84,7 @@
 ## v1.0.7 (01-14-2026)
 - Route hash collisions now prefer known neighbor pairs before falling back to closest-hop selection.
 - Add optional neighbor override map via `NEIGHBOR_OVERRIDES_FILE` (default `data/neighbor_overrides.json`).
-- Neighbor edges auto-expire using `DEVICE_TTL_SECONDS` to prevent stale adjacency picks.
+- Neighbor edges auto-expire using `DEVICE_TTL_SECONDS` (legacy env name, now `DEVICE_TTL_HOURS`) to prevent stale adjacency picks.
 
 ## v1.0.6 (01-13-2026)
 - Peers panel now labels line colors (blue = incoming, purple = outgoing).

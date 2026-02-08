@@ -56,4 +56,5 @@ device_roles: Dict[str, str] = {}
 device_role_sources: Dict[str, str] = {}
 device_coords: Dict[str, Dict[str, float]] = {}
 neighbor_edges: Dict[str, Dict[str, Dict[str, Any]]] = {}
+last_seen_in_path: Dict[str, float] = {}
 state_dirty = False

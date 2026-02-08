@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.3.1` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.3.5` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -85,6 +85,7 @@ Storage + server:
 - `STATE_DIR` (persisted state path)
 - `STATE_FILE` (full state file path override)
 - `DEVICE_ROLES_FILE` (optional role override JSON file)
+- `DEVICE_COORDS_FILE` (optional coordinate override JSON file; default `/data/device_coords.json`)
 - `NEIGHBOR_OVERRIDES_FILE` (optional JSON mapping for neighbor overrides)
 - `STATE_SAVE_INTERVAL` (seconds between state saves)
 - `WEB_PORT` (host port for the web UI)
@@ -128,7 +129,8 @@ Coverage layer:
 - `COVERAGE_API_URL` (URL to coverage map API; button hidden when blank)
 
 Device + route tuning:
-- `DEVICE_TTL_SECONDS` (node expiry)
+- `DEVICE_TTL_HOURS` (advert/device stale window; default `96`)
+- `PATH_TTL_SECONDS` (path stale window; default `172800`)
 - `TRAIL_LEN` (points per device trail; `0` disables trails)
 - `ROUTE_TTL_SECONDS`
 - `ROUTE_PATH_MAX_LEN` (skip oversized path-hash lists)
@@ -227,6 +229,7 @@ Use it:
 - Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;
   protected API endpoints still require `PROD_TOKEN`.
 - If hop hashes collide, the backend prefers known neighbors (or overrides) before picking the closest hop and pruning beyond `ROUTE_MAX_HOP_DISTANCE`.
+- Device pruning can use both stale windows together (`DEVICE_TTL_HOURS` and `PATH_TTL_SECONDS`).
 - Coordinates at `0,0` (including string values) are filtered from devices, trails, and routes.
 - With Turnstile enabled, common embed bots (Discord, Slack, etc.) can be
   allowlisted via `TURNSTILE_BOT_BYPASS` and `TURNSTILE_BOT_ALLOWLIST`.

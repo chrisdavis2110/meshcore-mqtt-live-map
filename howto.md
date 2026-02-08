@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.3.1` (see `VERSIONS.md`).
+Current version: `1.3.5` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -115,6 +115,12 @@ MQTT_TRANSPORT=websockets
 MQTT_WS_PATH=/
 MQTT_TLS=true
 MQTT_TOPIC=meshcore/#
+```
+
+Optional coordinate overrides (for fixed node placement):
+
+```env
+DEVICE_COORDS_FILE=/data/device_coords.json
 ```
 
 Optional: enable the coverage layer by setting `COVERAGE_API_URL` (the Coverage button hides itself when blank):

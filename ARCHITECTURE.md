@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.3.1` (see `VERSIONS.md`).
+Current version: `1.3.5` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -106,9 +106,9 @@ Loads all settings from environment variables with sensible defaults.
 
 **Key configuration groups:**
 - MQTT connection (`MQTT_HOST`, `MQTT_PORT`, `MQTT_TLS`, etc.)
-- State persistence (`STATE_DIR`, `STATE_SAVE_INTERVAL`)
+- State persistence (`STATE_DIR`, `STATE_SAVE_INTERVAL`, `DEVICE_COORDS_FILE`)
 - Neighbor overrides (`NEIGHBOR_OVERRIDES_FILE`)
-- Device management (`DEVICE_TTL_SECONDS`, `TRAIL_LEN`)
+- Device/path staleness (`DEVICE_TTL_HOURS`, `PATH_TTL_SECONDS`, `TRAIL_LEN`)
 - Route handling (`ROUTE_TTL_SECONDS`, `ROUTE_HISTORY_HOURS`)
 - Turnstile protection (`TURNSTILE_*`, gated by `PROD_MODE=true`)
 - Map display (`MAP_START_LAT`, `MAP_START_LON`, `MAP_RADIUS_KM`)
@@ -373,4 +373,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.3.1`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.3.5`).
