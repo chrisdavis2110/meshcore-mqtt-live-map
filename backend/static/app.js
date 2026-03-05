@@ -35,6 +35,8 @@ const queryZoom = parseNumberParam(queryParams.get('zoom'));
 const queryLayer = String(queryParams.get('layer') || queryParams.get('map') || '').toLowerCase();
 const queryHistoryVisible = parseBoolParam(queryParams.get('history'));
 const queryHeatVisible = parseBoolParam(queryParams.get('heat'));
+const queryCoverageVisible = parseBoolParam(queryParams.get('coverage'));
+const queryWeatherVisible = parseBoolParam(queryParams.get('weather'));
 const queryLabelsVisible = parseBoolParam(queryParams.get('labels'));
 const queryNodesVisible = parseBoolParam(queryParams.get('nodes'));
 const queryLegendVisible = parseBoolParam(queryParams.get('legend'));
@@ -74,6 +76,22 @@ if (!validLayers.has(baseLayer)) {
 
 const map = L.map('map', { zoomControl: false }).setView([mapStartLat, mapStartLon], mapStartZoom);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
+if (!map.getPane('radarPane')) {
+  map.createPane('radarPane');
+}
+const radarPane = map.getPane('radarPane');
+if (radarPane) {
+  radarPane.style.zIndex = '320';
+  radarPane.style.pointerEvents = 'none';
+}
+if (!map.getPane('weatherWindPane')) {
+  map.createPane('weatherWindPane');
+}
+const weatherWindPane = map.getPane('weatherWindPane');
+if (weatherWindPane) {
+  weatherWindPane.style.zIndex = '330';
+  weatherWindPane.style.pointerEvents = 'none';
+}
 const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors'
@@ -171,6 +189,44 @@ const coverageEnabled = Boolean(coverageApiUrl);
 const coverageLayer = L.layerGroup();
 let coverageVisible = false;
 let coverageData = null;
+const radarLayerGroup = L.layerGroup();
+let radarLayer = null;
+let radarVisible = false;
+let radarLoading = false;
+let radarPreloading = false;
+let radarPreloadTimeout = null;
+let radarFramePath = '';
+let radarFrameHost = 'https://tilecache.rainviewer.com';
+let radarRefreshTimer = null;
+let radarRequestSeq = 0;
+let radarLayerBoundsKey = '';
+let radarCountryBounds = null;
+let radarCountryBoundsKey = '';
+let radarCountryBoundsPromise = null;
+const RADAR_REFRESH_MS = 5 * 60 * 1000;
+const RADAR_META_URLS = [
+  'https://tilecache.rainviewer.com/api/weather-maps.json',
+  'https://api.rainviewer.com/public/weather-maps.json'
+];
+const RADAR_MAX_NATIVE_ZOOM = 7;
+const weatherRadarCountryBoundsEnabled = String(config.weatherRadarCountryBoundsEnabled).toLowerCase() === 'true';
+const weatherRadarCountryLookupUrl = (config.weatherRadarCountryLookupUrl || '/weather/radar/country-bounds').trim();
+const WEATHER_RADAR_COUNTRY_CACHE_KEY = 'meshmapWeatherRadarCountryBounds';
+const weatherWindLayer = L.layerGroup();
+let weatherWindRequestSeq = 0;
+let weatherWindRefreshTimer = null;
+let weatherWindMoveTimer = null;
+let weatherWindLoading = false;
+const weatherWindEnabled = String(config.weatherWindEnabled).toLowerCase() !== 'false';
+const weatherWindApiUrl = (config.weatherWindApiUrl || 'https://api.open-meteo.com/v1/forecast').trim();
+const weatherWindGridSizeRaw = Number(config.weatherWindGridSize);
+const weatherWindGridSize = Number.isFinite(weatherWindGridSizeRaw)
+  ? clampNumber(Math.round(weatherWindGridSizeRaw), 1, 5)
+  : 3;
+const weatherWindRefreshSecondsRaw = Number(config.weatherWindRefreshSeconds);
+const weatherWindRefreshMs = (Number.isFinite(weatherWindRefreshSecondsRaw)
+  ? clampNumber(Math.round(weatherWindRefreshSecondsRaw), 30, 1800)
+  : 180) * 1000;
 let losActive = false;
 let losPoints = [];
 let losLine = null;
@@ -644,6 +700,536 @@ function setCoverageVisible(visible) {
   }
 }
 
+function getRadarCountryRequestKey(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
+  return `${lat.toFixed(2)},${lon.toFixed(2)}`;
+}
+
+function getRadarCountryLookupCenter() {
+  const center = typeof map.getCenter === 'function' ? map.getCenter() : null;
+  const lat = center && Number.isFinite(center.lat) ? center.lat : mapStartLat;
+  const lon = center && Number.isFinite(center.lng) ? center.lng : mapStartLon;
+  return { lat, lon };
+}
+
+function getRadarBoundsKey(bounds) {
+  if (!Array.isArray(bounds) || bounds.length !== 2) return '';
+  const southWest = bounds[0];
+  const northEast = bounds[1];
+  if (!Array.isArray(southWest) || southWest.length !== 2) return '';
+  if (!Array.isArray(northEast) || northEast.length !== 2) return '';
+  const south = Number(southWest[0]);
+  const west = Number(southWest[1]);
+  const north = Number(northEast[0]);
+  const east = Number(northEast[1]);
+  if (!Number.isFinite(south) || !Number.isFinite(west)) return '';
+  if (!Number.isFinite(north) || !Number.isFinite(east)) return '';
+  if (south >= north || west >= east) return '';
+  return `${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`;
+}
+
+function parseRadarCountryBounds(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  let south = NaN;
+  let north = NaN;
+  let west = NaN;
+  let east = NaN;
+  const rawBounds = payload.bounds && typeof payload.bounds === 'object' ? payload.bounds : null;
+  if (rawBounds) {
+    south = Number(rawBounds.south);
+    north = Number(rawBounds.north);
+    west = Number(rawBounds.west);
+    east = Number(rawBounds.east);
+  } else {
+    const bbox = Array.isArray(payload.boundingbox) ? payload.boundingbox : [];
+    if (bbox.length < 4) return null;
+    south = Number(bbox[0]);
+    north = Number(bbox[1]);
+    west = Number(bbox[2]);
+    east = Number(bbox[3]);
+  }
+  const bounds = [[south, west], [north, east]];
+  const boundsKey = getRadarBoundsKey(bounds);
+  if (!boundsKey) return null;
+  const address = payload.address && typeof payload.address === 'object' ? payload.address : {};
+  const countryCode = typeof address.country_code === 'string'
+    ? address.country_code.trim().toLowerCase()
+    : '';
+  return { bounds, boundsKey, countryCode };
+}
+
+function loadStoredRadarCountryBounds() {
+  if (!weatherRadarCountryBoundsEnabled) return;
+  let raw = '';
+  try {
+    raw = localStorage.getItem(WEATHER_RADAR_COUNTRY_CACHE_KEY) || '';
+  } catch (err) {
+    return;
+  }
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    const center = getRadarCountryLookupCenter();
+    const expectedKey = getRadarCountryRequestKey(center.lat, center.lon);
+    const requestKey = typeof parsed.requestKey === 'string' ? parsed.requestKey : '';
+    if (expectedKey && requestKey && expectedKey !== requestKey) return;
+    const bounds = Array.isArray(parsed.bounds) ? parsed.bounds : null;
+    const boundsKey = getRadarBoundsKey(bounds);
+    if (!boundsKey) return;
+    radarCountryBounds = bounds;
+    radarCountryBoundsKey = boundsKey;
+  } catch (err) {
+    // Ignore invalid cache payloads
+  }
+}
+
+function buildRadarCountryLookupUrl(lat, lon) {
+  const baseUrl = weatherRadarCountryLookupUrl || '/weather/radar/country-bounds';
+  let lookup;
+  try {
+    lookup = new URL(baseUrl, window.location.origin);
+  } catch (err) {
+    return '';
+  }
+  lookup.searchParams.set('format', 'jsonv2');
+  lookup.searchParams.set('lat', String(lat));
+  lookup.searchParams.set('lon', String(lon));
+  lookup.searchParams.set('zoom', '3');
+  lookup.searchParams.set('addressdetails', '1');
+  if (lookup.origin === window.location.origin && prodMode && apiToken) {
+    lookup.searchParams.set('token', apiToken);
+  }
+  return lookup.toString();
+}
+
+async function ensureRadarCountryBounds(options = {}) {
+  const silent = options.silent === true;
+  if (!weatherRadarCountryBoundsEnabled) return null;
+  if (!weatherRadarCountryLookupUrl) return null;
+  if (radarCountryBoundsKey && radarCountryBounds) return radarCountryBounds;
+  if (radarCountryBoundsPromise) return radarCountryBoundsPromise;
+
+  loadStoredRadarCountryBounds();
+  if (radarCountryBoundsKey && radarCountryBounds) return radarCountryBounds;
+
+  const center = getRadarCountryLookupCenter();
+  const requestKey = getRadarCountryRequestKey(center.lat, center.lon);
+  if (!requestKey) return null;
+  const lookupUrl = buildRadarCountryLookupUrl(center.lat, center.lon);
+  if (!lookupUrl) return null;
+
+  radarCountryBoundsPromise = (async () => {
+    try {
+      const response = await fetch(lookupUrl, { cache: 'force-cache' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const payload = await response.json();
+      const parsed = parseRadarCountryBounds(payload);
+      if (!parsed) {
+        throw new Error('Country bounds missing in lookup response');
+      }
+      radarCountryBounds = parsed.bounds;
+      radarCountryBoundsKey = parsed.boundsKey;
+      try {
+        localStorage.setItem(WEATHER_RADAR_COUNTRY_CACHE_KEY, JSON.stringify({
+          requestKey,
+          countryCode: parsed.countryCode,
+          bounds: parsed.bounds
+        }));
+      } catch (err) {
+        // Ignore cache write issues
+      }
+      return radarCountryBounds;
+    } catch (err) {
+      if (!silent) {
+        const errorMsg = err && err.message ? err.message : String(err);
+        reportError(`Radar country lookup failed: ${errorMsg}`);
+      }
+      return null;
+    } finally {
+      radarCountryBoundsPromise = null;
+    }
+  })();
+
+  return radarCountryBoundsPromise;
+}
+
+async function fetchLatestRadarFrame() {
+  let lastError = null;
+  for (const metaUrl of RADAR_META_URLS) {
+    try {
+      const response = await fetch(metaUrl, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      const host = typeof data.host === 'string' && data.host.trim()
+        ? data.host.replace(/\/+$/, '')
+        : 'https://tilecache.rainviewer.com';
+      const radar = data && typeof data === 'object' ? data.radar : null;
+      const pastFrames = radar && Array.isArray(radar.past) ? radar.past : [];
+      const nowcastFrames = radar && Array.isArray(radar.nowcast) ? radar.nowcast : [];
+      const frames = nowcastFrames.length > 0 ? nowcastFrames : pastFrames;
+      if (!frames.length) {
+        throw new Error('No radar frames available');
+      }
+      const latest = frames[frames.length - 1] || {};
+      const path = typeof latest.path === 'string' ? latest.path : '';
+      if (!path) {
+        throw new Error('Radar frame path missing');
+      }
+      return { host, path };
+    } catch (err) {
+      const message = err && err.message ? err.message : String(err);
+      lastError = `${metaUrl}: ${message}`;
+    }
+  }
+  throw new Error(lastError || 'Radar metadata unavailable');
+}
+
+function updateRadarLayer(host, path) {
+  if (!path) return;
+  const normalizedHost = host ? host.replace(/\/+$/, '') : 'https://tilecache.rainviewer.com';
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  const activeBounds = weatherRadarCountryBoundsEnabled && radarCountryBoundsKey ? radarCountryBounds : null;
+  const activeBoundsKey = weatherRadarCountryBoundsEnabled ? radarCountryBoundsKey : '';
+  if (
+    radarLayer &&
+    radarFrameHost === normalizedHost &&
+    radarFramePath === normalizedPath &&
+    radarLayerBoundsKey === activeBoundsKey
+  ) {
+    return;
+  }
+  radarFrameHost = normalizedHost;
+  radarFramePath = normalizedPath;
+  if (radarLayer) {
+    radarLayerGroup.removeLayer(radarLayer);
+    radarLayer = null;
+  }
+  const tileUrl = `${normalizedHost}${normalizedPath}/256/{z}/{x}/{y}/4/1_1.png`;
+  const layerOptions = {
+    pane: 'radarPane',
+    opacity: 0.58,
+    maxNativeZoom: RADAR_MAX_NATIVE_ZOOM,
+    maxZoom: 18,
+    attribution: '&copy; RainViewer'
+  };
+  if (activeBounds) {
+    layerOptions.bounds = L.latLngBounds(activeBounds);
+  }
+  radarLayer = L.tileLayer(tileUrl, layerOptions);
+  radarLayerBoundsKey = activeBoundsKey;
+  radarLayerGroup.addLayer(radarLayer);
+  localStorage.setItem('meshmapRadarHost', radarFrameHost);
+  localStorage.setItem('meshmapRadarPath', radarFramePath);
+  if (!radarVisible) {
+    startRadarPreload();
+  }
+}
+
+function getWeatherWindSamplePoints() {
+  const center = map.getCenter();
+  const fallback = [{ lat: center.lat, lon: center.lng }];
+  const bounds = map.getBounds();
+  if (!bounds || !bounds.isValid() || weatherWindGridSize <= 1) return fallback;
+  const south = bounds.getSouth();
+  const north = bounds.getNorth();
+  const west = bounds.getWest();
+  const east = bounds.getEast();
+  if (
+    !Number.isFinite(south) || !Number.isFinite(north) ||
+    !Number.isFinite(west) || !Number.isFinite(east) ||
+    south >= north || west >= east
+  ) {
+    return fallback;
+  }
+  const points = [];
+  for (let row = 0; row < weatherWindGridSize; row += 1) {
+    const yRatio = weatherWindGridSize === 1 ? 0.5 : (row + 0.5) / weatherWindGridSize;
+    const lat = south + (north - south) * yRatio;
+    for (let col = 0; col < weatherWindGridSize; col += 1) {
+      const xRatio = weatherWindGridSize === 1 ? 0.5 : (col + 0.5) / weatherWindGridSize;
+      const lon = west + (east - west) * xRatio;
+      points.push({ lat, lon });
+    }
+  }
+  return points.length ? points : fallback;
+}
+
+function weatherWindUnitLabel() {
+  return distanceUnits === 'mi' ? 'mph' : 'km/h';
+}
+
+function weatherWindIcon(speed, direction) {
+  const speedLabel = Number.isFinite(speed) ? Math.max(0, Math.round(speed)) : 0;
+  const safeDirection = Number.isFinite(direction)
+    ? ((direction % 360) + 360) % 360
+    : 0;
+  return L.divIcon({
+    className: 'weather-wind-icon',
+    iconSize: [52, 24],
+    iconAnchor: [26, 12],
+    html:
+      `<span class="weather-wind-arrow" style="transform: rotate(${safeDirection}deg)">➤</span>` +
+      `<span class="weather-wind-speed">${speedLabel}${weatherWindUnitLabel()}</span>`
+  });
+}
+
+async function fetchWeatherWindSamples(points) {
+  if (!Array.isArray(points) || !points.length) return [];
+  if (!weatherWindApiUrl) {
+    throw new Error('Wind API URL not configured');
+  }
+  let url;
+  try {
+    url = new URL(weatherWindApiUrl, window.location.origin);
+  } catch (err) {
+    throw new Error('Wind API URL is invalid');
+  }
+  const latCsv = points.map((point) => point.lat.toFixed(5)).join(',');
+  const lonCsv = points.map((point) => point.lon.toFixed(5)).join(',');
+  url.searchParams.set('latitude', latCsv);
+  url.searchParams.set('longitude', lonCsv);
+  url.searchParams.set('current', 'wind_speed_10m,wind_direction_10m');
+  url.searchParams.set('wind_speed_unit', distanceUnits === 'mi' ? 'mph' : 'kmh');
+  if (url.origin === window.location.origin && prodMode && apiToken) {
+    url.searchParams.set('token', apiToken);
+  }
+  const response = await fetch(url.toString(), { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  const batch = Array.isArray(payload) ? payload : [payload];
+  const samples = [];
+  for (let i = 0; i < points.length; i += 1) {
+    const source = batch[i] || batch[0] || {};
+    const current = source && typeof source === 'object' ? source.current : null;
+    const speed = Number(current && current.wind_speed_10m);
+    const direction = Number(current && current.wind_direction_10m);
+    if (!Number.isFinite(speed) || !Number.isFinite(direction)) {
+      continue;
+    }
+    samples.push({
+      lat: points[i].lat,
+      lon: points[i].lon,
+      speed,
+      direction
+    });
+  }
+  if (!samples.length) {
+    throw new Error('Wind response missing fields');
+  }
+  return samples;
+}
+
+async function refreshWeatherWindLayer(options = {}) {
+  const silent = options.silent === true;
+  const background = options.background === true;
+  if (!weatherWindEnabled || !weatherWindApiUrl) return;
+  const manageUi = !(background && !radarVisible);
+  const seq = ++weatherWindRequestSeq;
+  if (manageUi) {
+    weatherWindLoading = true;
+    updateRadarButtonState();
+  }
+  try {
+    const points = getWeatherWindSamplePoints();
+    const samples = await fetchWeatherWindSamples(points);
+    if (seq !== weatherWindRequestSeq) return;
+    weatherWindLayer.clearLayers();
+    for (const sample of samples) {
+      const marker = L.marker([sample.lat, sample.lon], {
+        icon: weatherWindIcon(sample.speed, sample.direction),
+        pane: 'weatherWindPane',
+        interactive: false,
+        keyboard: false
+      });
+      weatherWindLayer.addLayer(marker);
+    }
+    if (radarVisible && nodesVisible && !map.hasLayer(weatherWindLayer)) {
+      weatherWindLayer.addTo(map);
+    }
+  } catch (err) {
+    if (!silent) {
+      const errorMsg = err && err.message ? err.message : String(err);
+      reportError(`Failed to fetch weather wind: ${errorMsg}`);
+    }
+  } finally {
+    if (manageUi && seq === weatherWindRequestSeq) {
+      weatherWindLoading = false;
+      updateRadarButtonState();
+    }
+  }
+}
+
+function stopWeatherWindRefresh() {
+  if (weatherWindRefreshTimer) {
+    window.clearInterval(weatherWindRefreshTimer);
+    weatherWindRefreshTimer = null;
+  }
+  if (weatherWindMoveTimer) {
+    window.clearTimeout(weatherWindMoveTimer);
+    weatherWindMoveTimer = null;
+  }
+}
+
+function startWeatherWindRefresh() {
+  if (!weatherWindEnabled) return;
+  stopWeatherWindRefresh();
+  weatherWindRefreshTimer = window.setInterval(() => {
+    if (!radarVisible) return;
+    refreshWeatherWindLayer({ silent: true, background: true });
+  }, weatherWindRefreshMs);
+}
+
+function scheduleWeatherWindRefresh() {
+  if (!weatherWindEnabled || !radarVisible) return;
+  if (weatherWindMoveTimer) {
+    window.clearTimeout(weatherWindMoveTimer);
+  }
+  weatherWindMoveTimer = window.setTimeout(() => {
+    refreshWeatherWindLayer({ silent: true, background: true });
+  }, 450);
+}
+
+function updateRadarButtonState() {
+  const btn = document.getElementById('weather-toggle');
+  if (!btn) return;
+  btn.classList.toggle('active', radarVisible);
+  if (radarLoading || weatherWindLoading) {
+    btn.textContent = 'Loading weather...';
+  } else {
+    btn.textContent = radarVisible ? 'Hide weather' : 'Weather';
+  }
+}
+
+function stopRadarPreload(keepLayer = false) {
+  radarPreloading = false;
+  if (radarPreloadTimeout) {
+    window.clearTimeout(radarPreloadTimeout);
+    radarPreloadTimeout = null;
+  }
+  if (radarLayer) {
+    radarLayer.setOpacity(0.58);
+  }
+  if (!keepLayer && !radarVisible && map.hasLayer(radarLayerGroup)) {
+    map.removeLayer(radarLayerGroup);
+  }
+}
+
+function startRadarPreload() {
+  if (!radarLayer || radarVisible || radarPreloading) return;
+  radarPreloading = true;
+  radarLayer.setOpacity(0.01);
+  if (!map.hasLayer(radarLayerGroup)) {
+    radarLayerGroup.addTo(map);
+  }
+  const finish = () => stopRadarPreload(false);
+  radarLayer.once('load', finish);
+  radarPreloadTimeout = window.setTimeout(finish, 3000);
+}
+
+async function refreshRadarLayer(options = {}) {
+  const silent = options.silent === true;
+  const background = options.background === true;
+  const manageUi = !(background && !radarVisible);
+  const seq = ++radarRequestSeq;
+  if (manageUi) {
+    radarLoading = true;
+    updateRadarButtonState();
+  }
+  try {
+    const boundsPromise = weatherRadarCountryBoundsEnabled
+      ? ensureRadarCountryBounds({ silent: true })
+      : null;
+    const frame = await fetchLatestRadarFrame();
+    if (boundsPromise) {
+      await boundsPromise;
+    }
+    if (seq !== radarRequestSeq) return;
+    updateRadarLayer(frame.host, frame.path);
+    if (radarVisible && nodesVisible && !map.hasLayer(radarLayerGroup)) {
+      radarLayerGroup.addTo(map);
+    }
+  } catch (err) {
+    if (!silent) {
+      const errorMsg = err && err.message ? err.message : String(err);
+      reportError(`Failed to fetch weather radar: ${errorMsg}`);
+    }
+  } finally {
+    if (manageUi && seq === radarRequestSeq) {
+      radarLoading = false;
+      updateRadarButtonState();
+    }
+  }
+}
+
+function stopRadarRefresh() {
+  if (radarRefreshTimer) {
+    window.clearInterval(radarRefreshTimer);
+    radarRefreshTimer = null;
+  }
+}
+
+function startRadarRefresh() {
+  stopRadarRefresh();
+  radarRefreshTimer = window.setInterval(() => {
+    if (!radarVisible) return;
+    refreshRadarLayer();
+  }, RADAR_REFRESH_MS);
+}
+
+function setRadarVisible(visible) {
+  radarVisible = visible;
+  updateRadarButtonState();
+  if (!nodesVisible) {
+    if (map.hasLayer(radarLayerGroup)) {
+      map.removeLayer(radarLayerGroup);
+    }
+    if (map.hasLayer(weatherWindLayer)) {
+      map.removeLayer(weatherWindLayer);
+    }
+    stopRadarPreload(false);
+    stopRadarRefresh();
+    stopWeatherWindRefresh();
+    return;
+  }
+  if (visible) {
+    stopRadarPreload(true);
+    if (!map.hasLayer(radarLayerGroup)) {
+      radarLayerGroup.addTo(map);
+    }
+    if (weatherWindEnabled && !map.hasLayer(weatherWindLayer)) {
+      weatherWindLayer.addTo(map);
+    }
+    if (radarLayer) {
+      radarLayer.setOpacity(0.58);
+    }
+    if (!radarLayer) {
+      refreshRadarLayer();
+    }
+    if (weatherWindEnabled) {
+      refreshWeatherWindLayer({ silent: true, background: true });
+      startWeatherWindRefresh();
+    }
+    startRadarRefresh();
+  } else {
+    if (map.hasLayer(radarLayerGroup)) {
+      map.removeLayer(radarLayerGroup);
+    }
+    if (map.hasLayer(weatherWindLayer)) {
+      map.removeLayer(weatherWindLayer);
+    }
+    stopRadarPreload(false);
+    stopRadarRefresh();
+    stopWeatherWindRefresh();
+  }
+}
+
 function updateNodeSizeUi() {
   if (nodeSizeInput) {
     nodeSizeInput.value = String(nodeMarkerRadius);
@@ -691,6 +1277,15 @@ function setNodesVisible(visible) {
     if (coverageVisible && !map.hasLayer(coverageLayer)) {
       coverageLayer.addTo(map);
     }
+    if (radarVisible && !map.hasLayer(radarLayerGroup)) {
+      radarLayerGroup.addTo(map);
+    }
+    if (radarVisible && weatherWindEnabled && !map.hasLayer(weatherWindLayer)) {
+      weatherWindLayer.addTo(map);
+    }
+    if (radarVisible && weatherWindEnabled) {
+      startWeatherWindRefresh();
+    }
     if (peersActive && !map.hasLayer(peerLayer)) {
       peerLayer.addTo(map);
     }
@@ -719,6 +1314,13 @@ function setNodesVisible(visible) {
     if (coverageLayer && map.hasLayer(coverageLayer)) {
       map.removeLayer(coverageLayer);
     }
+    if (map.hasLayer(radarLayerGroup)) {
+      map.removeLayer(radarLayerGroup);
+    }
+    if (map.hasLayer(weatherWindLayer)) {
+      map.removeLayer(weatherWindLayer);
+    }
+    stopWeatherWindRefresh();
     if (map.hasLayer(peerLayer)) {
       map.removeLayer(peerLayer);
     }
@@ -735,6 +1337,13 @@ function setNodesVisible(visible) {
     if (heatLayer && map.hasLayer(heatLayer)) {
       map.removeLayer(heatLayer);
     }
+    if (map.hasLayer(radarLayerGroup)) {
+      map.removeLayer(radarLayerGroup);
+    }
+    if (map.hasLayer(weatherWindLayer)) {
+      map.removeLayer(weatherWindLayer);
+    }
+    stopWeatherWindRefresh();
     if (map.hasLayer(peerLayer)) {
       map.removeLayer(peerLayer);
     }
@@ -4553,6 +5162,8 @@ if (shareToggle) {
     url.searchParams.set('layer', baseLayer);
     url.searchParams.set('history', historyVisible ? 'on' : 'off');
     url.searchParams.set('heat', heatVisible ? 'on' : 'off');
+    url.searchParams.set('coverage', coverageVisible ? 'on' : 'off');
+    url.searchParams.set('weather', radarVisible ? 'on' : 'off');
     url.searchParams.set('labels', showLabels ? 'on' : 'off');
     url.searchParams.set('nodes', nodesVisible ? 'on' : 'off');
     url.searchParams.set('legend', hud && hud.classList.contains('legend-collapsed') ? 'off' : 'on');
@@ -4639,6 +5250,9 @@ function setDistanceUnits(units, persist = true) {
   }
   if (activeRouteDetailsMeta && routeDetailsPanel && !routeDetailsPanel.hidden) {
     showRouteDetails(activeRouteDetailsMeta);
+  }
+  if (radarVisible && weatherWindEnabled) {
+    refreshWeatherWindLayer({ silent: true, background: true });
   }
 }
 setUnitsLabel();
@@ -4939,6 +5553,10 @@ if (coverageToggle && !coverageEnabled) {
 if (coverageToggle && coverageEnabled) {
   const storedCoverageVisible = localStorage.getItem('meshmapShowCoverage');
   let initialCoverage = storedCoverageVisible !== null ? storedCoverageVisible === 'true' : false;
+  if (queryCoverageVisible !== null) {
+    initialCoverage = queryCoverageVisible;
+    localStorage.setItem('meshmapShowCoverage', initialCoverage ? 'true' : 'false');
+  }
   setCoverageVisible(initialCoverage);
   coverageToggle.addEventListener('click', () => {
     try {
@@ -4946,6 +5564,33 @@ if (coverageToggle && coverageEnabled) {
       localStorage.setItem('meshmapShowCoverage', coverageVisible ? 'true' : 'false');
     } catch (err) {
       reportError(`Coverage toggle failed: ${err && err.message ? err.message : err}`);
+    }
+  });
+}
+
+const weatherToggle = document.getElementById('weather-toggle');
+if (weatherToggle) {
+  localStorage.removeItem('meshmapShowRadar');
+  if (weatherRadarCountryBoundsEnabled) {
+    loadStoredRadarCountryBounds();
+    ensureRadarCountryBounds({ silent: true });
+  }
+  const cachedRadarHost = (localStorage.getItem('meshmapRadarHost') || '').trim();
+  const cachedRadarPath = (localStorage.getItem('meshmapRadarPath') || '').trim();
+  if (cachedRadarPath) {
+    updateRadarLayer(cachedRadarHost || radarFrameHost, cachedRadarPath);
+  }
+  refreshRadarLayer({ silent: true, background: true });
+  let initialRadar = false;
+  if (queryWeatherVisible !== null) {
+    initialRadar = queryWeatherVisible;
+  }
+  setRadarVisible(initialRadar);
+  weatherToggle.addEventListener('click', () => {
+    try {
+      setRadarVisible(!radarVisible);
+    } catch (err) {
+      reportError(`Weather toggle failed: ${err && err.message ? err.message : err}`);
     }
   });
 }
@@ -5223,6 +5868,13 @@ if (propToggle) {
     }
   });
 }
+
+map.on('moveend', () => {
+  scheduleWeatherWindRefresh();
+});
+map.on('zoomend', () => {
+  scheduleWeatherWindRefresh();
+});
 
 map.on('click', (ev) => {
   const target = ev && ev.originalEvent ? ev.originalEvent.target : null;

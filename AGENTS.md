@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.3.5` (see `VERSIONS.md`).
+Current version: `1.4.0` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -17,7 +17,7 @@ Current version: `1.3.5` (see `VERSIONS.md`).
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.3.5`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.4.0`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -52,8 +52,21 @@ Current version: `1.3.5` (see `VERSIONS.md`).
 - `MAP_RADIUS_SHOW=true` draws a debug circle centered on `MAP_START_LAT/LON`.
 - Set `TRAIL_LEN=0` to disable trails entirely; the HUD trail hint is removed when trails are off.
 - Coverage button only appears when `COVERAGE_API_URL` is set.
+- Radar country-bounds controls:
+  `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED` and
+  `WEATHER_RADAR_COUNTRY_LOOKUP_URL`.
+  `WEATHER_RADAR_COUNTRY_LOOKUP_URL` defaults to
+  `/weather/radar/country-bounds` and is an HTTP route path, not a
+  filesystem directory.
+- Weather wind controls:
+  `WEATHER_WIND_ENABLED`, `WEATHER_WIND_API_URL`,
+  `WEATHER_WIND_GRID_SIZE`, `WEATHER_WIND_REFRESH_SECONDS`.
 - `DEVICE_COORDS_FILE` points to optional coordinate overrides (default `/data/device_coords.json`).
 - `NEIGHBOR_OVERRIDES_FILE` can point at a JSON map/list of neighbor pairs to resolve hash collisions.
+- Auto-neighbor overrides are controlled by:
+  `AUTO_NEIGHBOR_OVERRIDES_ENABLED`, `AUTO_NEIGHBOR_OVERRIDES_FILE`,
+  `AUTO_NEIGHBOR_ACTIVE_DAYS`, `AUTO_NEIGHBOR_MIN_EDGE_COUNT`, and
+  `AUTO_NEIGHBOR_REFRESH_SECONDS`.
 - Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.
 - Update banner uses `GIT_CHECK_ENABLED` (compare local vs upstream) with `GIT_CHECK_PATH` pointing at a git repo.
 - `GIT_CHECK_FETCH` controls whether the server fetches before comparing; `GIT_CHECK_INTERVAL_SECONDS` sets the recheck interval.
@@ -104,6 +117,7 @@ Current version: `1.3.5` (see `VERSIONS.md`).
 - Clicking the logo toggles the left HUD panel while LOS/Propagation panels remain open.
 - Node popups do not auto-pan; dragging the map won’t snap back to keep a popup in view.
 - MQTT disconnect handler tolerates extra Paho args so the loop doesn’t crash; reconnects resume ingest.
-- Share button copies a URL with `lat`, `lon`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, and `history_filter` params.
+- Share button copies a URL with `lat`, `lon`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `labels`, `nodes`, `legend`, `menu`, `units`, and `history_filter` params.
+- Weather state is not persisted in localStorage; it defaults off unless `weather=on` is in the URL.
 - URL params override localStorage on load (`history=on` is the only way to load History open).
 - Node size slider persists in localStorage (`meshmapNodeRadius`) and can be reset by clearing site data.

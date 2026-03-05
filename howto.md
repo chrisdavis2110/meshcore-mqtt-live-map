@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.3.5` (see `VERSIONS.md`).
+Current version: `1.4.0` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -123,10 +123,29 @@ Optional coordinate overrides (for fixed node placement):
 DEVICE_COORDS_FILE=/data/device_coords.json
 ```
 
+Optional neighbor override controls (manual + auto):
+
+```env
+NEIGHBOR_OVERRIDES_FILE=/data/neighbor_overrides.json
+AUTO_NEIGHBOR_OVERRIDES_ENABLED=false
+AUTO_NEIGHBOR_OVERRIDES_FILE=/data/neighbor_overrides.auto.json
+AUTO_NEIGHBOR_ACTIVE_DAYS=7
+AUTO_NEIGHBOR_MIN_EDGE_COUNT=3
+AUTO_NEIGHBOR_REFRESH_SECONDS=60
+```
+
 Optional: enable the coverage layer by setting `COVERAGE_API_URL` (the Coverage button hides itself when blank):
 
 ```env
 COVERAGE_API_URL=https://coverage.example.com
+WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true
+# Optional override. Default is /weather/radar/country-bounds on this app.
+# This is an HTTP URL path, not a filesystem directory.
+WEATHER_RADAR_COUNTRY_LOOKUP_URL=/weather/radar/country-bounds
+WEATHER_WIND_ENABLED=true
+WEATHER_WIND_API_URL=https://api.open-meteo.com/v1/forecast
+WEATHER_WIND_GRID_SIZE=3
+WEATHER_WIND_REFRESH_SECONDS=180
 ```
 
 If you are using plain TCP MQTT, set:

@@ -8,7 +8,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 3) Verify: `curl -s http://localhost:8080/snapshot`
 
 ## Versioning
-- Current version: `1.3.5` (see `VERSIONS.md`).
+- Current version: `1.4.0` (see `VERSIONS.md`).
 - Update `VERSION.txt` when adding features.
 - Append a new section to `VERSIONS.md` describing the change set.
 
@@ -32,6 +32,10 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - Turnstile only activates when `PROD_MODE=true`; if you are testing Turnstile,
   set `PROD_MODE=true` plus the `TURNSTILE_*` env vars.
 - If `COVERAGE_API_URL` is blank, confirm the Coverage button is hidden.
+- If `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true`, confirm radar tiles stay constrained to the resolved country bounds.
+- If `WEATHER_RADAR_COUNTRY_LOOKUP_URL` is set, confirm it is a reachable HTTP endpoint (default `/weather/radar/country-bounds`, not a filesystem path).
+- If `WEATHER_WIND_ENABLED=true`, confirm wind arrows render under the Weather toggle and refresh after pan/zoom.
+- Weather should default off after reload unless `weather=on` is present in the URL.
 - Note: coordinates at `0,0` (even as strings) are filtered and won’t render.
 - Radius filter: `MAP_RADIUS_KM=0` disables filtering; `.env.example` uses 241.4 km (150mi).
 - `CUSTOM_LINK_URL` shows an extra HUD link when set; leave blank to hide.
@@ -41,6 +45,10 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - Staleness controls: `DEVICE_TTL_HOURS` (device/adverts) and `PATH_TTL_SECONDS` (path activity).
 - Coordinate overrides: `DEVICE_COORDS_FILE` (default `/data/device_coords.json`).
 - Neighbor overrides: `NEIGHBOR_OVERRIDES_FILE` can force adjacency pairs for hash collisions.
+- Auto-neighbor overrides:
+  `AUTO_NEIGHBOR_OVERRIDES_ENABLED`, `AUTO_NEIGHBOR_OVERRIDES_FILE`,
+  `AUTO_NEIGHBOR_ACTIVE_DAYS`, `AUTO_NEIGHBOR_MIN_EDGE_COUNT`,
+  `AUTO_NEIGHBOR_REFRESH_SECONDS`.
 
 ## UI Changes
 When adding UI controls:

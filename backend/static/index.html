@@ -36,6 +36,11 @@
   data-mqtt-online-seconds="{{MQTT_ONLINE_SECONDS}}" data-distance-units="{{DISTANCE_UNITS}}"
   data-node-radius="{{NODE_MARKER_RADIUS}}" data-history-link-scale="{{HISTORY_LINK_SCALE}}"
   data-coverage-api-url="{{COVERAGE_API_URL}}" data-custom-link-url="{{CUSTOM_LINK_URL}}"
+  data-weather-radar-country-bounds-enabled="{{WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED}}"
+  data-weather-radar-country-lookup-url="{{WEATHER_RADAR_COUNTRY_LOOKUP_URL}}"
+  data-weather-wind-enabled="{{WEATHER_WIND_ENABLED}}" data-weather-wind-api-url="{{WEATHER_WIND_API_URL}}"
+  data-weather-wind-grid-size="{{WEATHER_WIND_GRID_SIZE}}"
+  data-weather-wind-refresh-seconds="{{WEATHER_WIND_REFRESH_SECONDS}}"
   data-update-available="{{UPDATE_AVAILABLE}}" data-update-local="{{UPDATE_LOCAL}}"
   data-update-remote="{{UPDATE_REMOTE}}" data-turnstile-enabled="{{TURNSTILE_ENABLED}}">
   <script>
@@ -119,6 +124,7 @@
       <button class="map-toggle" id="nodes-toggle" type="button">Hide nodes</button>
       <button class="map-toggle" id="heat-toggle" type="button">Hide heat</button>
       <button class="map-toggle" id="coverage-toggle" type="button">Coverage</button>
+      <button class="map-toggle" id="weather-toggle" type="button">Weather</button>
       <button class="map-toggle" id="history-toggle" type="button">History tool</button>
       <button class="map-toggle" id="peers-toggle" type="button">Peers tool</button>
       <button class="map-toggle" id="hops-toggle" type="button">Show hops</button>

@@ -1,5 +1,29 @@
 # Versions
 
+## v1.4.0 (02-21-2026)
+- Fix: share links now include the coverage overlay state so shared URLs preserve `coverage=on|off`.
+- Added Weather overlay support with share URL state (`weather=on|off`).
+- Weather toggle combines radar + wind overlays in one control.
+- Added and documented weather wind env controls:
+  `WEATHER_WIND_ENABLED`, `WEATHER_WIND_API_URL`,
+  `WEATHER_WIND_GRID_SIZE`, `WEATHER_WIND_REFRESH_SECONDS`.
+- Added country-bounded radar mode with env controls:
+  `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED` and
+  `WEATHER_RADAR_COUNTRY_LOOKUP_URL`.
+- Default weather-radar country lookup now uses the local API route
+  `/weather/radar/country-bounds` (URL path, not a filesystem directory).
+- Weather visibility is not persisted in localStorage; it defaults off
+  unless explicitly set in the URL.
+- Added auto-neighbor override promotion/pruning for learned paths so stable neighbors can be persisted and stale ones removed automatically.
+- Added and documented auto-neighbor env controls:
+  `AUTO_NEIGHBOR_OVERRIDES_ENABLED`, `AUTO_NEIGHBOR_OVERRIDES_FILE`,
+  `AUTO_NEIGHBOR_ACTIVE_DAYS`, `AUTO_NEIGHBOR_MIN_EDGE_COUNT`, and
+  `AUTO_NEIGHBOR_REFRESH_SECONDS`.
+- Docker compose now forwards neighbor override envs end-to-end:
+  `DEVICE_COORDS_FILE`, `NEIGHBOR_OVERRIDES_FILE`, and all
+  `AUTO_NEIGHBOR_*` envs.
+- `.env.example` includes the full neighbor override + auto-neighbor env set.
+
 ## v1.3.5 (02-06-2026)
 - Added dual stale-window support so `DEVICE_TTL_HOURS` and `PATH_TTL_SECONDS` work together instead of replacing each other.
 - Node pruning now supports both windows at once (with 4-day device defaults and 48-hour path defaults in examples/compose).

@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.3.5` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.4.0` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -27,8 +27,9 @@ Live example sites:
 - Peers tool showing incoming/outgoing neighbors with on-map lines (blue = incoming, purple = outgoing)
 - Coverage layer from a [coverage map API](https://github.com/nullrouten0/meshcore-coverage-map) (button hidden when not configured)
 - Update available banner (git local vs upstream) with dismiss
-- UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle
+- UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle, Weather (radar + wind)
 - Share button that copies a URL with current view + settings
+- Share links now preserve coverage overlay visibility (`coverage=on|off`)
 - URL parameters to open the map at a specific view (center, zoom, toggles)
 - Node search by name or public key
 - Adjustable node size slider (defaults from env, saves locally)
@@ -87,6 +88,11 @@ Storage + server:
 - `DEVICE_ROLES_FILE` (optional role override JSON file)
 - `DEVICE_COORDS_FILE` (optional coordinate override JSON file; default `/data/device_coords.json`)
 - `NEIGHBOR_OVERRIDES_FILE` (optional JSON mapping for neighbor overrides)
+- `AUTO_NEIGHBOR_OVERRIDES_ENABLED` (auto-promote learned neighbor pairs when devices are stable; default `false`)
+- `AUTO_NEIGHBOR_OVERRIDES_FILE` (where auto-generated neighbor overrides are persisted; default `/data/neighbor_overrides.auto.json`)
+- `AUTO_NEIGHBOR_ACTIVE_DAYS` (minimum days active + activity window for auto overrides; default `7`)
+- `AUTO_NEIGHBOR_MIN_EDGE_COUNT` (minimum learned edge observations before promotion; default `3`)
+- `AUTO_NEIGHBOR_REFRESH_SECONDS` (refresh/save cadence for auto overrides; default `60`)
 - `STATE_SAVE_INTERVAL` (seconds between state saves)
 - `WEB_PORT` (host port for the web UI)
 - `PROD_MODE` (true to require a token for API + WS)
@@ -127,6 +133,13 @@ MQTT:
 
 Coverage layer:
 - `COVERAGE_API_URL` (URL to coverage map API; button hidden when blank)
+- `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED` (limit weather radar tiles to the resolved country bounds for map coords)
+- `WEATHER_RADAR_COUNTRY_LOOKUP_URL` (optional country-bounds lookup endpoint override; default `/weather/radar/country-bounds`)
+- `WEATHER_RADAR_COUNTRY_LOOKUP_URL` is an HTTP route path on this app by default (not a filesystem directory path)
+- `WEATHER_WIND_ENABLED` (enable wind overlay inside the Weather toggle; default `true`)
+- `WEATHER_WIND_API_URL` (wind API endpoint; default Open-Meteo forecast API)
+- `WEATHER_WIND_GRID_SIZE` (weather wind sample grid side length, 1-5; default `3`)
+- `WEATHER_WIND_REFRESH_SECONDS` (wind refresh interval; min 30, default `180`)
 
 Device + route tuning:
 - `DEVICE_TTL_HOURS` (advert/device stale window; default `96`)
@@ -223,7 +236,8 @@ Use it:
 - LOS elevations are fetched via `/los/elevations` and LOS/relay math runs client-side (with `/los` fallback).
 - History tool always loads off (use the button or `history=on` in the URL).
 - Peers tool uses route history segments; forced MQTT listeners are excluded from peer lists.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
+- Weather toggle state is not persisted in localStorage; it loads off unless `weather=on` is present in the URL.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;

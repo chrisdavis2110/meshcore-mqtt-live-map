@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.3.5` (see `VERSIONS.md`).
+Current version: `1.4.0` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.3.5`).
+- `VERSION.txt` holds the current version string (`1.4.0`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -46,6 +46,10 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `PATH_TTL_SECONDS` controls path staleness (default `172800` seconds / 48h).
 - `DEVICE_COORDS_FILE` points to optional coordinate overrides (`/data/device_coords.json` by default).
 - `NEIGHBOR_OVERRIDES_FILE` points at an optional JSON file with neighbor pairs to resolve hash collisions.
+- `AUTO_NEIGHBOR_OVERRIDES_ENABLED` enables auto-promotion of learned neighbor pairs.
+- `AUTO_NEIGHBOR_OVERRIDES_FILE` stores auto-generated neighbor pairs (`/data/neighbor_overrides.auto.json` by default).
+- `AUTO_NEIGHBOR_ACTIVE_DAYS`, `AUTO_NEIGHBOR_MIN_EDGE_COUNT`, and
+  `AUTO_NEIGHBOR_REFRESH_SECONDS` control auto-promotion thresholds and cadence.
 - Turnstile protection is gated by `PROD_MODE=true` and controlled by:
   `TURNSTILE_ENABLED`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`,
   `TURNSTILE_API_URL`, and `TURNSTILE_TOKEN_TTL_SECONDS`.
@@ -83,6 +87,13 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
 - Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
 - Coverage tool only appears when `COVERAGE_API_URL` is set; it fetches tiles on demand.
+- `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true` constrains radar tiles to the resolved country around map coordinates.
+- `WEATHER_RADAR_COUNTRY_LOOKUP_URL` optionally overrides the country-bounds lookup endpoint (default `/weather/radar/country-bounds`).
+- `WEATHER_RADAR_COUNTRY_LOOKUP_URL` is a URL route path by default (`/weather/radar/country-bounds`), not a filesystem directory.
+- Weather toggle now combines radar + wind overlays.
+- Wind overlay envs: `WEATHER_WIND_ENABLED`, `WEATHER_WIND_API_URL`,
+  `WEATHER_WIND_GRID_SIZE`, `WEATHER_WIND_REFRESH_SECONDS`.
+- Weather defaults off on load (no localStorage persistence); share URLs can force `weather=on|off`.
 - Trail text in the HUD is only shown when `TRAIL_LEN > 0`; `TRAIL_LEN=0` disables trails entirely.
 - Hide Nodes toggle hides markers, trails, heat, routes, and history layers.
 - Heat toggle can hide the heatmap; it defaults on and the button turns green when heat is off.
@@ -102,7 +113,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.
 - Update banner shows when `GIT_CHECK_ENABLED=true` and the repo is behind; users can dismiss it per remote SHA.
 - Update banner dismissal relies on `.hud-update[hidden]` to ensure the banner actually disappears.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
 - Service worker uses `no-store` for navigation requests so env-driven UI toggles (like the radius ring) update without clearing site data.
 - HUD scrollbars are custom styled in Chromium for a cleaner look.
 
