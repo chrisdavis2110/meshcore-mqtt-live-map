@@ -4,6 +4,7 @@ import os
 import html
 import time
 import subprocess
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from dataclasses import asdict
 from typing import Any, Dict, Optional, Set, List, Tuple
@@ -179,7 +180,72 @@ from state import (
 # =========================
 # App / State
 # =========================
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+  global mqtt_client
+
+  _load_state()
+  _load_route_history()
+  _load_neighbor_overrides()
+  _ensure_node_decoder()
+  _check_git_updates()
+
+  loop = asyncio.get_event_loop()
+  transport = "websockets" if MQTT_TRANSPORT == "websockets" else "tcp"
+
+  topics_str = ", ".join(MQTT_TOPICS)
+  print(
+    f"[mqtt] connecting host={MQTT_HOST} port={MQTT_PORT} tls={MQTT_TLS} transport={transport} ws_path={MQTT_WS_PATH if transport == 'websockets' else '-'} topics={topics_str}"
+  )
+
+  mqtt_client = mqtt.Client(
+    mqtt.CallbackAPIVersion.VERSION2,
+    client_id=(MQTT_CLIENT_ID or None),
+    userdata={"loop": loop},
+    transport=transport,
+  )
+
+  if transport == "websockets":
+    mqtt_client.ws_set_options(path=MQTT_WS_PATH)
+
+  if MQTT_USERNAME:
+    mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+
+  if MQTT_TLS:
+    if MQTT_CA_CERT:
+      mqtt_client.tls_set(ca_certs=MQTT_CA_CERT)
+    else:
+      mqtt_client.tls_set()
+    if MQTT_TLS_INSECURE:
+      mqtt_client.tls_insecure_set(True)
+
+  mqtt_client.on_connect = mqtt_on_connect
+  mqtt_client.on_disconnect = mqtt_on_disconnect
+  mqtt_client.on_message = mqtt_on_message
+
+  mqtt_client.reconnect_delay_set(min_delay=1, max_delay=30)
+  mqtt_client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
+  mqtt_client.loop_start()
+
+  asyncio.create_task(broadcaster())
+  asyncio.create_task(reaper())
+  asyncio.create_task(_state_saver())
+  asyncio.create_task(_route_history_saver())
+  asyncio.create_task(_git_check_loop())
+
+  try:
+    yield
+  finally:
+    if mqtt_client is not None:
+      try:
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
+      except Exception:
+        pass
+      mqtt_client = None
+
+
+app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 mqtt_client: Optional[mqtt.Client] = None
@@ -580,9 +646,13 @@ def _route_payload(route: Dict[str, Any]) -> Dict[str, Any]:
   return {
     "id": route.get("id"),
     "points": route.get("points"),
+    "hashes": route.get("hashes"),
+    "point_ids": route.get("point_ids"),
     "route_mode": route.get("route_mode"),
     "ts": route.get("ts"),
     "expires_at": route.get("expires_at"),
+    "origin_id": route.get("origin_id"),
+    "receiver_id": route.get("receiver_id"),
     "payload_type": route.get("payload_type"),
   }
 
@@ -2785,71 +2855,3 @@ async def ws_endpoint(ws: WebSocket):
   finally:
     clients.discard(ws)
 
-
-# =========================
-# Startup / Shutdown
-# =========================
-@app.on_event("startup")
-async def startup():
-  global mqtt_client
-
-  _load_state()
-  _load_route_history()
-  _load_neighbor_overrides()
-  _ensure_node_decoder()
-  _check_git_updates()
-
-  loop = asyncio.get_event_loop()
-  transport = "websockets" if MQTT_TRANSPORT == "websockets" else "tcp"
-
-  topics_str = ", ".join(MQTT_TOPICS)
-  print(
-    f"[mqtt] connecting host={MQTT_HOST} port={MQTT_PORT} tls={MQTT_TLS} transport={transport} ws_path={MQTT_WS_PATH if transport == 'websockets' else '-'} topics={topics_str}"
-  )
-
-  mqtt_client = mqtt.Client(
-    mqtt.CallbackAPIVersion.VERSION2,
-    client_id=(MQTT_CLIENT_ID or None),
-    userdata={"loop": loop},
-    transport=transport,
-  )
-
-  if transport == "websockets":
-    mqtt_client.ws_set_options(path=MQTT_WS_PATH)
-
-  if MQTT_USERNAME:
-    mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-
-  if MQTT_TLS:
-    if MQTT_CA_CERT:
-      mqtt_client.tls_set(ca_certs=MQTT_CA_CERT)
-    else:
-      mqtt_client.tls_set()
-    if MQTT_TLS_INSECURE:
-      mqtt_client.tls_insecure_set(True)
-
-  mqtt_client.on_connect = mqtt_on_connect
-  mqtt_client.on_disconnect = mqtt_on_disconnect
-  mqtt_client.on_message = mqtt_on_message
-
-  mqtt_client.reconnect_delay_set(min_delay=1, max_delay=30)
-  mqtt_client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
-  mqtt_client.loop_start()
-
-  asyncio.create_task(broadcaster())
-  asyncio.create_task(reaper())
-  asyncio.create_task(_state_saver())
-  asyncio.create_task(_route_history_saver())
-  asyncio.create_task(_git_check_loop())
-
-
-@app.on_event("shutdown")
-async def shutdown():
-  global mqtt_client
-  if mqtt_client is not None:
-    try:
-      mqtt_client.loop_stop()
-      mqtt_client.disconnect()
-    except Exception:
-      pass
-    mqtt_client = None
