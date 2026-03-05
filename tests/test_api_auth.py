@@ -1,0 +1,71 @@
+from starlette.requests import Request
+
+import pytest
+
+import app
+
+
+def _request(path, query="", headers=None):
+  headers = headers or {}
+  raw_headers = [
+    (k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()
+  ]
+  scope = {
+    "type": "http",
+    "http_version": "1.1",
+    "method": "GET",
+    "scheme": "http",
+    "path": path,
+    "raw_path": path.encode("latin-1"),
+    "query_string": query.encode("latin-1"),
+    "headers": raw_headers,
+    "client": ("127.0.0.1", 12345),
+    "server": ("testserver", 80),
+    "root_path": "",
+  }
+  return Request(scope)
+
+
+def test_prod_mode_requires_token_for_snapshot_api_nodes_and_peers(monkeypatch):
+  monkeypatch.setattr(app, "PROD_MODE", True)
+  monkeypatch.setattr(app, "PROD_TOKEN", "secret-token")
+
+  # snapshot without token should fail
+  req_no_token = _request("/snapshot")
+  with pytest.raises(app.HTTPException) as exc:
+    app.snapshot(req_no_token)
+  assert exc.value.status_code == 401
+
+  # snapshot with query token should pass
+  req_query_token = _request("/snapshot", query="token=secret-token")
+  snap = app.snapshot(req_query_token)
+  assert "devices" in snap
+
+  # /api/nodes with bearer token should pass
+  req_bearer = _request(
+    "/api/nodes", headers={"authorization": "Bearer secret-token"}
+  )
+  nodes = app.api_nodes(req_bearer)
+  assert "data" in nodes
+
+  # /peers without token should fail, with x-token should pass
+  with pytest.raises(app.HTTPException) as exc:
+    app.get_peers("dummy-device", _request("/peers/dummy-device"))
+  assert exc.value.status_code == 401
+
+  req_x_token = _request("/peers/dummy-device", headers={"x-token": "secret-token"})
+  peers = app.get_peers("dummy-device", req_x_token, limit=5)
+  assert peers["device_id"] == "dummy-device"
+
+
+def test_non_prod_mode_does_not_require_token(monkeypatch):
+  monkeypatch.setattr(app, "PROD_MODE", False)
+  monkeypatch.setattr(app, "PROD_TOKEN", "ignored")
+
+  snap = app.snapshot(_request("/snapshot"))
+  nodes = app.api_nodes(_request("/api/nodes"))
+  peers = app.get_peers("dummy-device", _request("/peers/dummy-device"), limit=3)
+
+  assert isinstance(snap, dict)
+  assert "data" in nodes
+  assert peers["device_id"] == "dummy-device"

@@ -1,5 +1,12 @@
 # Versions
 
+## v1.4.0 (03-05-2026)
+- Added mixed hop prefix support in route parsing/resolution so paths can include both 1-byte (`AB`) and 2-byte (`ABCD`) repeater prefixes.
+- Route hash candidate mapping now indexes both prefix widths per device to reduce collisions/phantom hops on larger networks.
+- Show Hops now labels prefixes as `Prefix: AB` or `Prefix: ABCD` (no `0x`) and aligns prefix display with the rendered route direction.
+- 2-byte prefix support is implemented and expected to be ready, but has not been fully field-tested yet.
+- Added a pytest suite + CI workflow covering prefix parsing, route resolution, API auth/modes, LOS endpoints, coverage endpoint behavior, neighbor override loading, websocket snapshot payloads, and state/history persistence round-trips.
+
 ## v1.3.5 (02-06-2026)
 - Added dual stale-window support so `DEVICE_TTL_HOURS` and `PATH_TTL_SECONDS` work together instead of replacing each other.
 - Node pruning now supports both windows at once (with 4-day device defaults and 48-hour path defaults in examples/compose).
