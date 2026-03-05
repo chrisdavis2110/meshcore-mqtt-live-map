@@ -69,3 +69,28 @@ def test_non_prod_mode_does_not_require_token(monkeypatch):
   assert isinstance(snap, dict)
   assert "data" in nodes
   assert peers["device_id"] == "dummy-device"
+
+
+def test_prod_route_payload_keeps_hop_hashes_for_ui(monkeypatch):
+  monkeypatch.setattr(app, "PROD_MODE", True)
+  payload = app._route_payload(
+    {
+      "id": "route-1",
+      "points": [[42.0, -71.0], [42.1, -71.1], [42.2, -71.2]],
+      "hashes": ["AB", "BC"],
+      "point_ids": ["AA1111", "BB2222", "CC3333"],
+      "origin_id": "AA1111",
+      "receiver_id": "CC3333",
+      "route_mode": "path",
+      "ts": 1.0,
+      "expires_at": 2.0,
+      "payload_type": 5,
+      "message_hash": "hidden-in-prod",
+    }
+  )
+
+  assert payload["hashes"] == ["AB", "BC"]
+  assert payload["point_ids"] == ["AA1111", "BB2222", "CC3333"]
+  assert payload["origin_id"] == "AA1111"
+  assert payload["receiver_id"] == "CC3333"
+  assert "message_hash" not in payload

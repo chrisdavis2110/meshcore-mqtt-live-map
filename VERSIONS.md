@@ -1,5 +1,16 @@
 # Versions
 
+## v1.4.2 (03-05-2026)
+- Migrated app lifecycle from deprecated FastAPI `@app.on_event("startup"/"shutdown")` handlers to a lifespan context manager.
+- Kept MQTT connect/disconnect and background task startup behavior equivalent under the new lifespan flow.
+- Added `.venv/` to `.gitignore` for local developer test environments.
+
+## v1.4.1 (03-05-2026)
+- Fixed route payload serialization in `PROD_MODE` so hop metadata needed by the Show Hops UI is included (`hashes`, `point_ids`, `origin_id`, `receiver_id`).
+- Added regression coverage to ensure prod route payloads keep hop hashes for prefix display.
+- Added tests for neighbor-priority route resolution and `/api/nodes` format/delta modes.
+- Reworked `.env.example` into grouped sections with clearer defaults and full key coverage to make setup easier.
+
 ## v1.4.0 (03-05-2026)
 - Added mixed hop prefix support in route parsing/resolution so paths can include both 1-byte (`AB`) and 2-byte (`ABCD`) repeater prefixes.
 - Route hash candidate mapping now indexes both prefix widths per device to reduce collisions/phantom hops on larger networks.
