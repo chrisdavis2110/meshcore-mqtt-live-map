@@ -1,14 +1,15 @@
 # Mesh Live Map
 
-Version: `1.4.0` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.4.2` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
 Live example sites:
 - https://live.bostonme.sh/ - Greater Boston Mesh Map
 - https://meshcore-map.ctmesh.org/ - CTMesh MeshCore Map
+- https://livemap.wcmesh.com/ - West Coast Mesh
 - https://map.eastmesh.au/ - Aus Eastern Mesh Live Map
-- https://mesh-map.e-l33t.org/ - NSW Mesh - Live Mesh Traffic Map
+- https://mapa.meshcore.cz/ - Czech Republic
 
 
 ![Live map preview](example.gif)
