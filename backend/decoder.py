@@ -46,7 +46,8 @@ RE_LAT_LON = re.compile(
 RE_TWO_FLOATS = re.compile(r"(-?\d{1,2}\.\d+)\s*[,\s]+\s*(-?\d{1,3}\.\d+)")
 
 BASE64_LIKE = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
-NODE_HASH_RE = re.compile(r"^[0-9a-fA-F]{2}$")
+NODE_HASH_RE = re.compile(r"^[0-9a-fA-F]+$")
+NODE_HASH_LENGTHS = (2, 4)
 
 _node_ready_once = False
 _node_unavailable_once = False
@@ -247,31 +248,58 @@ def _normalize_node_hash(value: Any) -> Optional[str]:
   if value is None:
     return None
   if isinstance(value, int):
-    return f"{value:02X}"
+    if value < 0:
+      return None
+    if value <= 0xFF:
+      return f"{value:02X}"
+    if value <= 0xFFFF:
+      return f"{value:04X}"
+    return None
+  if isinstance(value, (bytes, bytearray)):
+    value = bytes(value).hex()
   s = str(value).strip()
   if s.lower().startswith("0x"):
     s = s[2:]
-  if len(s) == 1:
+  s = s.replace(" ", "")
+  if not s:
+    return None
+  if len(s) % 2 == 1:
     s = f"0{s}"
-  if len(s) != 2 or not NODE_HASH_RE.match(s):
+  if len(s) not in NODE_HASH_LENGTHS or not NODE_HASH_RE.match(s):
     return None
   return s.upper()
 
 
-def _node_hash_from_device_id(device_id: str) -> Optional[str]:
-  if not device_id or len(device_id) < 2:
-    return None
-  return _normalize_node_hash(device_id[:2])
+def _node_hashes_from_device_id(device_id: str) -> List[str]:
+  if not device_id:
+    return []
+  value = str(device_id).strip()
+  if value.lower().startswith("0x"):
+    value = value[2:]
+  value = value.replace(" ", "")
+  if not value:
+    return []
+  out: List[str] = []
+  for length in NODE_HASH_LENGTHS:
+    if len(value) < length:
+      continue
+    key = _normalize_node_hash(value[:length])
+    if key and key not in out:
+      out.append(key)
+  return out
 
 
 def _rebuild_node_hash_map() -> None:
   candidates: Dict[str, List[str]] = {}
   collisions: Set[str] = set()
   for device_id in devices.keys():
-    node_hash = _node_hash_from_device_id(device_id)
-    if not node_hash:
+    node_hashes = _node_hashes_from_device_id(device_id)
+    if not node_hashes:
       continue
-    candidates.setdefault(node_hash, []).append(device_id)
+    for node_hash in node_hashes:
+      bucket = candidates.setdefault(node_hash, [])
+      if device_id not in bucket:
+        bucket.append(device_id)
   mapping: Dict[str, str] = {}
   for node_hash, ids in candidates.items():
     if len(ids) == 1:
@@ -433,22 +461,18 @@ def _route_points_from_hashes(
   if ROUTE_PATH_MAX_LEN > 0 and len(normalized) > ROUTE_PATH_MAX_LEN:
     return None, [], []
 
-  receiver_hash = _node_hash_from_device_id(
-    receiver_id
-  ) if receiver_id else None
-  origin_hash = _node_hash_from_device_id(origin_id) if origin_id else None
+  receiver_hashes = (
+    set(_node_hashes_from_device_id(receiver_id)) if receiver_id else set()
+  )
+  origin_hashes = (
+    set(_node_hashes_from_device_id(origin_id)) if origin_id else set()
+  )
 
-  if receiver_hash and receiver_hash in normalized:
-    if (
-      normalized and normalized[0] == receiver_hash and
-      normalized[-1] != receiver_hash
-    ):
+  if normalized and receiver_hashes:
+    if normalized[0] in receiver_hashes and normalized[-1] not in receiver_hashes:
       normalized.reverse()
-  elif origin_hash and origin_hash in normalized:
-    if (
-      normalized and normalized[-1] == origin_hash and
-      normalized[0] != origin_hash
-    ):
+  elif normalized and origin_hashes:
+    if normalized[-1] in origin_hashes and normalized[0] not in origin_hashes:
       normalized.reverse()
 
   points: List[List[float]] = []

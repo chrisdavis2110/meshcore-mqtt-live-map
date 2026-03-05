@@ -64,6 +64,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - MQTT supports **WebSockets + TLS** or plain TCP. Typical deployments use `MQTT_TRANSPORT=websockets`, `MQTT_TLS=true`, and `MQTT_WS_PATH=/` or `/mqtt`.
 - Decoder uses Node + `@michaelhart/meshcore-decoder` installed in the container.
 - `backend/decoder.py` writes a small Node helper and calls it to decode MeshCore packets.
+- Route path decoding now accepts mixed hop prefixes: 1-byte (`AB`) and 2-byte (`ABCD`) values in the same path during upgrade rollouts.
 
 ## Frontend UI
 - Header includes a GitHub link icon and HUD summary (stats, feed note).
@@ -139,6 +140,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 
 ## Routes / Message Paths
 Routes are drawn when a packet contains a path list (decoder `pathHashes` or `path`).
+Hop prefixes may be 1-byte or 2-byte, and mixed lists are supported.
 When a hop hash collides, the backend prefers neighbor pairs (or overrides) before falling back to closest-hop selection; oversized path lists are ignored via `ROUTE_PATH_MAX_LEN`.
 All route hops enforce `ROUTE_MAX_HOP_DISTANCE` to prevent cross‑region jumps.
 
@@ -195,6 +197,7 @@ If routes aren’t visible:
 - Fixed MQTT disconnect callback signature so broker drops don’t crash the MQTT loop.
 - Route hash collisions prefer known neighbors (or overrides) before closest-hop selection; long path lists are skipped (`ROUTE_PATH_MAX_LEN`).
 - First-hop hash collisions now prefer the closest node to the origin to avoid cross-city mis-picks (Issue #11).
+- Show Hops now displays plain prefix values (`Prefix: AB` / `Prefix: ABCD`) and aligns the displayed prefix with rendered route direction.
 - Dev-only route debugging: clicking a route line logs hop-by-hop metadata (distances, hashes, origin/receiver) to the browser console when `PROD_MODE=false` (PR #14, credit: https://github.com/sefator).
 - Trails can be disabled by setting `TRAIL_LEN=0` (HUD trail text is removed).
 - Node marker size can be tuned via `NODE_MARKER_RADIUS` (users can override locally).
@@ -209,3 +212,4 @@ If routes aren’t visible:
 - `ROUTE_INFRA_ONLY` direct-route checks now allow rendering when at least one endpoint is infrastructure.
 - Propagation range math now uses a user-set TX antenna gain field; Rx AGL default lowered to 1m (credit: C2D).
 - Device staleness now supports a dual TTL model using both `DEVICE_TTL_HOURS` and `PATH_TTL_SECONDS` together.
+- 2-byte repeater-prefix support is in place and expected to work, but is not fully field-tested yet.

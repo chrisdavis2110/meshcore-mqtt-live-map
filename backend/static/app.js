@@ -1572,6 +1572,9 @@ function showRouteDetails(meta) {
     if (isReversed) {
       displayPoints.reverse();
     }
+    const displayHashes = Array.isArray(meta.hashes)
+      ? (isReversed ? [...meta.hashes].reverse() : [...meta.hashes])
+      : [];
 
     displayPoints.forEach((pt, displayIdx) => {
       const row = document.createElement('div');
@@ -1622,18 +1625,15 @@ function showRouteDetails(meta) {
         ? formatDistanceUnits(pt.hop_distance_m)
         : '';
 
-      // Use originalIndex to access hashes directly to avoid shifts.
-      const originalIdx = (pt.originalIndex !== undefined) ? pt.originalIndex : displayIdx;
       let idInfo = '';
-      if (meta.hashes && meta.hashes[originalIdx]) {
-        const h = meta.hashes[originalIdx];
-        const label = hashFirstByteLabel(h);
+      if (displayIdx > 0 && displayHashes[displayIdx - 1]) {
+        const h = displayHashes[displayIdx - 1];
+        const label = hopPrefixIdLabel(h);
         if (label) {
-          const parts = label.split(' ');
-          idInfo = `ID: ${parts[0]}`;
+          idInfo = `Prefix: ${label}`;
         }
-      } else if (pt.hop_first_byte) {
-        idInfo = `ID: ${pt.hop_first_byte}`;
+      } else if (pt.hop_prefix) {
+        idInfo = `Prefix: ${pt.hop_prefix}`;
       }
 
       const metaInfo = [distInfo, idInfo].filter(Boolean).join(' • ');
@@ -4599,20 +4599,43 @@ function formatTimestampLabel(tsSeconds) {
   }
 }
 
-function hashFirstByteLabel(hash) {
+function normalizeHopHashPrefix(hash) {
   if (!hash) return null;
   const text = String(hash).trim();
   if (!text) return null;
-  const maybeHex = text.slice(0, 2);
-  const hexVal = Number.parseInt(maybeHex, 16);
-  if (!Number.isNaN(hexVal)) {
-    return `0x${maybeHex.toUpperCase()} (${hexVal})`;
+  const raw = text.toLowerCase().startsWith('0x') ? text.slice(2) : text;
+  if (!raw) return null;
+  let normalized = raw.replace(/\s+/g, '');
+  if (!normalized) return null;
+  if (!/^[0-9a-fA-F]+$/.test(normalized)) return null;
+  if (normalized.length % 2 === 1) {
+    normalized = `0${normalized}`;
   }
-  const firstChar = text.charCodeAt(0);
-  if (Number.isFinite(firstChar)) {
-    return `0x${firstChar.toString(16).padStart(2, '0').toUpperCase()} (${firstChar})`;
+  if (normalized.length !== 2 && normalized.length !== 4) {
+    return null;
   }
-  return text.slice(0, 4);
+  return normalized.toUpperCase();
+}
+
+function hopPrefixIdLabel(hash) {
+  const normalized = normalizeHopHashPrefix(hash);
+  if (!normalized) return null;
+  return normalized;
+}
+
+function hopPrefixDetailLabel(hash) {
+  const normalized = normalizeHopHashPrefix(hash);
+  if (!normalized) return null;
+  const displayPrefix = hopPrefixIdLabel(normalized);
+  const bits = displayPrefix.length * 4;
+  const decVal = Number.parseInt(displayPrefix, 16);
+  if (Number.isFinite(decVal)) {
+    if (normalized.length === 2) {
+      return `${displayPrefix} (${bits}-bit, ${decVal}, from legacy ${normalized})`;
+    }
+    return `${displayPrefix} (${bits}-bit, ${decVal})`;
+  }
+  return displayPrefix;
 }
 
 function buildRouteLogMeta(route) {
@@ -4650,7 +4673,8 @@ function buildRouteLogMeta(route) {
       cumulative_m: cumulative,
       cumulative_label: Number.isFinite(cumulative) ? formatDistanceUnits(cumulative) : null,
       hop_hash: hopHash || null,
-      hop_first_byte: hopHash ? hashFirstByteLabel(hopHash) : null
+      hop_prefix: hopHash ? hopPrefixIdLabel(hopHash) : null,
+      hop_prefix_detail: hopHash ? hopPrefixDetailLabel(hopHash) : null
     };
   });
   return {
@@ -4716,7 +4740,8 @@ function logRouteDetails(meta, clickLatLng) {
       hop_distance: pt.hop_distance_label,
       cumulative: pt.cumulative_label,
       hop_hash: pt.hop_hash ? shortHash(pt.hop_hash) : null,
-      hop_first_byte: pt.hop_first_byte || null
+      hop_prefix: pt.hop_prefix || null,
+      hop_prefix_detail: pt.hop_prefix_detail || null
     }));
     console.table(rows);
   }

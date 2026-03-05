@@ -144,6 +144,7 @@ Handles multiple payload formats:
 3. **MeshCore packets** - Hex-encoded, decoded via Node.js
 
 The Node.js decoder (`scripts/meshcore_decode.mjs`) uses the `@michaelhart/meshcore-decoder` package.
+Route path handling now supports mixed repeater prefixes (`AB` and `ABCD`) to prepare for 2-byte rollout compatibility.
 
 ### history.py (Route History)
 
@@ -183,6 +184,7 @@ A single file containing all client-side logic:
 
 Route rendering notes:
 - In dev mode (`PROD_MODE=false`), route lines are clickable and log hop-by-hop debug details to the browser console (PR #14).
+- Show Hops displays plain prefix values (`Prefix: AB` / `Prefix: ABCD`) from decoded path data.
 
 ### styles.css (Styling)
 
