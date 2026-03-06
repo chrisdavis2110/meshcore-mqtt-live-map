@@ -32,6 +32,11 @@ stats = {
 result_counts: Dict[str, int] = {}
 seen_devices: Dict[str, float] = {}
 mqtt_seen: Dict[str, float] = {}
+mqtt_online_source: Dict[str, str] = {}
+mqtt_status_seen: Dict[str, float] = {}
+mqtt_status_values: Dict[str, str] = {}
+mqtt_internal_seen: Dict[str, float] = {}
+mqtt_packets_seen: Dict[str, float] = {}
 last_seen_broadcast: Dict[str, float] = {}
 topic_counts: Dict[str, int] = {}
 
