@@ -115,6 +115,13 @@ MQTT_TRANSPORT=websockets
 MQTT_WS_PATH=/
 MQTT_TLS=true
 MQTT_TOPIC=meshcore/#
+
+# MQTT online presence tuning (v1.5+)
+MQTT_ONLINE_SECONDS=300
+MQTT_ONLINE_STATUS_TTL_SECONDS=300
+MQTT_ONLINE_INTERNAL_TTL_SECONDS=300
+MQTT_ACTIVITY_PACKETS_TTL_SECONDS=300
+MQTT_STATUS_OFFLINE_VALUES=offline,disconnected
 ```
 
 Optional coordinate overrides (for fixed node placement):
