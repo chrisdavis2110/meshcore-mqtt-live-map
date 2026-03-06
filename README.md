@@ -1,11 +1,12 @@
 # Mesh Live Map
 
-Version: `1.4.2` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.5.0` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
 Live example sites:
-- https://live.bostonme.sh/ - Greater Boston Mesh Map
+- https://live.bostonme.sh/ - Greater Boston Mesh Map (this is the reference map for this repo/version)
+- Note: the maps below are community deployments and may be on older or different versions.
 - https://meshcore-map.ctmesh.org/ - CTMesh MeshCore Map
 - https://livemap.wcmesh.com/ - West Coast Mesh
 - https://map.eastmesh.au/ - Aus Eastern Mesh Live Map
@@ -19,6 +20,7 @@ Live example sites:
 ## Features
 - Live node markers with roles (Repeater, Companion, Room Server, Unknown)
 - MQTT online indicator (green outline + popup status)
+- HUD stats show MQTT-connected totals including nodes connected to MQTT but not plotted on the map
 - Animated route/trace lines
 - Dev route inspection: click a route line in dev (`PROD_MODE=false`) to log hop-by-hop details in the browser console (PR #14, credit: https://github.com/sefator)
 - Heat map for the last 10 minutes of message activity (includes adverts)
@@ -126,6 +128,7 @@ MQTT:
 - `MQTT_CA_CERT` (custom CA bundle path)
 - `MQTT_CLIENT_ID` (optional client id override)
 - `MQTT_TOPIC` (e.g. `meshcore/#` or `meshcore/#,other/topic/+` for multiple topics)
+- `MQTT_STATUS_OFFLINE_VALUES` (comma-separated status values that force offline, default `offline,disconnected`)
 
 Coverage layer:
 - `COVERAGE_API_URL` (URL to coverage map API; button hidden when blank)
@@ -153,8 +156,11 @@ History overlay:
 
 Heat + online status:
 - `HEAT_TTL_SECONDS`
-- `MQTT_ONLINE_SECONDS` (online window for status ring)
-- `MQTT_ONLINE_TOPIC_SUFFIXES` (comma-separated topics that count as “online”)
+- `MQTT_ONLINE_SECONDS` (fallback online window for compatibility)
+- `MQTT_ONLINE_STATUS_TTL_SECONDS` (`/status` heartbeat window for MQTT connectivity)
+- `MQTT_ONLINE_INTERNAL_TTL_SECONDS` (`/internal` heartbeat window for MQTT connectivity)
+- `MQTT_ACTIVITY_PACKETS_TTL_SECONDS` (`/packets` activity window used for MQTT presence summaries)
+- `MQTT_ONLINE_TOPIC_SUFFIXES` (legacy suffix list for compatibility/debug tooling)
 - `MQTT_SEEN_BROADCAST_MIN_SECONDS`
 - `MQTT_ONLINE_FORCE_NAMES` (comma-separated names to force as MQTT online; also excluded from peers)
 

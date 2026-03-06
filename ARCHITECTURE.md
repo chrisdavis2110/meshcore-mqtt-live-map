@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.4.2` (see `VERSIONS.md`).
+Current version: `1.5.0` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -237,7 +237,7 @@ WebSocket broadcast to all clients
 **Client receives:**
 ```javascript
 // Initial snapshot
-{ type: "snapshot", devices: {...}, trails: {...}, routes: [...], heat: [...] }
+{ type: "snapshot", devices: {...}, trails: {...}, routes: [...], heat: [...], mqtt_presence: {...} }
 
 // Device update
 { type: "update", device: {...}, trail: [...] }
@@ -246,7 +246,10 @@ WebSocket broadcast to all clients
 { type: "route", route: {...} }
 
 // Device seen (online status)
-{ type: "device_seen", device_id: "...", mqtt_seen_ts: 1234567890 }
+{ type: "device_seen", device_id: "...", mqtt_seen_ts: 1234567890, mqtt_presence: {...} }
+
+// MQTT presence summary update
+{ type: "mqtt_presence", mqtt_presence: {...} }
 
 // Stale device removal
 { type: "stale", device_ids: ["..."] }
@@ -375,4 +378,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.4.2`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.5.0`).

@@ -1,5 +1,20 @@
 # Versions
 
+## v1.5.0 (03-06-2026)
+- Reworked MQTT presence tracking to follow MeshCore topic semantics:
+  - MQTT connectivity now derives from `/status` and `/internal` heartbeats.
+  - Explicit status values in `MQTT_STATUS_OFFLINE_VALUES` force offline quickly.
+  - `/packets` activity is tracked separately from connectivity.
+- Added MQTT presence summary counters in `/snapshot`, `/stats`, and WebSocket updates so the UI can show total MQTT-connected nodes (including nodes without map coordinates).
+- Updated the HUD stats line to show MQTT-connected totals vs on-map MQTT-connected counts.
+- Popup cleanup: nodes now only show `MQTT: Online` when online; offline labels were removed.
+- Added new env controls:
+  - `MQTT_ONLINE_STATUS_TTL_SECONDS`
+  - `MQTT_ONLINE_INTERNAL_TTL_SECONDS`
+  - `MQTT_ACTIVITY_PACKETS_TTL_SECONDS`
+  - `MQTT_STATUS_OFFLINE_VALUES`
+- Passed new MQTT presence envs through `docker-compose.yaml` and expanded regression coverage with `tests/test_mqtt_online_presence.py`.
+
 ## v1.4.2 (03-05-2026)
 - Migrated app lifecycle from deprecated FastAPI `@app.on_event("startup"/"shutdown")` handlers to a lifespan context manager.
 - Kept MQTT connect/disconnect and background task startup behavior equivalent under the new lifespan flow.

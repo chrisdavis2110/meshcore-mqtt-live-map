@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.4.2` (see `VERSIONS.md`).
+Current version: `1.5.0` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.4.2`).
+- `VERSION.txt` holds the current version string (`1.5.0`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -38,6 +38,10 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## Env Notes (Recent Additions)
 - `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
 - `MQTT_ONLINE_FORCE_NAMES` forces named nodes to show MQTT online and skips them in peers.
+- `MQTT_ONLINE_STATUS_TTL_SECONDS` controls MQTT-online status freshness from `/status`.
+- `MQTT_ONLINE_INTERNAL_TTL_SECONDS` controls MQTT-online status freshness from `/internal`.
+- `MQTT_STATUS_OFFLINE_VALUES` lists explicit status strings that force MQTT offline.
+- `MQTT_ACTIVITY_PACKETS_TTL_SECONDS` controls `/packets` activity retention for MQTT presence summaries.
 - `GIT_CHECK_ENABLED`, `GIT_CHECK_FETCH`, `GIT_CHECK_PATH` enable update checks.
 - `GIT_CHECK_INTERVAL_SECONDS` controls how often the server re-checks for updates.
 - `ROUTE_MAX_HOP_DISTANCE` prunes hops longer than the configured km distance.
@@ -93,7 +97,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Propagation origin markers can be removed individually by clicking them.
 - Propagation now supports adjustable TX antenna gain (dBi), and defaults Rx AGL to 1m.
 - Heatmap includes all route payload types (adverts are no longer skipped).
-- MQTT online status shows as a green marker outline and popup status; it uses `mqtt_seen_ts` from `/status` or `/packets` topics (configurable).
+- MQTT online status shows as a green marker outline and popup status; connectivity is derived from `/status` + `/internal` heartbeats with explicit offline values supported via `MQTT_STATUS_OFFLINE_VALUES`.
+- HUD stats now show MQTT-connected totals including nodes that are connected to MQTT but not currently plotted on the map.
 - `MQTT_ONLINE_FORCE_NAMES` can force named nodes to show as MQTT online regardless of last seen.
 - PWA install support is enabled via `/manifest.webmanifest` and a service worker at `/sw.js`.
 - Preview image (`/preview.png`) renders in-bounds device dots for shared links.
@@ -167,7 +172,7 @@ If routes aren’t visible:
 - If markers appear in the wrong place, inspect `decoder_meta` and location fields.
 - If roles flip incorrectly, verify `role_target_id` in `/debug/last`.
 - If routes don’t show, verify message hashes appear under multiple receivers in MQTT.
-- If MQTT online looks wrong, confirm `MQTT_ONLINE_TOPIC_SUFFIXES` in `.env` (default `/status,/packets`).
+- If MQTT online looks wrong, verify `MQTT_ONLINE_STATUS_TTL_SECONDS`, `MQTT_ONLINE_INTERNAL_TTL_SECONDS`, and `MQTT_STATUS_OFFLINE_VALUES` in `.env`.
 
 ## Recent Fixes / Changes Summary
 - Added full WSS support and TLS options.
