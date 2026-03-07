@@ -1,19 +1,30 @@
 # Versions
 
 ## v1.6.0 (03-07-2026)
-- Promoted the weather/tooling + test hardening release line to `v1.6.0` for the `dev` branch.
-- Added browser persistence for Weather layer toggles (`Radar`/`Wind`) via local storage.
-- Expanded backend test coverage to 44 passing tests with new cases for MQTT online behavior, websocket auth, prefix routing, neighbor pruning/priority, weather flags, and persistence robustness.
-- Hardened `/coverage` parsing for invalid upstream schemas (non-list `keys` now returns `[]`).
-- Replaced deprecated FastAPI startup/shutdown event decorators with a lifespan handler.
-
-## v1.5.0 (03-07-2026)
 - Refactored weather backend logic into `backend/weather.py` and mounted it as a router (`/weather/radar/country-bounds`) to match the module layout used by LOS/history.
 - Weather is now treated as a right-side tool panel with independent `Radar` and `Wind` layer toggles.
 - Added share-link support for per-layer weather state via `weather_radar` and `weather_wind` URL params.
+- Added browser persistence for Weather layer toggles (`Radar`/`Wind`) via local storage.
 - Added backend weather endpoint tests for invalid coords, prod token enforcement, and cache behavior.
-- Expanded docs for all weather env settings and what each one controls.
+- Expanded backend test coverage to 44 passing tests with new cases for websocket auth, prefix routing, neighbor pruning/priority, weather flags, and persistence robustness.
+- Hardened `/coverage` parsing for invalid upstream schemas (non-list `keys` now returns `[]`).
 - Replaced deprecated FastAPI startup/shutdown event decorators with a lifespan handler.
+- Expanded docs for all weather env settings and what each one controls.
+
+## v1.5.0 (03-06-2026)
+- Reworked MQTT presence tracking to follow MeshCore topic semantics:
+  - MQTT connectivity now derives from `/status` and `/internal` heartbeats.
+  - Explicit status values in `MQTT_STATUS_OFFLINE_VALUES` force offline quickly.
+  - `/packets` activity is tracked separately from connectivity.
+- Added MQTT presence summary counters in `/snapshot`, `/stats`, and WebSocket updates so the UI can show total MQTT-connected nodes (including nodes without map coordinates).
+- Updated the HUD stats line to show MQTT-connected totals vs on-map MQTT-connected counts.
+- Popup cleanup: nodes now only show `MQTT: Online` when online; offline labels were removed.
+- Added new env controls:
+  - `MQTT_ONLINE_STATUS_TTL_SECONDS`
+  - `MQTT_ONLINE_INTERNAL_TTL_SECONDS`
+  - `MQTT_ACTIVITY_PACKETS_TTL_SECONDS`
+  - `MQTT_STATUS_OFFLINE_VALUES`
+- Passed new MQTT presence envs through `docker-compose.yaml` and expanded regression coverage with `tests/test_mqtt_online_presence.py`.
 
 ## v1.4.2 (03-05-2026)
 - Migrated app lifecycle from deprecated FastAPI `@app.on_event("startup"/"shutdown")` handlers to a lifespan context manager.
