@@ -20,7 +20,7 @@ Other community maps (versions may differ):
 
 ## Features
 - Live node markers with roles (Repeater, Companion, Room Server, Unknown)
-- MQTT online indicator (green outline + popup status)
+- MQTT online indicator (green outline + popup status) based on MQTT `status`/`internal` topics
 - Animated route/trace lines
 - Dev route inspection: click a route line in dev (`PROD_MODE=false`) to log hop-by-hop details in the browser console (PR #14, credit: https://github.com/sefator)
 - Heat map for the last 10 minutes of message activity (includes adverts)
@@ -173,8 +173,12 @@ History overlay:
 
 Heat + online status:
 - `HEAT_TTL_SECONDS`
-- `MQTT_ONLINE_SECONDS` (online window for status ring)
-- `MQTT_ONLINE_TOPIC_SUFFIXES` (comma-separated topics that count as “online”)
+- `MQTT_ONLINE_SECONDS` (legacy/global fallback TTL for MQTT presence)
+- `MQTT_ONLINE_STATUS_TTL_SECONDS` (how long `/status` keeps a node connected)
+- `MQTT_ONLINE_INTERNAL_TTL_SECONDS` (how long `/internal` keeps a node connected)
+- `MQTT_ACTIVITY_PACKETS_TTL_SECONDS` (how long `/packets` counts as feeding activity)
+- `MQTT_STATUS_OFFLINE_VALUES` (comma-separated status values that force offline, even inside TTL)
+- `MQTT_ONLINE_TOPIC_SUFFIXES` (legacy compatibility setting; primary online source is status/internal TTLs)
 - `MQTT_SEEN_BROADCAST_MIN_SECONDS`
 - `MQTT_ONLINE_FORCE_NAMES` (comma-separated names to force as MQTT online; also excluded from peers)
 
@@ -239,6 +243,7 @@ Use it:
 - To see full paths, the feed must include Path/Trace packets (payload types 8/9).
 - Runtime state is persisted to `data/state.json`.
 - MQTT disconnects are handled; the client will reconnect when the broker returns.
+- MQTT connectivity (`MQTT online`) is based on `/status` + `/internal`; `/packets` is treated as feed activity and does not by itself mark a node online.
 - Live route IDs are observer-aware (`message_hash:receiver_id`) so the same
   message seen by multiple MQTT observers does not overwrite active lines.
 - Line-of-sight tool: click **LOS tool** and pick two points, or **Shift+click** two nodes to measure LOS between them. Drag endpoints or select A/B then click the map to move that point.

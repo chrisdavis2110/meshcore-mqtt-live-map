@@ -124,6 +124,10 @@ MQTT_ACTIVITY_PACKETS_TTL_SECONDS=300
 MQTT_STATUS_OFFLINE_VALUES=offline,disconnected
 ```
 
+Presence behavior:
+- `/status` + `/internal` determine whether a node is shown as **MQTT online**.
+- `/packets` is tracked as feed activity and does not, by itself, mark a node online.
+
 Optional coordinate overrides (for fixed node placement):
 
 ```env

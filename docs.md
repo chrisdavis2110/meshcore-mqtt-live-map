@@ -39,6 +39,11 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## Env Notes (Recent Additions)
 - `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
 - `MQTT_ONLINE_FORCE_NAMES` forces named nodes to show MQTT online and skips them in peers.
+- `MQTT_ONLINE_STATUS_TTL_SECONDS` controls MQTT connected TTL from `/status`.
+- `MQTT_ONLINE_INTERNAL_TTL_SECONDS` controls MQTT connected TTL from `/internal`.
+- `MQTT_ACTIVITY_PACKETS_TTL_SECONDS` controls feed/activity TTL from `/packets`.
+- `MQTT_STATUS_OFFLINE_VALUES` forces offline when recent status payloads report those values.
+- `MQTT_ONLINE_TOPIC_SUFFIXES` remains for legacy compatibility; primary connected logic uses status/internal TTLs.
 - `GIT_CHECK_ENABLED`, `GIT_CHECK_FETCH`, `GIT_CHECK_PATH` enable update checks.
 - `GIT_CHECK_INTERVAL_SECONDS` controls how often the server re-checks for updates.
 - `ROUTE_MAX_HOP_DISTANCE` prunes hops longer than the configured km distance.
@@ -106,7 +111,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Propagation origin markers can be removed individually by clicking them.
 - Propagation now supports adjustable TX antenna gain (dBi), and defaults Rx AGL to 1m.
 - Heatmap includes all route payload types (adverts are no longer skipped).
-- MQTT online status shows as a green marker outline and popup status; it uses `mqtt_seen_ts` from `/status` or `/packets` topics (configurable).
+- MQTT online status shows as a green marker outline and popup status; connected state is derived from `/status` and `/internal` timestamps, while `/packets` is feed activity only.
 - `MQTT_ONLINE_FORCE_NAMES` can force named nodes to show as MQTT online regardless of last seen.
 - PWA install support is enabled via `/manifest.webmanifest` and a service worker at `/sw.js`.
 - Preview image (`/preview.png`) renders in-bounds device dots for shared links.
@@ -180,7 +185,7 @@ If routes aren’t visible:
 - If markers appear in the wrong place, inspect `decoder_meta` and location fields.
 - If roles flip incorrectly, verify `role_target_id` in `/debug/last`.
 - If routes don’t show, verify message hashes appear under multiple receivers in MQTT.
-- If MQTT online looks wrong, confirm `MQTT_ONLINE_TOPIC_SUFFIXES` in `.env` (default `/status,/packets`).
+- If MQTT online looks wrong, verify `/status` and `/internal` topics are flowing and tune `MQTT_ONLINE_STATUS_TTL_SECONDS` / `MQTT_ONLINE_INTERNAL_TTL_SECONDS`.
 
 ## Recent Fixes / Changes Summary
 - Added full WSS support and TLS options.
@@ -192,7 +197,7 @@ If routes aren’t visible:
 - Roles now apply to advertised pubkey, not receiver.
 - Docker restarts are required after file changes (always run `docker compose up -d --build`).
 - LOS elevations are proxied via `/los/elevations` and LOS/relay computations run client-side (with `/los` fallback).
-- MQTT online indicator (green outline + legend) and configurable online window.
+- MQTT online presence now separates connected state (`/status` + `/internal`) from feed activity (`/packets`) with dedicated TTL envs.
 - Filters out `0,0` GPS points from devices, trails, and routes (including string values).
 - Added 24h route history storage + history toggle with volume-based colors.
 - Weather backend logic moved out of `app.py` into `backend/weather.py` and mounted as a router.

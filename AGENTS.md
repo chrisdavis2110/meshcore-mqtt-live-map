@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.4.0` (see `VERSIONS.md`).
+Current version: `1.6.0` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -36,8 +36,8 @@ Current version: `1.4.0` (see `VERSIONS.md`).
 - Prefer small helper functions for parsing/normalization; keep logging concise.
 
 ## Testing Guidelines
-- No automated test suite is present.
-- Validate changes manually with the `/snapshot`, `/stats`, and `/debug/last` endpoints.
+- Run automated tests with `pip install -r requirements-dev.txt && pytest -q`.
+- Validate runtime behavior manually with `/snapshot`, `/stats`, and `/debug/last`.
 
 ## Commit & Pull Request Guidelines
 - No git history is available in this workspace, so there is no established commit convention.
@@ -94,7 +94,7 @@ Current version: `1.4.0` (see `VERSIONS.md`).
 - LOS UI includes peak markers, a relay suggestion marker, elevation profile hover, and map-line hover sync.
 - LOS legend items (clear/blocked/peaks/relay) are hidden until the LOS tool is active.
 - Mobile LOS supports long-press on nodes (Shift+click on desktop); endpoints can be dragged or click-selected and moved via map click.
-- MQTT online status uses `mqtt_seen_ts` from `MQTT_ONLINE_TOPIC_SUFFIXES` (default `/status,/packets`); markers get a green outline + popup status.
+- MQTT online status is derived from `/status` + `/internal` TTL windows; `/packets` is tracked as feed activity.
 - `MQTT_ONLINE_FORCE_NAMES` (comma-separated device names) forces selected nodes to always appear MQTT online.
 - Service worker fetches navigations with `no-store` to avoid stale UI/env toggles (e.g., radius debug ring).
 - Node search + labels toggle (persisted in localStorage) and a GitHub link in the HUD.
