@@ -24,3 +24,15 @@
 - Hardened `/coverage` endpoint handling so non-list `keys` payloads now safely return `[]`.
 - Weather layer preference persistence: browser now remembers `Radar` and `Wind` on/off states per user via local storage across sessions.
 - Replaced deprecated FastAPI startup/shutdown event decorators with a lifespan handler to remove deprecation warnings and keep background task lifecycle clean.
+- New envs added in this release line:
+  - `WEATHER_RADAR_ENABLED`
+  - `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED`
+  - `WEATHER_RADAR_COUNTRY_LOOKUP_URL`
+  - `WEATHER_WIND_ENABLED`
+  - `WEATHER_WIND_API_URL`
+  - `WEATHER_WIND_GRID_SIZE`
+  - `WEATHER_WIND_REFRESH_SECONDS`
+  - `MQTT_ONLINE_STATUS_TTL_SECONDS`
+  - `MQTT_ONLINE_INTERNAL_TTL_SECONDS`
+  - `MQTT_ACTIVITY_PACKETS_TTL_SECONDS`
+  - `MQTT_STATUS_OFFLINE_VALUES`
