@@ -10,6 +10,18 @@
 - Hardened `/coverage` parsing for invalid upstream schemas (non-list `keys` now returns `[]`).
 - Replaced deprecated FastAPI startup/shutdown event decorators with a lifespan handler.
 - Expanded docs for all weather env settings and what each one controls.
+- New env controls documented for this release line:
+  - `WEATHER_RADAR_ENABLED`
+  - `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED`
+  - `WEATHER_RADAR_COUNTRY_LOOKUP_URL`
+  - `WEATHER_WIND_ENABLED`
+  - `WEATHER_WIND_API_URL`
+  - `WEATHER_WIND_GRID_SIZE`
+  - `WEATHER_WIND_REFRESH_SECONDS`
+  - `MQTT_ONLINE_STATUS_TTL_SECONDS`
+  - `MQTT_ONLINE_INTERNAL_TTL_SECONDS`
+  - `MQTT_ACTIVITY_PACKETS_TTL_SECONDS`
+  - `MQTT_STATUS_OFFLINE_VALUES`
 
 ## v1.5.0 (03-06-2026)
 - Reworked MQTT presence tracking to follow MeshCore topic semantics:
