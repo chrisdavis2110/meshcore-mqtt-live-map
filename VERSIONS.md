@@ -1,5 +1,12 @@
 # Versions
 
+## v1.6.0 (03-07-2026)
+- Promoted the weather/tooling + test hardening release line to `v1.6.0` for the `dev` branch.
+- Added browser persistence for Weather layer toggles (`Radar`/`Wind`) via local storage.
+- Expanded backend test coverage to 44 passing tests with new cases for MQTT online behavior, websocket auth, prefix routing, neighbor pruning/priority, weather flags, and persistence robustness.
+- Hardened `/coverage` parsing for invalid upstream schemas (non-list `keys` now returns `[]`).
+- Replaced deprecated FastAPI startup/shutdown event decorators with a lifespan handler.
+
 ## v1.5.0 (03-07-2026)
 - Refactored weather backend logic into `backend/weather.py` and mounted it as a router (`/weather/radar/country-bounds`) to match the module layout used by LOS/history.
 - Weather is now treated as a right-side tool panel with independent `Radar` and `Wind` layer toggles.

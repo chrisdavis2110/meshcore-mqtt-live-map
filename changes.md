@@ -1,6 +1,6 @@
 # Changes
 
-## v1.5.0 (2026-03-07)
+## v1.6.0 (2026-03-07)
 - Expanded test coverage from 24 to 44 passing tests.
 - Added MQTT online behavior tests:
   - `status` topics mark nodes online even without map coordinates.
