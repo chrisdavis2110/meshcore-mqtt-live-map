@@ -5,6 +5,20 @@ import pytest
 import app
 
 
+class _DummyWebSocket:
+  def __init__(self, query_params=None, headers=None):
+    self.query_params = query_params or {}
+    self.headers = headers or {}
+
+
+class _DummyTurnstileVerifier:
+  def __init__(self, valid_tokens=None):
+    self.valid_tokens = set(valid_tokens or [])
+
+  def verify_auth_token(self, token):
+    return token in self.valid_tokens
+
+
 def _request(path, query="", headers=None):
   headers = headers or {}
   raw_headers = [
@@ -94,3 +108,49 @@ def test_prod_route_payload_keeps_hop_hashes_for_ui(monkeypatch):
   assert payload["origin_id"] == "AA1111"
   assert payload["receiver_id"] == "CC3333"
   assert "message_hash" not in payload
+
+
+def test_ws_authorized_in_prod_mode_accepts_query_and_header_tokens(monkeypatch):
+  monkeypatch.setattr(app, "TURNSTILE_ENABLED", False)
+  monkeypatch.setattr(app, "turnstile_verifier", None)
+  monkeypatch.setattr(app, "PROD_MODE", True)
+  monkeypatch.setattr(app, "PROD_TOKEN", "secret-token")
+
+  assert app._ws_authorized(
+    _DummyWebSocket(query_params={"token": "secret-token"})
+  ) is True
+  assert app._ws_authorized(
+    _DummyWebSocket(query_params={"access_token": "secret-token"})
+  ) is True
+  assert app._ws_authorized(
+    _DummyWebSocket(headers={"authorization": "Bearer secret-token"})
+  ) is True
+  assert app._ws_authorized(
+    _DummyWebSocket(headers={"x-token": "secret-token"})
+  ) is True
+  assert app._ws_authorized(
+    _DummyWebSocket(query_params={"token": "wrong-token"})
+  ) is False
+
+
+def test_ws_authorized_allows_turnstile_auth_token(monkeypatch):
+  monkeypatch.setattr(app, "TURNSTILE_ENABLED", True)
+  monkeypatch.setattr(
+    app,
+    "turnstile_verifier",
+    _DummyTurnstileVerifier(valid_tokens={"good-auth-token"}),
+  )
+  monkeypatch.setattr(app, "PROD_MODE", True)
+  monkeypatch.setattr(app, "PROD_TOKEN", "secret-token")
+
+  cookie_ws = _DummyWebSocket(headers={"cookie": "meshmap_auth=good-auth-token"})
+  assert app._ws_authorized(cookie_ws) is True
+
+  query_ws = _DummyWebSocket(query_params={"auth": "good-auth-token"})
+  assert app._ws_authorized(query_ws) is True
+
+  header_ws = _DummyWebSocket(headers={"authorization": "Bearer good-auth-token"})
+  assert app._ws_authorized(header_ws) is True
+
+  bad_ws = _DummyWebSocket(headers={"cookie": "meshmap_auth=bad-token"})
+  assert app._ws_authorized(bad_ws) is False

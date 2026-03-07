@@ -36,6 +36,7 @@
   data-mqtt-online-seconds="{{MQTT_ONLINE_SECONDS}}" data-distance-units="{{DISTANCE_UNITS}}"
   data-node-radius="{{NODE_MARKER_RADIUS}}" data-history-link-scale="{{HISTORY_LINK_SCALE}}"
   data-coverage-api-url="{{COVERAGE_API_URL}}" data-custom-link-url="{{CUSTOM_LINK_URL}}"
+  data-weather-radar-enabled="{{WEATHER_RADAR_ENABLED}}"
   data-weather-radar-country-bounds-enabled="{{WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED}}"
   data-weather-radar-country-lookup-url="{{WEATHER_RADAR_COUNTRY_LOOKUP_URL}}"
   data-weather-wind-enabled="{{WEATHER_WIND_ENABLED}}" data-weather-wind-api-url="{{WEATHER_WIND_API_URL}}"
@@ -193,6 +194,15 @@
       <input id="history-link-size" type="range" min="0" max="100" step="1" value="50" />
     </label>
     <div class="small" id="history-link-size-value">1.0x</div>
+  </div>
+  <div class="weather-panel" id="weather-panel" hidden>
+    <button class="panel-close" id="weather-hide" type="button" aria-label="Hide weather panel">×</button>
+    <div class="small"><strong>Weather</strong></div>
+    <div class="small">Toggle overlays independently.</div>
+    <div class="weather-controls">
+      <button class="map-toggle" id="weather-radar-layer-toggle" type="button">Radar: on</button>
+      <button class="map-toggle" id="weather-wind-layer-toggle" type="button">Wind: on</button>
+    </div>
   </div>
   <div class="peers-panel" id="peers-panel" hidden>
     <div class="small"><strong>Node peers</strong></div>

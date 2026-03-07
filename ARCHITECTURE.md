@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.4.2` (see `VERSIONS.md`).
+Current version: `1.5.0` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -37,6 +37,7 @@ mesh-live-map-dev/
 │   ├── decoder.py          # Payload parsing, MeshCore decoding
 │   ├── history.py          # Route history persistence (24h rolling window)
 │   ├── los.py              # Line-of-sight calculations, elevation API
+│   ├── weather.py          # Weather radar country-bounds router
 │   ├── turnstile.py        # Cloudflare Turnstile verification + tokens
 │   ├── routes/             # HTTP/WebSocket route modules
 │   │   ├── api.py           # API endpoints
@@ -160,6 +161,13 @@ Calculates terrain-based line of sight:
 - Samples points along the path
 - Finds peaks and obstructions
 - Suggests relay points when blocked
+
+### weather.py (Weather API)
+
+Owns weather-specific backend routes:
+- `GET /weather/radar/country-bounds`
+- Resolves country by lat/lon and returns a bounding box used to clip radar tiles.
+- Uses in-memory caching keyed by rounded map center to reduce upstream lookups.
 
 ---
 
@@ -384,4 +392,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.4.2`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.5.0`).

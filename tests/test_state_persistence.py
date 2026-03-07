@@ -128,3 +128,73 @@ def test_route_history_round_trip_file_load(tmp_path, monkeypatch):
   loaded = state.route_history_segments[0]
   assert loaded["a_id"] == "AA001111"
   assert loaded["b_id"] == "BB001111"
+
+
+def test_load_state_ignores_corrupt_json_file(tmp_path, monkeypatch):
+  state_file = tmp_path / "state.json"
+  state_file.write_text("{not-valid-json", encoding="utf-8")
+
+  state.devices.clear()
+  state.devices["KEEP1111"] = state.DeviceState(
+    device_id="KEEP1111",
+    lat=42.0,
+    lon=-71.0,
+    ts=time.time(),
+    role="repeater",
+  )
+
+  monkeypatch.setattr(app, "STATE_FILE", str(state_file))
+  app._load_state()
+
+  assert "KEEP1111" in state.devices
+
+
+def test_route_history_load_skips_bad_lines_and_marks_compact(
+  tmp_path, monkeypatch
+):
+  hist_file = tmp_path / "route_history.jsonl"
+  now = time.time()
+  old_ts = now - (72 * 3600)
+
+  lines = [
+    "{bad-json",
+    json.dumps(["not", "a", "dict"]),
+    json.dumps(
+      {
+        "ts": old_ts,
+        "a": [42.0, -71.0],
+        "b": [42.1, -71.1],
+      }
+    ),
+    json.dumps(
+      {
+        "ts": now,
+        "a": [42.0, -71.0],
+        "b": None,
+      }
+    ),
+    json.dumps(
+      {
+        "ts": now,
+        "a": [42.3601, -71.0589],
+        "b": [42.3611, -71.0579],
+        "a_id": "AA001111",
+        "b_id": "BB001111",
+        "message_hash": "msg1",
+      }
+    ),
+  ]
+  hist_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+  monkeypatch.setattr(history, "ROUTE_HISTORY_FILE", str(hist_file))
+  monkeypatch.setattr(history, "ROUTE_HISTORY_ENABLED", True)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_HOURS", 24)
+
+  state.route_history_segments.clear()
+  state.route_history_edges.clear()
+  state.route_history_compact = False
+  history._load_route_history()
+
+  assert len(state.route_history_segments) == 1
+  assert len(state.route_history_edges) == 1
+  assert state.route_history_compact is True

@@ -31,22 +31,6 @@ NEIGHBOR_OVERRIDES_FILE = os.getenv(
   "NEIGHBOR_OVERRIDES_FILE",
   os.path.join(STATE_DIR, "neighbor_overrides.json"),
 )
-AUTO_NEIGHBOR_OVERRIDES_ENABLED = (
-  os.getenv("AUTO_NEIGHBOR_OVERRIDES_ENABLED", "false").lower() == "true"
-)
-AUTO_NEIGHBOR_OVERRIDES_FILE = os.getenv(
-  "AUTO_NEIGHBOR_OVERRIDES_FILE",
-  os.path.join(STATE_DIR, "neighbor_overrides.auto.json"),
-)
-AUTO_NEIGHBOR_ACTIVE_DAYS = float(
-  os.getenv("AUTO_NEIGHBOR_ACTIVE_DAYS", "7")
-)
-AUTO_NEIGHBOR_MIN_EDGE_COUNT = int(
-  os.getenv("AUTO_NEIGHBOR_MIN_EDGE_COUNT", "3")
-)
-AUTO_NEIGHBOR_REFRESH_SECONDS = float(
-  os.getenv("AUTO_NEIGHBOR_REFRESH_SECONDS", "60")
-)
 STATE_SAVE_INTERVAL = float(os.getenv("STATE_SAVE_INTERVAL", "5"))
 
 DEVICE_TTL_HOURS = float(os.getenv("DEVICE_TTL_HOURS", "96"))  # 4 days default
@@ -186,6 +170,9 @@ ELEVATION_CACHE_TTL = int(os.getenv("ELEVATION_CACHE_TTL", "21600"))
 LOS_PEAKS_MAX = int(os.getenv("LOS_PEAKS_MAX", "4"))
 
 COVERAGE_API_URL = os.getenv("COVERAGE_API_URL", "").strip()
+WEATHER_RADAR_ENABLED = (
+  os.getenv("WEATHER_RADAR_ENABLED", "true").lower() == "true"
+)
 WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED = (
   os.getenv("WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED", "false").lower() == "true"
 )

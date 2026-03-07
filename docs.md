@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.4.2` (see `VERSIONS.md`).
+Current version: `1.5.0` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using `@michaelhart/meshcore-decoder`, and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.4.2`).
+- `VERSION.txt` holds the current version string (`1.5.0`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -17,6 +17,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `backend/decoder.py`: payload parsing, meshcore-decoder integration, route helpers.
 - `backend/los.py`: LOS math + elevation sampling.
 - `backend/history.py`: route history persistence + pruning.
+- `backend/weather.py`: weather radar country-bounds lookup router.
 - `backend/static/index.html`: HTML shell + template placeholders.
 - `backend/static/styles.css`: UI styles.
 - `backend/static/app.js`: Leaflet UI, markers, legends, routes, tools.
@@ -46,10 +47,14 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `PATH_TTL_SECONDS` controls path staleness (default `172800` seconds / 48h).
 - `DEVICE_COORDS_FILE` points to optional coordinate overrides (`/data/device_coords.json` by default).
 - `NEIGHBOR_OVERRIDES_FILE` points at an optional JSON file with neighbor pairs to resolve hash collisions.
-- `AUTO_NEIGHBOR_OVERRIDES_ENABLED` enables auto-promotion of learned neighbor pairs.
-- `AUTO_NEIGHBOR_OVERRIDES_FILE` stores auto-generated neighbor pairs (`/data/neighbor_overrides.auto.json` by default).
-- `AUTO_NEIGHBOR_ACTIVE_DAYS`, `AUTO_NEIGHBOR_MIN_EDGE_COUNT`, and
-  `AUTO_NEIGHBOR_REFRESH_SECONDS` control auto-promotion thresholds and cadence.
+- Weather overlay settings:
+  - `WEATHER_RADAR_ENABLED`: master switch for radar layer support.
+  - `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED`: set `true` to clip radar tiles to resolved country bounds.
+  - `WEATHER_RADAR_COUNTRY_LOOKUP_URL`: keep `/weather/radar/country-bounds` unless using a custom endpoint.
+  - `WEATHER_WIND_ENABLED`: set `false` to disable wind in the Weather panel.
+  - `WEATHER_WIND_API_URL`: wind data endpoint (Open-Meteo format by default).
+  - `WEATHER_WIND_GRID_SIZE`: wind sample density per map view (`1`-`5`).
+  - `WEATHER_WIND_REFRESH_SECONDS`: wind refresh interval in seconds (minimum `30`).
 - Turnstile protection is gated by `PROD_MODE=true` and controlled by:
   `TURNSTILE_ENABLED`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`,
   `TURNSTILE_API_URL`, and `TURNSTILE_TOKEN_TTL_SECONDS`.
@@ -88,13 +93,10 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
 - Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
 - Coverage tool only appears when `COVERAGE_API_URL` is set; it fetches tiles on demand.
-- `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true` constrains radar tiles to the resolved country around map coordinates.
-- `WEATHER_RADAR_COUNTRY_LOOKUP_URL` optionally overrides the country-bounds lookup endpoint (default `/weather/radar/country-bounds`).
-- `WEATHER_RADAR_COUNTRY_LOOKUP_URL` is a URL route path by default (`/weather/radar/country-bounds`), not a filesystem directory.
-- Weather toggle now combines radar + wind overlays.
-- Wind overlay envs: `WEATHER_WIND_ENABLED`, `WEATHER_WIND_API_URL`,
-  `WEATHER_WIND_GRID_SIZE`, `WEATHER_WIND_REFRESH_SECONDS`.
-- Weather defaults off on load (no localStorage persistence); share URLs can force `weather=on|off`.
+- Weather is a right-side tool panel with per-layer toggles:
+  - Radar toggle controls RainViewer tile layer visibility.
+  - Wind toggle controls arrow sampling/rendering and refresh polling.
+  - If both radar and wind are disabled by env (`WEATHER_RADAR_ENABLED=false` and `WEATHER_WIND_ENABLED=false`), the Weather button is hidden.
 - Trail text in the HUD is only shown when `TRAIL_LEN > 0`; `TRAIL_LEN=0` disables trails entirely.
 - Hide Nodes toggle hides markers, trails, heat, routes, and history layers.
 - Heat toggle can hide the heatmap; it defaults on and the button turns green when heat is off.
@@ -114,7 +116,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.
 - Update banner shows when `GIT_CHECK_ENABLED=true` and the repo is behind; users can dismiss it per remote SHA.
 - Update banner dismissal relies on `.hud-update[hidden]` to ensure the banner actually disappears.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
 - Service worker uses `no-store` for navigation requests so env-driven UI toggles (like the radius ring) update without clearing site data.
 - HUD scrollbars are custom styled in Chromium for a cleaner look.
 
@@ -193,6 +195,8 @@ If routes aren’t visible:
 - MQTT online indicator (green outline + legend) and configurable online window.
 - Filters out `0,0` GPS points from devices, trails, and routes (including string values).
 - Added 24h route history storage + history toggle with volume-based colors.
+- Weather backend logic moved out of `app.py` into `backend/weather.py` and mounted as a router.
+- Weather tool now uses its own right-side panel with separate Radar and Wind layer toggles.
 - Hide nodes now hides heat/routes/history along with markers/trails.
 - Fixed MQTT disconnect callback signature so broker drops don’t crash the MQTT loop.
 - Route hash collisions prefer known neighbors (or overrides) before closest-hop selection; long path lists are skipped (`ROUTE_PATH_MAX_LEN`).

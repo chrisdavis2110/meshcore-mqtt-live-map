@@ -4,6 +4,7 @@ import os
 import html
 import time
 import subprocess
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from dataclasses import asdict
 from typing import Any, Dict, Optional, Set, List, Tuple
@@ -51,6 +52,7 @@ from history import (
   _record_route_history,
   _route_history_saver,
 )
+from weather import create_weather_router
 from turnstile import TurnstileVerifier
 from los import (
   _fetch_elevations,
@@ -78,11 +80,6 @@ from config import (
   DEVICE_ROLES_FILE,
   DEVICE_COORDS_FILE,
   NEIGHBOR_OVERRIDES_FILE,
-  AUTO_NEIGHBOR_OVERRIDES_ENABLED,
-  AUTO_NEIGHBOR_OVERRIDES_FILE,
-  AUTO_NEIGHBOR_ACTIVE_DAYS,
-  AUTO_NEIGHBOR_MIN_EDGE_COUNT,
-  AUTO_NEIGHBOR_REFRESH_SECONDS,
   STATE_SAVE_INTERVAL,
   DEVICE_TTL_WINDOW_SECONDS,
   PATH_TTL_SECONDS,
@@ -150,6 +147,7 @@ from config import (
   ELEVATION_CACHE_TTL,
   LOS_PEAKS_MAX,
   COVERAGE_API_URL,
+  WEATHER_RADAR_ENABLED,
   WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED,
   WEATHER_RADAR_COUNTRY_LOOKUP_URL,
   WEATHER_WIND_ENABLED,
@@ -192,10 +190,8 @@ from state import (
 # =========================
 # App / State
 # =========================
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 mqtt_client: Optional[mqtt.Client] = None
+background_tasks: Set[asyncio.Task[Any]] = set()
 clients: Set[WebSocket] = set()
 update_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
 git_update_info = {
@@ -206,9 +202,85 @@ git_update_info = {
   "remote_short": None,
   "error": None,
 }
-_last_auto_neighbor_refresh = 0.0
-_radar_country_bounds_cache: Dict[str, Dict[str, Any]] = {}
-RADAR_COUNTRY_BOUNDS_CACHE_TTL_SECONDS = 7 * 24 * 3600
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+  global mqtt_client
+
+  _load_state()
+  _load_route_history()
+  _load_neighbor_overrides()
+  _ensure_node_decoder()
+  _check_git_updates()
+
+  loop = asyncio.get_running_loop()
+  transport = "websockets" if MQTT_TRANSPORT == "websockets" else "tcp"
+
+  topics_str = ", ".join(MQTT_TOPICS)
+  print(
+    f"[mqtt] connecting host={MQTT_HOST} port={MQTT_PORT} tls={MQTT_TLS} transport={transport} ws_path={MQTT_WS_PATH if transport == 'websockets' else '-'} topics={topics_str}"
+  )
+
+  mqtt_client = mqtt.Client(
+    mqtt.CallbackAPIVersion.VERSION2,
+    client_id=(MQTT_CLIENT_ID or None),
+    userdata={"loop": loop},
+    transport=transport,
+  )
+
+  if transport == "websockets":
+    mqtt_client.ws_set_options(path=MQTT_WS_PATH)
+
+  if MQTT_USERNAME:
+    mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+
+  if MQTT_TLS:
+    if MQTT_CA_CERT:
+      mqtt_client.tls_set(ca_certs=MQTT_CA_CERT)
+    else:
+      mqtt_client.tls_set()
+    if MQTT_TLS_INSECURE:
+      mqtt_client.tls_insecure_set(True)
+
+  mqtt_client.on_connect = mqtt_on_connect
+  mqtt_client.on_disconnect = mqtt_on_disconnect
+  mqtt_client.on_message = mqtt_on_message
+
+  mqtt_client.reconnect_delay_set(min_delay=1, max_delay=30)
+  mqtt_client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
+  mqtt_client.loop_start()
+
+  background_tasks.clear()
+  for coro in (
+    broadcaster(),
+    reaper(),
+    _state_saver(),
+    _route_history_saver(),
+    _git_check_loop(),
+  ):
+    background_tasks.add(asyncio.create_task(coro))
+
+  try:
+    yield
+  finally:
+    for task in list(background_tasks):
+      task.cancel()
+    if background_tasks:
+      await asyncio.gather(*background_tasks, return_exceptions=True)
+    background_tasks.clear()
+
+    if mqtt_client is not None:
+      try:
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
+      except Exception:
+        pass
+      mqtt_client = None
+
+
+app = FastAPI(lifespan=_lifespan)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Initialize Turnstile verifier if enabled
 turnstile_verifier: Optional[TurnstileVerifier] = None
@@ -345,51 +417,21 @@ def _load_neighbor_overrides() -> None:
     )
 
 
-def _load_auto_neighbor_overrides() -> None:
-  if (
-    not AUTO_NEIGHBOR_OVERRIDES_ENABLED or
-    not AUTO_NEIGHBOR_OVERRIDES_FILE or
-    not os.path.exists(AUTO_NEIGHBOR_OVERRIDES_FILE)
-  ):
-    return
-  try:
-    with open(AUTO_NEIGHBOR_OVERRIDES_FILE, "r", encoding="utf-8") as handle:
-      data = json.load(handle)
-  except Exception as exc:
-    print(f"[neighbors] failed to load {AUTO_NEIGHBOR_OVERRIDES_FILE}: {exc}")
-    return
-  now = time.time()
-  added = 0
-  for src_id, dst_id in _neighbor_override_pairs(data):
-    _touch_neighbor(src_id, dst_id, now, auto=True)
-    _touch_neighbor(dst_id, src_id, now, auto=True)
-    added += 1
-  if added:
-    print(
-      f"[neighbors] loaded {added} auto override pairs from "
-      f"{AUTO_NEIGHBOR_OVERRIDES_FILE}"
-    )
-
-
 def _touch_neighbor(
   src_id: str,
   dst_id: str,
   ts: float,
   manual: bool = False,
-  auto: bool = False,
 ) -> None:
   if not src_id or not dst_id or src_id == dst_id:
     return
   neighbors = neighbor_edges.setdefault(src_id, {})
   entry = neighbors.get(dst_id)
   if entry is None:
-    entry = {"count": 0, "last_seen": 0.0, "manual": False, "auto": False}
+    entry = {"count": 0, "last_seen": 0.0, "manual": False}
     neighbors[dst_id] = entry
   if manual:
     entry["manual"] = True
-    entry["auto"] = False
-  elif auto and not entry.get("manual"):
-    entry["auto"] = True
   else:
     entry["count"] = int(entry.get("count", 0)) + 1
   entry["last_seen"] = max(float(entry.get("last_seen", 0.0)), float(ts))
@@ -425,101 +467,12 @@ def _prune_neighbors(now: float) -> None:
   cutoff = now - ttl_seconds
   for src_id, edges in list(neighbor_edges.items()):
     for dst_id, entry in list(edges.items()):
-      if entry.get("manual") or entry.get("auto"):
+      if entry.get("manual"):
         continue
       if entry.get("last_seen", 0.0) < cutoff:
         edges.pop(dst_id, None)
     if not edges:
       neighbor_edges.pop(src_id, None)
-
-
-def _save_auto_neighbor_overrides() -> None:
-  if not AUTO_NEIGHBOR_OVERRIDES_FILE:
-    return
-  pairs: Set[Tuple[str, str]] = set()
-  for src_id, edges in neighbor_edges.items():
-    for dst_id, entry in edges.items():
-      if not entry.get("auto"):
-        continue
-      if src_id < dst_id:
-        pairs.add((src_id, dst_id))
-      elif dst_id < src_id:
-        pairs.add((dst_id, src_id))
-  payload = [{"from": src, "to": dst} for src, dst in sorted(pairs)]
-  try:
-    parent = os.path.dirname(AUTO_NEIGHBOR_OVERRIDES_FILE)
-    if parent:
-      os.makedirs(parent, exist_ok=True)
-    tmp_path = f"{AUTO_NEIGHBOR_OVERRIDES_FILE}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as handle:
-      json.dump(payload, handle, indent=2)
-    os.replace(tmp_path, AUTO_NEIGHBOR_OVERRIDES_FILE)
-  except Exception as exc:
-    print(
-      f"[neighbors] failed to save {AUTO_NEIGHBOR_OVERRIDES_FILE}: {exc}"
-    )
-
-
-def _device_qualifies_for_auto_neighbor(device_id: str, now: float) -> bool:
-  if device_id not in devices:
-    return False
-  min_age_seconds = max(0.0, AUTO_NEIGHBOR_ACTIVE_DAYS) * 86400.0
-  first_seen = float(first_seen_devices.get(device_id, 0.0) or 0.0)
-  if first_seen <= 0 or (now - first_seen) < min_age_seconds:
-    return False
-  path_seen = float(state.last_seen_in_path.get(device_id, 0.0) or 0.0)
-  if path_seen <= 0 or (now - path_seen) > min_age_seconds:
-    return False
-  advert_seen = float(last_seen_in_advert.get(device_id, 0.0) or 0.0)
-  if advert_seen <= 0 or (now - advert_seen) > min_age_seconds:
-    return False
-  return True
-
-
-def _refresh_auto_neighbor_overrides(now: float) -> None:
-  global _last_auto_neighbor_refresh
-  if not AUTO_NEIGHBOR_OVERRIDES_ENABLED:
-    return
-  interval = AUTO_NEIGHBOR_REFRESH_SECONDS
-  if interval > 0 and now - _last_auto_neighbor_refresh < interval:
-    return
-  _last_auto_neighbor_refresh = now
-
-  active_window = max(0.0, AUTO_NEIGHBOR_ACTIVE_DAYS) * 86400.0
-  activity_cutoff = now - active_window
-  min_count = max(1, AUTO_NEIGHBOR_MIN_EDGE_COUNT)
-  changed = False
-
-  for src_id, edges in list(neighbor_edges.items()):
-    for dst_id, entry in list(edges.items()):
-      if entry.get("manual"):
-        continue
-      if entry.get("auto"):
-        src_last = float(seen_devices.get(src_id, 0.0) or 0.0)
-        dst_last = float(seen_devices.get(dst_id, 0.0) or 0.0)
-        edge_last = float(entry.get("last_seen", 0.0) or 0.0)
-        if (
-          src_last < activity_cutoff or dst_last < activity_cutoff or
-          edge_last < activity_cutoff or src_id not in devices or
-          dst_id not in devices
-        ):
-          edges.pop(dst_id, None)
-          changed = True
-          continue
-      if int(entry.get("count", 0) or 0) < min_count:
-        continue
-      if not _device_qualifies_for_auto_neighbor(src_id, now):
-        continue
-      if not _device_qualifies_for_auto_neighbor(dst_id, now):
-        continue
-      if not entry.get("auto"):
-        entry["auto"] = True
-        changed = True
-    if not edges:
-      neighbor_edges.pop(src_id, None)
-
-  if changed:
-    _save_auto_neighbor_overrides()
 
 
 def _serialize_state() -> Dict[str, Any]:
@@ -652,113 +605,6 @@ def _within_map_radius(lat: Any, lon: Any) -> bool:
   return distance_m <= (MAP_RADIUS_KM * 1000.0)
 
 
-def _radar_bounds_extend(
-  bbox: Dict[str, Optional[float]], coords: Any
-) -> None:
-  if not isinstance(coords, (list, tuple)):
-    return
-  if (
-    len(coords) >= 2 and isinstance(coords[0], (int, float)) and
-    isinstance(coords[1], (int, float))
-  ):
-    lon = float(coords[0])
-    lat = float(coords[1])
-    if not math.isfinite(lat) or not math.isfinite(lon):
-      return
-    bbox["south"] = lat if bbox["south"] is None else min(bbox["south"], lat)
-    bbox["north"] = lat if bbox["north"] is None else max(bbox["north"], lat)
-    bbox["west"] = lon if bbox["west"] is None else min(bbox["west"], lon)
-    bbox["east"] = lon if bbox["east"] is None else max(bbox["east"], lon)
-    return
-  for item in coords:
-    _radar_bounds_extend(bbox, item)
-
-
-def _radar_bounds_from_coords(coords: Any) -> Optional[Dict[str, float]]:
-  bbox: Dict[str, Optional[float]] = {
-    "south": None,
-    "west": None,
-    "north": None,
-    "east": None,
-  }
-  _radar_bounds_extend(bbox, coords)
-  south = bbox.get("south")
-  west = bbox.get("west")
-  north = bbox.get("north")
-  east = bbox.get("east")
-  if (
-    south is None or west is None or north is None or east is None or
-    south >= north or west >= east
-  ):
-    return None
-  return {
-    "south": round(float(south), 6),
-    "west": round(float(west), 6),
-    "north": round(float(north), 6),
-    "east": round(float(east), 6),
-  }
-
-
-def _radar_bounds_from_geojson(
-  payload: Any, lat_hint: Optional[float] = None, lon_hint: Optional[float] = None
-) -> Optional[Dict[str, float]]:
-  geometries: List[Dict[str, Any]] = []
-  if not isinstance(payload, dict):
-    return None
-  payload_type = payload.get("type")
-  if payload_type == "FeatureCollection":
-    features = payload.get("features") or []
-    if isinstance(features, list):
-      for feature in features:
-        if not isinstance(feature, dict):
-          continue
-        geometry = feature.get("geometry") or {}
-        if isinstance(geometry, dict):
-          geometries.append(geometry)
-  elif payload_type == "Feature":
-    geometry = payload.get("geometry") or {}
-    if isinstance(geometry, dict):
-      geometries.append(geometry)
-  else:
-    geometries.append(payload)
-
-  if (
-    geometries and lat_hint is not None and lon_hint is not None and
-    math.isfinite(lat_hint) and math.isfinite(lon_hint)
-  ):
-    matching_parts: List[Dict[str, float]] = []
-    for geometry in geometries:
-      coords = geometry.get("coordinates")
-      geom_type = geometry.get("type")
-      if geom_type == "Polygon" and isinstance(coords, list):
-        part_bounds = _radar_bounds_from_coords(coords)
-        if part_bounds:
-          matching_parts.append(part_bounds)
-      elif geom_type == "MultiPolygon" and isinstance(coords, list):
-        for polygon_coords in coords:
-          part_bounds = _radar_bounds_from_coords(polygon_coords)
-          if part_bounds:
-            matching_parts.append(part_bounds)
-
-    matches = [
-      item for item in matching_parts
-      if item["south"] <= lat_hint <= item["north"] and
-      item["west"] <= lon_hint <= item["east"]
-    ]
-    if matches:
-      matches.sort(
-        key=lambda item: (
-          (item["north"] - item["south"]) * (item["east"] - item["west"])
-        )
-      )
-      return matches[0]
-
-  all_bounds = _radar_bounds_from_coords([
-    geometry.get("coordinates") for geometry in geometries
-  ])
-  return all_bounds
-
-
 def _evict_device(device_id: str) -> bool:
   removed = False
   if device_id in devices:
@@ -841,9 +687,13 @@ def _route_payload(route: Dict[str, Any]) -> Dict[str, Any]:
   return {
     "id": route.get("id"),
     "points": route.get("points"),
+    "hashes": route.get("hashes"),
+    "point_ids": route.get("point_ids"),
     "route_mode": route.get("route_mode"),
     "ts": route.get("ts"),
     "expires_at": route.get("expires_at"),
+    "origin_id": route.get("origin_id"),
+    "receiver_id": route.get("receiver_id"),
     "payload_type": route.get("payload_type"),
   }
 
@@ -899,6 +749,9 @@ def _require_prod_token(request: Request) -> None:
     token = _extract_token(request.headers)
   if token != PROD_TOKEN:
     raise HTTPException(status_code=401, detail="unauthorized")
+
+
+app.include_router(create_weather_router(_require_prod_token))
 
 
 def _ws_authorized(ws: WebSocket) -> bool:
@@ -1879,7 +1732,6 @@ async def reaper():
           message_origins.pop(msg_hash, None)
 
     _prune_neighbors(now)
-    _refresh_auto_neighbor_overrides(now)
 
     retention_window = max(
       DEVICE_TTL_WINDOW_SECONDS if DEVICE_TTL_WINDOW_SECONDS > 0 else 0,
@@ -2121,6 +1973,8 @@ def root(request: Request):
       MQTT_ONLINE_SECONDS,
     "COVERAGE_API_URL":
       COVERAGE_API_URL,
+    "WEATHER_RADAR_ENABLED":
+      str(WEATHER_RADAR_ENABLED).lower(),
     "WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED":
       str(WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED).lower(),
     "WEATHER_RADAR_COUNTRY_LOOKUP_URL":
@@ -2516,6 +2370,7 @@ def map_page(request: Request):
     "LOS_PEAKS_MAX": LOS_PEAKS_MAX,
     "MQTT_ONLINE_SECONDS": MQTT_ONLINE_SECONDS,
     "COVERAGE_API_URL": COVERAGE_API_URL,
+    "WEATHER_RADAR_ENABLED": str(WEATHER_RADAR_ENABLED).lower(),
     "WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED": str(WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED).lower(),
     "WEATHER_RADAR_COUNTRY_LOOKUP_URL": WEATHER_RADAR_COUNTRY_LOOKUP_URL,
     "WEATHER_WIND_ENABLED": str(WEATHER_WIND_ENABLED).lower(),
@@ -2933,106 +2788,6 @@ def los_elevations(locations: str = ""):
   }
 
 
-@app.get("/weather/radar/country-bounds")
-async def radar_country_bounds(request: Request, lat: float, lon: float):
-  _require_prod_token(request)
-  normalized = _normalize_lat_lon(lat, lon)
-  if not normalized:
-    raise HTTPException(status_code=400, detail="invalid_coords")
-  lat_val, lon_val = normalized
-
-  try:
-    async with httpx.AsyncClient(
-      timeout=httpx.Timeout(15.0, connect=8.0),
-      follow_redirects=True,
-      headers={"User-Agent": "mesh-live-map/1.4.0"},
-    ) as client:
-      reverse_resp = await client.get(
-        "https://api.bigdatacloud.net/data/reverse-geocode-client",
-        params={
-          "latitude": f"{lat_val:.6f}",
-          "longitude": f"{lon_val:.6f}",
-          "localityLanguage": "en",
-        },
-      )
-      reverse_resp.raise_for_status()
-      reverse_data = reverse_resp.json()
-
-      iso2 = str(reverse_data.get("countryCode") or "").strip().upper()
-      country_name = str(reverse_data.get("countryName") or "").strip()
-      if not iso2:
-        raise HTTPException(status_code=404, detail="country_not_found")
-
-      now = time.time()
-      cache_key = f"{lat_val:.2f},{lon_val:.2f}"
-      cached = _radar_country_bounds_cache.get(cache_key)
-      if cached and now - float(cached.get("ts", 0.0)
-                               ) <= RADAR_COUNTRY_BOUNDS_CACHE_TTL_SECONDS:
-        return cached.get("payload")
-
-      iso_resp = await client.get(
-        f"https://restcountries.com/v3.1/alpha/{iso2}",
-        params={"fields": "cca3"},
-      )
-      iso_resp.raise_for_status()
-      iso_data = iso_resp.json()
-      if isinstance(iso_data, list):
-        iso_data = iso_data[0] if iso_data else {}
-      iso3 = str((iso_data or {}).get("cca3") or "").strip().upper()
-      if not iso3:
-        raise HTTPException(status_code=502, detail="country_iso_lookup_failed")
-
-      boundary_resp = await client.get(
-        f"https://www.geoboundaries.org/api/current/gbOpen/{iso3}/ADM0/"
-      )
-      boundary_resp.raise_for_status()
-      boundary_data = boundary_resp.json()
-      geojson_url = str(
-        boundary_data.get("simplifiedGeometryGeoJSON") or
-        boundary_data.get("gjDownloadURL") or ""
-      ).strip()
-      if not geojson_url:
-        raise HTTPException(status_code=502, detail="country_boundary_missing")
-
-      geojson_resp = await client.get(geojson_url)
-      geojson_resp.raise_for_status()
-      bounds = _radar_bounds_from_geojson(
-        geojson_resp.json(), lat_hint=lat_val, lon_hint=lon_val
-      )
-      if not bounds:
-        raise HTTPException(status_code=502, detail="country_bounds_parse_failed")
-
-      payload = {
-        "country_code": iso2,
-        "country_iso3": iso3,
-        "country_name": country_name,
-        "bounds": bounds,
-        "boundingbox": [
-          bounds["south"],
-          bounds["north"],
-          bounds["west"],
-          bounds["east"],
-        ],
-        "source": "bigdatacloud+geoboundaries",
-      }
-      _radar_country_bounds_cache[cache_key] = {"ts": now, "payload": payload}
-      return payload
-  except HTTPException:
-    raise
-  except httpx.TimeoutException:
-    raise HTTPException(status_code=504, detail="radar_country_lookup_timeout")
-  except httpx.HTTPStatusError as exc:
-    status_code = exc.response.status_code if exc.response else 502
-    raise HTTPException(
-      status_code=502,
-      detail=f"radar_country_lookup_http_{status_code}",
-    )
-  except httpx.HTTPError as exc:
-    raise HTTPException(status_code=502, detail=f"radar_country_lookup_error: {exc}")
-  except Exception as exc:
-    raise HTTPException(status_code=500, detail=f"radar_country_lookup_failed: {exc}")
-
-
 @app.get("/coverage")
 async def get_coverage():
   if not COVERAGE_API_URL:
@@ -3049,10 +2804,11 @@ async def get_coverage():
       response.raise_for_status()
       data = response.json()
       # /get-samples returns { keys: [...] }, extract the keys array
-      samples = (
+      samples_raw = (
         data.get("keys", []) if isinstance(data, dict) else
         (data if isinstance(data, list) else [])
       )
+      samples = samples_raw if isinstance(samples_raw, list) else []
       print(
         f"[coverage] Received {len(samples) if isinstance(samples, list) else 'non-list'} items from coverage API"
       )
@@ -3205,73 +2961,3 @@ async def ws_endpoint(ws: WebSocket):
     pass
   finally:
     clients.discard(ws)
-
-
-# =========================
-# Startup / Shutdown
-# =========================
-@app.on_event("startup")
-async def startup():
-  global mqtt_client
-
-  _load_state()
-  _load_route_history()
-  _load_neighbor_overrides()
-  _load_auto_neighbor_overrides()
-  _ensure_node_decoder()
-  _check_git_updates()
-
-  loop = asyncio.get_event_loop()
-  transport = "websockets" if MQTT_TRANSPORT == "websockets" else "tcp"
-
-  topics_str = ", ".join(MQTT_TOPICS)
-  print(
-    f"[mqtt] connecting host={MQTT_HOST} port={MQTT_PORT} tls={MQTT_TLS} transport={transport} ws_path={MQTT_WS_PATH if transport == 'websockets' else '-'} topics={topics_str}"
-  )
-
-  mqtt_client = mqtt.Client(
-    mqtt.CallbackAPIVersion.VERSION2,
-    client_id=(MQTT_CLIENT_ID or None),
-    userdata={"loop": loop},
-    transport=transport,
-  )
-
-  if transport == "websockets":
-    mqtt_client.ws_set_options(path=MQTT_WS_PATH)
-
-  if MQTT_USERNAME:
-    mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-
-  if MQTT_TLS:
-    if MQTT_CA_CERT:
-      mqtt_client.tls_set(ca_certs=MQTT_CA_CERT)
-    else:
-      mqtt_client.tls_set()
-    if MQTT_TLS_INSECURE:
-      mqtt_client.tls_insecure_set(True)
-
-  mqtt_client.on_connect = mqtt_on_connect
-  mqtt_client.on_disconnect = mqtt_on_disconnect
-  mqtt_client.on_message = mqtt_on_message
-
-  mqtt_client.reconnect_delay_set(min_delay=1, max_delay=30)
-  mqtt_client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
-  mqtt_client.loop_start()
-
-  asyncio.create_task(broadcaster())
-  asyncio.create_task(reaper())
-  asyncio.create_task(_state_saver())
-  asyncio.create_task(_route_history_saver())
-  asyncio.create_task(_git_check_loop())
-
-
-@app.on_event("shutdown")
-async def shutdown():
-  global mqtt_client
-  if mqtt_client is not None:
-    try:
-      mqtt_client.loop_stop()
-      mqtt_client.disconnect()
-    except Exception:
-      pass
-    mqtt_client = None

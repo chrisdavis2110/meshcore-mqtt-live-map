@@ -1,28 +1,30 @@
 # Versions
 
-## v1.4.0 (02-21-2026)
-- Fix: share links now include the coverage overlay state so shared URLs preserve `coverage=on|off`.
-- Added Weather overlay support with share URL state (`weather=on|off`).
-- Weather toggle combines radar + wind overlays in one control.
-- Added and documented weather wind env controls:
-  `WEATHER_WIND_ENABLED`, `WEATHER_WIND_API_URL`,
-  `WEATHER_WIND_GRID_SIZE`, `WEATHER_WIND_REFRESH_SECONDS`.
-- Added country-bounded radar mode with env controls:
-  `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED` and
-  `WEATHER_RADAR_COUNTRY_LOOKUP_URL`.
-- Default weather-radar country lookup now uses the local API route
-  `/weather/radar/country-bounds` (URL path, not a filesystem directory).
-- Weather visibility is not persisted in localStorage; it defaults off
-  unless explicitly set in the URL.
-- Added auto-neighbor override promotion/pruning for learned paths so stable neighbors can be persisted and stale ones removed automatically.
-- Added and documented auto-neighbor env controls:
-  `AUTO_NEIGHBOR_OVERRIDES_ENABLED`, `AUTO_NEIGHBOR_OVERRIDES_FILE`,
-  `AUTO_NEIGHBOR_ACTIVE_DAYS`, `AUTO_NEIGHBOR_MIN_EDGE_COUNT`, and
-  `AUTO_NEIGHBOR_REFRESH_SECONDS`.
-- Docker compose now forwards neighbor override envs end-to-end:
-  `DEVICE_COORDS_FILE`, `NEIGHBOR_OVERRIDES_FILE`, and all
-  `AUTO_NEIGHBOR_*` envs.
-- `.env.example` includes the full neighbor override + auto-neighbor env set.
+## v1.5.0 (03-07-2026)
+- Refactored weather backend logic into `backend/weather.py` and mounted it as a router (`/weather/radar/country-bounds`) to match the module layout used by LOS/history.
+- Weather is now treated as a right-side tool panel with independent `Radar` and `Wind` layer toggles.
+- Added share-link support for per-layer weather state via `weather_radar` and `weather_wind` URL params.
+- Added backend weather endpoint tests for invalid coords, prod token enforcement, and cache behavior.
+- Expanded docs for all weather env settings and what each one controls.
+- Replaced deprecated FastAPI startup/shutdown event decorators with a lifespan handler.
+
+## v1.4.2 (03-05-2026)
+- Migrated app lifecycle from deprecated FastAPI `@app.on_event("startup"/"shutdown")` handlers to a lifespan context manager.
+- Kept MQTT connect/disconnect and background task startup behavior equivalent under the new lifespan flow.
+- Added `.venv/` to `.gitignore` for local developer test environments.
+
+## v1.4.1 (03-05-2026)
+- Fixed route payload serialization in `PROD_MODE` so hop metadata needed by the Show Hops UI is included (`hashes`, `point_ids`, `origin_id`, `receiver_id`).
+- Added regression coverage to ensure prod route payloads keep hop hashes for prefix display.
+- Added tests for neighbor-priority route resolution and `/api/nodes` format/delta modes.
+- Reworked `.env.example` into grouped sections with clearer defaults and full key coverage to make setup easier.
+
+## v1.4.0 (03-05-2026)
+- Added mixed hop prefix support in route parsing/resolution so paths can include both 1-byte (`AB`) and 2-byte (`ABCD`) repeater prefixes.
+- Route hash candidate mapping now indexes both prefix widths per device to reduce collisions/phantom hops on larger networks.
+- Show Hops now labels prefixes as `Prefix: AB` or `Prefix: ABCD` (no `0x`) and aligns prefix display with the rendered route direction.
+- 2-byte prefix support is implemented and expected to be ready, but has not been fully field-tested yet.
+- Added a pytest suite + CI workflow covering prefix parsing, route resolution, API auth/modes, LOS endpoints, coverage endpoint behavior, neighbor override loading, websocket snapshot payloads, and state/history persistence round-trips.
 
 ## v1.3.5 (02-06-2026)
 - Added dual stale-window support so `DEVICE_TTL_HOURS` and `PATH_TTL_SECONDS` work together instead of replacing each other.

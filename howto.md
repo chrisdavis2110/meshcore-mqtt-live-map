@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.4.2` (see `VERSIONS.md`).
+Current version: `1.5.0` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -147,6 +147,28 @@ WEATHER_WIND_API_URL=https://api.open-meteo.com/v1/forecast
 WEATHER_WIND_GRID_SIZE=3
 WEATHER_WIND_REFRESH_SECONDS=180
 ```
+
+Optional: configure Weather (Radar + Wind) behavior:
+
+```env
+# Master radar feature flag.
+WEATHER_RADAR_ENABLED=true
+# Keep radar clipped to the active country bounds around map center.
+WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true
+# Keep default unless you run your own lookup endpoint.
+WEATHER_RADAR_COUNTRY_LOOKUP_URL=/weather/radar/country-bounds
+
+# Enable/disable wind overlay in the Weather panel.
+WEATHER_WIND_ENABLED=true
+# Open-Meteo compatible wind API endpoint.
+WEATHER_WIND_API_URL=https://api.open-meteo.com/v1/forecast
+# Wind sampling density (1-5): higher = more arrows + more API load.
+WEATHER_WIND_GRID_SIZE=3
+# Wind refresh interval in seconds (minimum 30).
+WEATHER_WIND_REFRESH_SECONDS=180
+```
+
+If both `WEATHER_RADAR_ENABLED=false` and `WEATHER_WIND_ENABLED=false`, the Weather button is hidden.
 
 If you are using plain TCP MQTT, set:
 

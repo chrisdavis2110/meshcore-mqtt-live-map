@@ -6,10 +6,19 @@ import app
 
 
 class _DummyResponse:
-  def __init__(self, payload):
+  def __init__(self, payload, status_code=200):
     self._payload = payload
+    self.status_code = status_code
 
   def raise_for_status(self):
+    if self.status_code >= 400:
+      request = app.httpx.Request("GET", "https://coverage.example.com/get-samples")
+      response = app.httpx.Response(self.status_code, request=request)
+      raise app.httpx.HTTPStatusError(
+        f"HTTP {self.status_code}",
+        request=request,
+        response=response,
+      )
     return None
 
   def json(self):
@@ -52,6 +61,24 @@ def test_coverage_success_returns_keys_array(monkeypatch):
   assert result == [{"hash": "ABCD12"}]
 
 
+def test_coverage_non_list_keys_returns_empty_array(monkeypatch):
+  monkeypatch.setattr(app, "COVERAGE_API_URL", "https://coverage.example.com")
+  dummy = _DummyClient(response=_DummyResponse({"keys": {"hash": "ABCD12"}}))
+  monkeypatch.setattr(app.httpx, "AsyncClient", lambda timeout: dummy)
+
+  result = asyncio.run(app.get_coverage())
+  assert result == []
+
+
+def test_coverage_list_payload_is_supported(monkeypatch):
+  monkeypatch.setattr(app, "COVERAGE_API_URL", "https://coverage.example.com")
+  dummy = _DummyClient(response=_DummyResponse([{"hash": "ABCD12"}]))
+  monkeypatch.setattr(app.httpx, "AsyncClient", lambda timeout: dummy)
+
+  result = asyncio.run(app.get_coverage())
+  assert result == [{"hash": "ABCD12"}]
+
+
 def test_coverage_timeout_maps_to_504(monkeypatch):
   monkeypatch.setattr(app, "COVERAGE_API_URL", "https://coverage.example.com")
   timeout_exc = app.httpx.TimeoutException("timeout")
@@ -62,3 +89,14 @@ def test_coverage_timeout_maps_to_504(monkeypatch):
     asyncio.run(app.get_coverage())
   assert exc.value.status_code == 504
   assert exc.value.detail == "coverage_api_timeout"
+
+
+def test_coverage_http_error_maps_to_502(monkeypatch):
+  monkeypatch.setattr(app, "COVERAGE_API_URL", "https://coverage.example.com")
+  dummy = _DummyClient(response=_DummyResponse({"keys": []}, status_code=500))
+  monkeypatch.setattr(app.httpx, "AsyncClient", lambda timeout: dummy)
+
+  with pytest.raises(app.HTTPException) as exc:
+    asyncio.run(app.get_coverage())
+  assert exc.value.status_code == 502
+  assert "coverage_api_error: HTTP 500" in exc.value.detail
