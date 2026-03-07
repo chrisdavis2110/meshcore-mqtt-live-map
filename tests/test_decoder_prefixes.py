@@ -98,3 +98,43 @@ def test_route_hashes_reverse_when_receiver_prefix_is_first():
   assert points is not None
   assert used_hashes[0] == "BC"
   assert "BC221111" in point_ids
+
+
+def test_route_points_skip_unknown_hashes_and_keep_known_hops():
+  _add_device("AA001111", 42.0000, -71.0000, role="repeater")  # origin
+  _add_device("BC221111", 42.0003, -71.0003, role="repeater")
+  _add_device("DD001111", 42.0006, -71.0006, role="repeater")  # receiver
+  decoder._rebuild_node_hash_map()
+
+  points, used_hashes, point_ids = decoder._route_points_from_hashes(
+    path_hashes=["FFFF", "BC"],  # unknown first hop should be ignored
+    origin_id="AA001111",
+    receiver_id="DD001111",
+    ts=time.time(),
+  )
+
+  assert points is not None
+  assert used_hashes == ["BC"]
+  assert "BC221111" in point_ids
+  assert point_ids[0] == "AA001111"
+  assert point_ids[-1] == "DD001111"
+
+
+def test_route_points_use_exact_two_byte_key_when_present():
+  _add_device("AA001111", 42.0000, -71.0000, role="repeater")  # origin
+  _add_device("ABCD1111", 42.0002, -71.0002, role="repeater")
+  _add_device("ABEF1111", 42.0004, -71.0004, role="repeater")
+  _add_device("DD001111", 42.0006, -71.0006, role="repeater")  # receiver
+  decoder._rebuild_node_hash_map()
+
+  points, used_hashes, point_ids = decoder._route_points_from_hashes(
+    path_hashes=["ABCD"],
+    origin_id="AA001111",
+    receiver_id="DD001111",
+    ts=time.time(),
+  )
+
+  assert points is not None
+  assert used_hashes == ["ABCD"]
+  assert "ABCD1111" in point_ids
+  assert "ABEF1111" not in point_ids

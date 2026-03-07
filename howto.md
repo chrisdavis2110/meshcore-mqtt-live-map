@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.5.0` (see `VERSIONS.md`).
+Current version: `1.6.0` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -115,7 +115,18 @@ MQTT_TRANSPORT=websockets
 MQTT_WS_PATH=/
 MQTT_TLS=true
 MQTT_TOPIC=meshcore/#
+
+# MQTT online presence tuning (v1.5+)
+MQTT_ONLINE_SECONDS=300
+MQTT_ONLINE_STATUS_TTL_SECONDS=300
+MQTT_ONLINE_INTERNAL_TTL_SECONDS=300
+MQTT_ACTIVITY_PACKETS_TTL_SECONDS=300
+MQTT_STATUS_OFFLINE_VALUES=offline,disconnected
 ```
+
+Presence behavior:
+- `/status` + `/internal` determine whether a node is shown as **MQTT online**.
+- `/packets` is tracked as feed activity and does not, by itself, mark a node online.
 
 Optional coordinate overrides (for fixed node placement):
 
@@ -123,11 +134,52 @@ Optional coordinate overrides (for fixed node placement):
 DEVICE_COORDS_FILE=/data/device_coords.json
 ```
 
+Optional neighbor override controls (manual + auto):
+
+```env
+NEIGHBOR_OVERRIDES_FILE=/data/neighbor_overrides.json
+AUTO_NEIGHBOR_OVERRIDES_ENABLED=false
+AUTO_NEIGHBOR_OVERRIDES_FILE=/data/neighbor_overrides.auto.json
+AUTO_NEIGHBOR_ACTIVE_DAYS=7
+AUTO_NEIGHBOR_MIN_EDGE_COUNT=3
+AUTO_NEIGHBOR_REFRESH_SECONDS=60
+```
+
 Optional: enable the coverage layer by setting `COVERAGE_API_URL` (the Coverage button hides itself when blank):
 
 ```env
 COVERAGE_API_URL=https://coverage.example.com
+WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true
+# Optional override. Default is /weather/radar/country-bounds on this app.
+# This is an HTTP URL path, not a filesystem directory.
+WEATHER_RADAR_COUNTRY_LOOKUP_URL=/weather/radar/country-bounds
+WEATHER_WIND_ENABLED=true
+WEATHER_WIND_API_URL=https://api.open-meteo.com/v1/forecast
+WEATHER_WIND_GRID_SIZE=3
+WEATHER_WIND_REFRESH_SECONDS=180
 ```
+
+Optional: configure Weather (Radar + Wind) behavior:
+
+```env
+# Master radar feature flag.
+WEATHER_RADAR_ENABLED=true
+# Keep radar clipped to the active country bounds around map center.
+WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true
+# Keep default unless you run your own lookup endpoint.
+WEATHER_RADAR_COUNTRY_LOOKUP_URL=/weather/radar/country-bounds
+
+# Enable/disable wind overlay in the Weather panel.
+WEATHER_WIND_ENABLED=true
+# Open-Meteo compatible wind API endpoint.
+WEATHER_WIND_API_URL=https://api.open-meteo.com/v1/forecast
+# Wind sampling density (1-5): higher = more arrows + more API load.
+WEATHER_WIND_GRID_SIZE=3
+# Wind refresh interval in seconds (minimum 30).
+WEATHER_WIND_REFRESH_SECONDS=180
+```
+
+If both `WEATHER_RADAR_ENABLED=false` and `WEATHER_WIND_ENABLED=false`, the Weather button is hidden.
 
 If you are using plain TCP MQTT, set:
 

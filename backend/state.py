@@ -62,4 +62,6 @@ device_role_sources: Dict[str, str] = {}
 device_coords: Dict[str, Dict[str, float]] = {}
 neighbor_edges: Dict[str, Dict[str, Dict[str, Any]]] = {}
 last_seen_in_path: Dict[str, float] = {}
+first_seen_devices: Dict[str, float] = {}
+last_seen_in_advert: Dict[str, float] = {}
 state_dirty = False

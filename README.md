@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.5.0` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.6.0` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
 
@@ -20,8 +20,7 @@ Other community maps (versions may differ):
 
 ## Features
 - Live node markers with roles (Repeater, Companion, Room Server, Unknown)
-- MQTT online indicator (green outline + popup status)
-- HUD stats show MQTT-connected totals including nodes connected to MQTT but not plotted on the map
+- MQTT online indicator (green outline + popup status) based on MQTT `status`/`internal` topics
 - Animated route/trace lines
 - Dev route inspection: click a route line in dev (`PROD_MODE=false`) to log hop-by-hop details in the browser console (PR #14, credit: https://github.com/sefator)
 - Heat map for the last 10 minutes of message activity (includes adverts)
@@ -30,6 +29,7 @@ Other community maps (versions may differ):
 - History panel can be dismissed with an X without hiding history lines (re-open via History tool)
 - Peers tool showing incoming/outgoing neighbors with on-map lines (blue = incoming, purple = outgoing)
 - Coverage layer from a [coverage map API](https://github.com/nullrouten0/meshcore-coverage-map) (button hidden when not configured)
+- Weather tool panel with independent Radar and Wind toggles
 - Update available banner (git local vs upstream) with dismiss
 - UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle
 - Share button that copies a URL with current view + settings
@@ -55,6 +55,7 @@ Other community maps (versions may differ):
 - `backend/decoder.py`: payload parsing + meshcore-decoder integration
 - `backend/los.py`: LOS math + elevation helpers
 - `backend/history.py`: route history persistence + pruning
+- `backend/weather.py`: weather radar country-bounds lookup API
 - `backend/static/index.html`: HTML shell + template placeholders
 - `backend/static/styles.css`: UI styles
 - `backend/static/app.js`: map logic + UI controls
@@ -129,10 +130,25 @@ MQTT:
 - `MQTT_CA_CERT` (custom CA bundle path)
 - `MQTT_CLIENT_ID` (optional client id override)
 - `MQTT_TOPIC` (e.g. `meshcore/#` or `meshcore/#,other/topic/+` for multiple topics)
-- `MQTT_STATUS_OFFLINE_VALUES` (comma-separated status values that force offline, default `offline,disconnected`)
 
 Coverage layer:
 - `COVERAGE_API_URL` (URL to coverage map API; button hidden when blank)
+
+Weather overlay:
+- `WEATHER_RADAR_ENABLED`:
+  master switch for radar support. If both `WEATHER_RADAR_ENABLED=false` and `WEATHER_WIND_ENABLED=false`, the Weather button is hidden.
+- `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED`:
+  set `true` to keep radar inside the country around the map center; set `false` for unrestricted radar tiles.
+- `WEATHER_RADAR_COUNTRY_LOOKUP_URL`:
+  keep default (`/weather/radar/country-bounds`) unless you run your own country-bounds endpoint.
+- `WEATHER_WIND_ENABLED`:
+  set `true` to show Wind in the Weather panel, or `false` to disable wind entirely.
+- `WEATHER_WIND_API_URL`:
+  endpoint for wind data (default is Open-Meteo; custom APIs must provide current wind speed/direction).
+- `WEATHER_WIND_GRID_SIZE`:
+  number of wind samples per side (`1`-`5`); larger grid gives more arrows but increases API load.
+- `WEATHER_WIND_REFRESH_SECONDS`:
+  wind refresh interval (seconds, minimum `30`); increase this to reduce API calls.
 
 Device + route tuning:
 - `DEVICE_TTL_HOURS` (advert/device stale window; default `96`)
@@ -157,11 +173,12 @@ History overlay:
 
 Heat + online status:
 - `HEAT_TTL_SECONDS`
-- `MQTT_ONLINE_SECONDS` (fallback online window for compatibility)
-- `MQTT_ONLINE_STATUS_TTL_SECONDS` (`/status` heartbeat window for MQTT connectivity)
-- `MQTT_ONLINE_INTERNAL_TTL_SECONDS` (`/internal` heartbeat window for MQTT connectivity)
-- `MQTT_ACTIVITY_PACKETS_TTL_SECONDS` (`/packets` activity window used for MQTT presence summaries)
-- `MQTT_ONLINE_TOPIC_SUFFIXES` (legacy suffix list for compatibility/debug tooling)
+- `MQTT_ONLINE_SECONDS` (legacy/global fallback TTL for MQTT presence)
+- `MQTT_ONLINE_STATUS_TTL_SECONDS` (how long `/status` keeps a node connected)
+- `MQTT_ONLINE_INTERNAL_TTL_SECONDS` (how long `/internal` keeps a node connected)
+- `MQTT_ACTIVITY_PACKETS_TTL_SECONDS` (how long `/packets` counts as feeding activity)
+- `MQTT_STATUS_OFFLINE_VALUES` (comma-separated status values that force offline, even inside TTL)
+- `MQTT_ONLINE_TOPIC_SUFFIXES` (legacy compatibility setting; primary online source is status/internal TTLs)
 - `MQTT_SEEN_BROADCAST_MIN_SECONDS`
 - `MQTT_ONLINE_FORCE_NAMES` (comma-separated names to force as MQTT online; also excluded from peers)
 
@@ -226,6 +243,7 @@ Use it:
 - To see full paths, the feed must include Path/Trace packets (payload types 8/9).
 - Runtime state is persisted to `data/state.json`.
 - MQTT disconnects are handled; the client will reconnect when the broker returns.
+- MQTT connectivity (`MQTT online`) is based on `/status` + `/internal`; `/packets` is treated as feed activity and does not by itself mark a node online.
 - Live route IDs are observer-aware (`message_hash:receiver_id`) so the same
   message seen by multiple MQTT observers does not overwrite active lines.
 - Line-of-sight tool: click **LOS tool** and pick two points, or **Shift+click** two nodes to measure LOS between them. Drag endpoints or select A/B then click the map to move that point.
@@ -233,7 +251,7 @@ Use it:
 - LOS elevations are fetched via `/los/elevations` and LOS/relay math runs client-side (with `/los` fallback).
 - History tool always loads off (use the button or `history=on` in the URL).
 - Peers tool uses route history segments; forced MQTT listeners are excluded from peer lists.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;

@@ -1,5 +1,28 @@
 # Versions
 
+## v1.6.0 (03-07-2026)
+- Refactored weather backend logic into `backend/weather.py` and mounted it as a router (`/weather/radar/country-bounds`) to match the module layout used by LOS/history.
+- Weather is now treated as a right-side tool panel with independent `Radar` and `Wind` layer toggles.
+- Added share-link support for per-layer weather state via `weather_radar` and `weather_wind` URL params.
+- Added browser persistence for Weather layer toggles (`Radar`/`Wind`) via local storage.
+- Added backend weather endpoint tests for invalid coords, prod token enforcement, and cache behavior.
+- Expanded backend test coverage to 44 passing tests with new cases for websocket auth, prefix routing, neighbor pruning/priority, weather flags, and persistence robustness.
+- Hardened `/coverage` parsing for invalid upstream schemas (non-list `keys` now returns `[]`).
+- Replaced deprecated FastAPI startup/shutdown event decorators with a lifespan handler.
+- Expanded docs for all weather env settings and what each one controls.
+- New env controls documented for this release line:
+  - `WEATHER_RADAR_ENABLED`
+  - `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED`
+  - `WEATHER_RADAR_COUNTRY_LOOKUP_URL`
+  - `WEATHER_WIND_ENABLED`
+  - `WEATHER_WIND_API_URL`
+  - `WEATHER_WIND_GRID_SIZE`
+  - `WEATHER_WIND_REFRESH_SECONDS`
+  - `MQTT_ONLINE_STATUS_TTL_SECONDS`
+  - `MQTT_ONLINE_INTERNAL_TTL_SECONDS`
+  - `MQTT_ACTIVITY_PACKETS_TTL_SECONDS`
+  - `MQTT_STATUS_OFFLINE_VALUES`
+
 ## v1.5.0 (03-06-2026)
 - Reworked MQTT presence tracking to follow MeshCore topic semantics:
   - MQTT connectivity now derives from `/status` and `/internal` heartbeats.

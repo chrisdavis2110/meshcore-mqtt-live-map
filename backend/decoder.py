@@ -435,9 +435,11 @@ def _choose_neighbor_device(
       continue
 
     manual = bool(edge.get("manual"))
+    auto = bool(edge.get("auto"))
     count = int(edge.get("count", 0) or 0)
     last_seen = float(edge.get("last_seen", 0.0) or 0.0)
-    score = (1 if manual else 0, count, last_seen)
+    priority = 2 if manual else (1 if auto else 0)
+    score = (priority, count, last_seen)
     if best_score is None or score > best_score:
       best_score = score
       best_id = device_id

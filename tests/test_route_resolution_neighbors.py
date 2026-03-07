@@ -57,3 +57,39 @@ def test_neighbor_edges_preferred_for_collided_hash_after_first_hop():
     assert point_ids[2] == "ABEF2222"
   finally:
     _clear_state()
+
+
+def test_choose_neighbor_device_priority_manual_then_auto_then_observed():
+  _clear_state()
+  try:
+    _add_device("AA001111", 42.0000, -71.0000)
+    _add_device("BB001111", 42.0001, -71.0001)
+    _add_device("CC001111", 42.0002, -71.0002)
+    _add_device("DD001111", 42.0003, -71.0003)
+
+    state.neighbor_edges["AA001111"] = {
+      "BB001111": {"count": 10, "last_seen": time.time(), "manual": False},
+      "CC001111": {"count": 1, "last_seen": time.time(), "manual": False, "auto": True},
+      "DD001111": {"count": 0, "last_seen": time.time(), "manual": True},
+    }
+
+    picked = decoder._choose_neighbor_device(
+      prev_id="AA001111",
+      candidates=["BB001111", "CC001111", "DD001111"],
+      ref_lat=42.0000,
+      ref_lon=-71.0000,
+      ts=time.time(),
+    )
+    assert picked == "DD001111"
+
+    state.neighbor_edges["AA001111"].pop("DD001111")
+    picked_auto = decoder._choose_neighbor_device(
+      prev_id="AA001111",
+      candidates=["BB001111", "CC001111"],
+      ref_lat=42.0000,
+      ref_lon=-71.0000,
+      ts=time.time(),
+    )
+    assert picked_auto == "CC001111"
+  finally:
+    _clear_state()

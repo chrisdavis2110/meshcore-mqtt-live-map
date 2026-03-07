@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.5.0` (see `VERSIONS.md`).
+Current version: `1.6.0` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -37,6 +37,7 @@ mesh-live-map-dev/
 │   ├── decoder.py          # Payload parsing, MeshCore decoding
 │   ├── history.py          # Route history persistence (24h rolling window)
 │   ├── los.py              # Line-of-sight calculations, elevation API
+│   ├── weather.py          # Weather radar country-bounds router
 │   ├── turnstile.py        # Cloudflare Turnstile verification + tokens
 │   ├── routes/             # HTTP/WebSocket route modules
 │   │   ├── api.py           # API endpoints
@@ -64,7 +65,8 @@ mesh-live-map-dev/
 │   ├── state.json          # Persisted devices, trails, names
 │   ├── route_history.jsonl # Rolling route history
 │   ├── device_roles.json   # Optional role overrides
-│   └── neighbor_overrides.json # Optional neighbor overrides
+│   ├── neighbor_overrides.json # Optional neighbor overrides
+│   └── neighbor_overrides.auto.json # Auto-managed neighbor overrides
 ├── docker-compose.yaml     # Container orchestration
 ├── .env.example            # Configuration template
 ├── pyproject.toml          # Python tooling (ruff, pytest)
@@ -108,10 +110,17 @@ Loads all settings from environment variables with sensible defaults.
 - MQTT connection (`MQTT_HOST`, `MQTT_PORT`, `MQTT_TLS`, etc.)
 - State persistence (`STATE_DIR`, `STATE_SAVE_INTERVAL`, `DEVICE_COORDS_FILE`)
 - Neighbor overrides (`NEIGHBOR_OVERRIDES_FILE`)
+- Auto neighbor overrides (`AUTO_NEIGHBOR_OVERRIDES_ENABLED`,
+  `AUTO_NEIGHBOR_OVERRIDES_FILE`, `AUTO_NEIGHBOR_ACTIVE_DAYS`,
+  `AUTO_NEIGHBOR_MIN_EDGE_COUNT`, `AUTO_NEIGHBOR_REFRESH_SECONDS`)
 - Device/path staleness (`DEVICE_TTL_HOURS`, `PATH_TTL_SECONDS`, `TRAIL_LEN`)
 - Route handling (`ROUTE_TTL_SECONDS`, `ROUTE_HISTORY_HOURS`)
 - Turnstile protection (`TURNSTILE_*`, gated by `PROD_MODE=true`)
-- Map display (`MAP_START_LAT`, `MAP_START_LON`, `MAP_RADIUS_KM`)
+- Map display (`MAP_START_LAT`, `MAP_START_LON`, `MAP_RADIUS_KM`,
+  `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED`, `WEATHER_RADAR_COUNTRY_LOOKUP_URL`).
+  `WEATHER_RADAR_COUNTRY_LOOKUP_URL` defaults to `/weather/radar/country-bounds` and is an HTTP route path (not a filesystem path).
+- Weather overlays (`WEATHER_WIND_ENABLED`, `WEATHER_WIND_API_URL`,
+  `WEATHER_WIND_GRID_SIZE`, `WEATHER_WIND_REFRESH_SECONDS`)
 - Site metadata (`SITE_TITLE`, `SITE_DESCRIPTION`)
 
 ### state.py (Shared State)
@@ -152,6 +161,13 @@ Calculates terrain-based line of sight:
 - Samples points along the path
 - Finds peaks and obstructions
 - Suggests relay points when blocked
+
+### weather.py (Weather API)
+
+Owns weather-specific backend routes:
+- `GET /weather/radar/country-bounds`
+- Resolves country by lat/lon and returns a bounding box used to clip radar tiles.
+- Uses in-memory caching keyed by rounded map center to reduce upstream lookups.
 
 ---
 
@@ -237,7 +253,7 @@ WebSocket broadcast to all clients
 **Client receives:**
 ```javascript
 // Initial snapshot
-{ type: "snapshot", devices: {...}, trails: {...}, routes: [...], heat: [...], mqtt_presence: {...} }
+{ type: "snapshot", devices: {...}, trails: {...}, routes: [...], heat: [...] }
 
 // Device update
 { type: "update", device: {...}, trail: [...] }
@@ -246,10 +262,7 @@ WebSocket broadcast to all clients
 { type: "route", route: {...} }
 
 // Device seen (online status)
-{ type: "device_seen", device_id: "...", mqtt_seen_ts: 1234567890, mqtt_presence: {...} }
-
-// MQTT presence summary update
-{ type: "mqtt_presence", mqtt_presence: {...} }
+{ type: "device_seen", device_id: "...", mqtt_seen_ts: 1234567890 }
 
 // Stale device removal
 { type: "stale", device_ids: ["..."] }
@@ -271,6 +284,7 @@ WebSocket broadcast to all clients
 | `GET /peers/{id}` | Token | Inbound/outbound neighbors |
 | `GET /preview.png` | No | Social preview image (map tiles + device dots) |
 | `GET /los` | No | Line of sight calculation |
+| `GET /weather/radar/country-bounds` | Token | Resolve country bounds for radar clipping |
 | `GET /coverage` | Token | Coverage data proxy |
 | `GET /debug/last` | Dev only | Recent MQTT messages |
 | `GET /debug/status` | Dev only | Status messages |
@@ -378,4 +392,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.5.0`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.6.0`).

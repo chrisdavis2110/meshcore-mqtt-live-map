@@ -51,6 +51,7 @@ from history import (
   _record_route_history,
   _route_history_saver,
 )
+from weather import create_weather_router
 from turnstile import TurnstileVerifier
 from los import (
   _fetch_elevations,
@@ -148,6 +149,13 @@ from config import (
   ELEVATION_CACHE_TTL,
   LOS_PEAKS_MAX,
   COVERAGE_API_URL,
+  WEATHER_RADAR_ENABLED,
+  WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED,
+  WEATHER_RADAR_COUNTRY_LOOKUP_URL,
+  WEATHER_WIND_ENABLED,
+  WEATHER_WIND_API_URL,
+  WEATHER_WIND_GRID_SIZE,
+  WEATHER_WIND_REFRESH_SECONDS,
   APP_DIR,
   NODE_SCRIPT_PATH,
 )
@@ -182,13 +190,30 @@ from state import (
   device_role_sources,
   device_coords,
   neighbor_edges,
+  first_seen_devices,
+  last_seen_in_advert,
 )
 
 # =========================
 # App / State
 # =========================
+mqtt_client: Optional[mqtt.Client] = None
+background_tasks: Set[asyncio.Task[Any]] = set()
+clients: Set[WebSocket] = set()
+update_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+git_update_info = {
+  "available": False,
+  "local": None,
+  "remote": None,
+  "local_short": None,
+  "remote_short": None,
+  "error": None,
+}
+mqtt_presence_last_summary: Dict[str, int] = {}
+
+
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def _lifespan(_app: FastAPI):
   global mqtt_client
 
   _load_state()
@@ -197,7 +222,7 @@ async def lifespan(_: FastAPI):
   _ensure_node_decoder()
   _check_git_updates()
 
-  loop = asyncio.get_event_loop()
+  loop = asyncio.get_running_loop()
   transport = "websockets" if MQTT_TRANSPORT == "websockets" else "tcp"
 
   topics_str = ", ".join(MQTT_TOPICS)
@@ -234,15 +259,25 @@ async def lifespan(_: FastAPI):
   mqtt_client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
   mqtt_client.loop_start()
 
-  asyncio.create_task(broadcaster())
-  asyncio.create_task(reaper())
-  asyncio.create_task(_state_saver())
-  asyncio.create_task(_route_history_saver())
-  asyncio.create_task(_git_check_loop())
+  background_tasks.clear()
+  for coro in (
+    broadcaster(),
+    reaper(),
+    _state_saver(),
+    _route_history_saver(),
+    _git_check_loop(),
+  ):
+    background_tasks.add(asyncio.create_task(coro))
 
   try:
     yield
   finally:
+    for task in list(background_tasks):
+      task.cancel()
+    if background_tasks:
+      await asyncio.gather(*background_tasks, return_exceptions=True)
+    background_tasks.clear()
+
     if mqtt_client is not None:
       try:
         mqtt_client.loop_stop()
@@ -252,22 +287,8 @@ async def lifespan(_: FastAPI):
       mqtt_client = None
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-mqtt_client: Optional[mqtt.Client] = None
-clients: Set[WebSocket] = set()
-update_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-git_update_info = {
-  "available": False,
-  "local": None,
-  "remote": None,
-  "local_short": None,
-  "remote_short": None,
-  "error": None,
-}
-mqtt_presence_last_summary: Dict[str, int] = {}
-
 # Initialize Turnstile verifier if enabled
 turnstile_verifier: Optional[TurnstileVerifier] = None
 if TURNSTILE_ENABLED and TURNSTILE_SECRET_KEY:
@@ -342,6 +363,46 @@ def _load_coord_overrides() -> Dict[str, Dict[str, float]]:
   return coords
 
 
+def _neighbor_override_pairs(data: Any) -> List[Tuple[str, str]]:
+  pairs: List[Tuple[str, str]] = []
+  if isinstance(data, dict):
+    for src, targets in data.items():
+      if not isinstance(src, str):
+        continue
+      src_id = src.strip()
+      if isinstance(targets, list):
+        for dst in targets:
+          if not isinstance(dst, str):
+            continue
+          dst_id = dst.strip()
+          if src_id and dst_id and src_id != dst_id:
+            pairs.append((src_id, dst_id))
+      elif isinstance(targets, str):
+        dst_id = targets.strip()
+        if src_id and dst_id and src_id != dst_id:
+          pairs.append((src_id, dst_id))
+  elif isinstance(data, list):
+    for item in data:
+      if (
+        isinstance(item, (list, tuple)) and len(item) >= 2 and
+        isinstance(item[0], str) and isinstance(item[1], str)
+      ):
+        src_id = item[0].strip()
+        dst_id = item[1].strip()
+      elif isinstance(item, dict):
+        src = item.get("from") or item.get("src") or item.get("a")
+        dst = item.get("to") or item.get("dst") or item.get("b")
+        if not isinstance(src, str) or not isinstance(dst, str):
+          continue
+        src_id = src.strip()
+        dst_id = dst.strip()
+      else:
+        continue
+      if src_id and dst_id and src_id != dst_id:
+        pairs.append((src_id, dst_id))
+  return pairs
+
+
 def _load_neighbor_overrides() -> None:
   if not NEIGHBOR_OVERRIDES_FILE or not os.path.exists(NEIGHBOR_OVERRIDES_FILE):
     return
@@ -353,38 +414,10 @@ def _load_neighbor_overrides() -> None:
     return
   now = time.time()
   added = 0
-
-  def _add_pair(src: str, dst: str) -> None:
-    nonlocal added
-    if not src or not dst or src == dst:
-      return
-    _touch_neighbor(src, dst, now, manual=True)
-    _touch_neighbor(dst, src, now, manual=True)
+  for src_id, dst_id in _neighbor_override_pairs(data):
+    _touch_neighbor(src_id, dst_id, now, manual=True)
+    _touch_neighbor(dst_id, src_id, now, manual=True)
     added += 1
-
-  if isinstance(data, dict):
-    for src, targets in data.items():
-      if not isinstance(src, str):
-        continue
-      if isinstance(targets, list):
-        for dst in targets:
-          if isinstance(dst, str):
-            _add_pair(src.strip(), dst.strip())
-      elif isinstance(targets, str):
-        _add_pair(src.strip(), targets.strip())
-  elif isinstance(data, list):
-    for item in data:
-      if (
-        isinstance(item, (list, tuple)) and len(item) >= 2 and
-        isinstance(item[0], str) and isinstance(item[1], str)
-      ):
-        _add_pair(item[0].strip(), item[1].strip())
-      elif isinstance(item, dict):
-        src = item.get("from") or item.get("src") or item.get("a")
-        dst = item.get("to") or item.get("dst") or item.get("b")
-        if isinstance(src, str) and isinstance(dst, str):
-          _add_pair(src.strip(), dst.strip())
-
   if added:
     print(
       f"[neighbors] loaded {added} override pairs from {NEIGHBOR_OVERRIDES_FILE}"
@@ -392,7 +425,10 @@ def _load_neighbor_overrides() -> None:
 
 
 def _touch_neighbor(
-  src_id: str, dst_id: str, ts: float, manual: bool = False
+  src_id: str,
+  dst_id: str,
+  ts: float,
+  manual: bool = False,
 ) -> None:
   if not src_id or not dst_id or src_id == dst_id:
     return
@@ -460,6 +496,8 @@ def _serialize_state() -> Dict[str, Any]:
     "device_roles": device_roles,
     "device_role_sources": device_role_sources,
     "last_seen_in_path": state.last_seen_in_path,
+    "first_seen_devices": first_seen_devices,
+    "last_seen_in_advert": last_seen_in_advert,
   }
 
 
@@ -767,6 +805,8 @@ def _evict_device(device_id: str) -> bool:
     removed = True
   trails.pop(device_id, None)
   state.last_seen_in_path.pop(device_id, None)
+  first_seen_devices.pop(device_id, None)
+  last_seen_in_advert.pop(device_id, None)
   if removed:
     state.state_dirty = True
     _rebuild_node_hash_map()
@@ -901,6 +941,9 @@ def _require_prod_token(request: Request) -> None:
     raise HTTPException(status_code=401, detail="unauthorized")
 
 
+app.include_router(create_weather_router(_require_prod_token))
+
+
 def _ws_authorized(ws: WebSocket) -> bool:
   if TURNSTILE_ENABLED and turnstile_verifier:
     auth_token = _extract_cookie_token(ws.headers, "meshmap_auth") or \
@@ -950,6 +993,16 @@ def _load_state() -> None:
   trails.update(data.get("trails") or {})
   seen_devices.clear()
   seen_devices.update(data.get("seen_devices") or {})
+  first_seen_devices.clear()
+  raw_first_seen = data.get("first_seen_devices") or {}
+  if isinstance(raw_first_seen, dict):
+    for key, value in raw_first_seen.items():
+      try:
+        first_seen_devices[str(key)] = float(value)
+      except (TypeError, ValueError):
+        continue
+  else:
+    raw_first_seen = {}
   cleaned_trails: Dict[str, list] = {}
   trails_dirty = False
   for device_id, trail in trails.items():
@@ -1045,6 +1098,23 @@ def _load_state() -> None:
         state.last_seen_in_path[str(key)] = float(value)
       except (TypeError, ValueError):
         continue
+  raw_advert_seen = data.get("last_seen_in_advert") or {}
+  last_seen_in_advert.clear()
+  if isinstance(raw_advert_seen, dict):
+    for key, value in raw_advert_seen.items():
+      if dropped_ids and str(key) in dropped_ids:
+        continue
+      try:
+        last_seen_in_advert[str(key)] = float(value)
+      except (TypeError, ValueError):
+        continue
+  # If first_seen data is missing, fall back to loaded last_seen values.
+  if not raw_first_seen:
+    for device_id, seen_ts in seen_devices.items():
+      try:
+        first_seen_devices[device_id] = float(seen_ts)
+      except (TypeError, ValueError):
+        continue
   # Load and apply coordinate overrides
   coord_overrides = _load_coord_overrides()
   if coord_overrides:
@@ -1053,6 +1123,8 @@ def _load_state() -> None:
   if dropped_ids:
     for device_id in dropped_ids:
       device_coords.pop(device_id, None)
+      first_seen_devices.pop(device_id, None)
+      last_seen_in_advert.pop(device_id, None)
   _rebuild_node_hash_map()
 
   for device_id, dev_state in devices.items():
@@ -1377,6 +1449,12 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
     route_type = int(route_type) if route_type is not None else None
   except (TypeError, ValueError):
     route_type = None
+
+  if payload_type == 4:
+    advert_device_id = route_origin_id or origin_id or receiver_id
+    if advert_device_id:
+      last_seen_in_advert[advert_device_id] = time.time()
+      state.state_dirty = True
 
   route_hashes = None
   if path_hashes and isinstance(path_hashes, list):
@@ -1703,7 +1781,10 @@ async def broadcaster():
       device_state.lat = coord_override["lat"]
       device_state.lon = coord_override["lon"]
     devices[device_id] = device_state
-    seen_devices[device_id] = time.time()
+    now_seen = time.time()
+    seen_devices[device_id] = now_seen
+    if device_id not in first_seen_devices:
+      first_seen_devices[device_id] = now_seen
     state.state_dirty = True
     if is_new_device:
       _rebuild_node_hash_map()
@@ -1885,6 +1966,9 @@ async def reaper():
     for dev_id, last in list(seen_devices.items()):
       if now - last > prune_after:
         seen_devices.pop(dev_id, None)
+        first_seen_devices.pop(dev_id, None)
+        last_seen_in_advert.pop(dev_id, None)
+        state.last_seen_in_path.pop(dev_id, None)
 
     await asyncio.sleep(5)
 
@@ -2120,6 +2204,20 @@ def root(request: Request):
       MQTT_ACTIVITY_PACKETS_TTL_SECONDS,
     "COVERAGE_API_URL":
       COVERAGE_API_URL,
+    "WEATHER_RADAR_ENABLED":
+      str(WEATHER_RADAR_ENABLED).lower(),
+    "WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED":
+      str(WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED).lower(),
+    "WEATHER_RADAR_COUNTRY_LOOKUP_URL":
+      WEATHER_RADAR_COUNTRY_LOOKUP_URL,
+    "WEATHER_WIND_ENABLED":
+      str(WEATHER_WIND_ENABLED).lower(),
+    "WEATHER_WIND_API_URL":
+      WEATHER_WIND_API_URL,
+    "WEATHER_WIND_GRID_SIZE":
+      WEATHER_WIND_GRID_SIZE,
+    "WEATHER_WIND_REFRESH_SECONDS":
+      WEATHER_WIND_REFRESH_SECONDS,
     "UPDATE_AVAILABLE":
       str(bool(git_update_info.get("available"))).lower(),
     "UPDATE_LOCAL":
@@ -2506,6 +2604,13 @@ def map_page(request: Request):
     "MQTT_ONLINE_INTERNAL_TTL_SECONDS": MQTT_ONLINE_INTERNAL_TTL_SECONDS,
     "MQTT_ACTIVITY_PACKETS_TTL_SECONDS": MQTT_ACTIVITY_PACKETS_TTL_SECONDS,
     "COVERAGE_API_URL": COVERAGE_API_URL,
+    "WEATHER_RADAR_ENABLED": str(WEATHER_RADAR_ENABLED).lower(),
+    "WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED": str(WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED).lower(),
+    "WEATHER_RADAR_COUNTRY_LOOKUP_URL": WEATHER_RADAR_COUNTRY_LOOKUP_URL,
+    "WEATHER_WIND_ENABLED": str(WEATHER_WIND_ENABLED).lower(),
+    "WEATHER_WIND_API_URL": WEATHER_WIND_API_URL,
+    "WEATHER_WIND_GRID_SIZE": WEATHER_WIND_GRID_SIZE,
+    "WEATHER_WIND_REFRESH_SECONDS": WEATHER_WIND_REFRESH_SECONDS,
     "UPDATE_AVAILABLE": str(bool(git_update_info.get("available"))).lower(),
     "UPDATE_LOCAL": git_update_info.get("local_short") or "",
     "UPDATE_REMOTE": git_update_info.get("remote_short") or "",
@@ -2939,10 +3044,11 @@ async def get_coverage():
       response.raise_for_status()
       data = response.json()
       # /get-samples returns { keys: [...] }, extract the keys array
-      samples = (
+      samples_raw = (
         data.get("keys", []) if isinstance(data, dict) else
         (data if isinstance(data, list) else [])
       )
+      samples = samples_raw if isinstance(samples_raw, list) else []
       print(
         f"[coverage] Received {len(samples) if isinstance(samples, list) else 'non-list'} items from coverage API"
       )
