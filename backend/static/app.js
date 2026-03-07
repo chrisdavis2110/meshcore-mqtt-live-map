@@ -140,8 +140,6 @@ const routeLines = new Map(); // route_id -> { line, timeout }
 const deviceMeta = new Map(); // device_id -> { lat, lon, name }
 const historyLines = new Map(); // edge_id -> { line, count }
 const historyCache = new Map(); // edge_id -> raw edge data
-let mqttPresenceKnown = false;
-let mqttConnectedTotal = 0;
 const historyLayer = L.layerGroup();
 const peerLayer = L.layerGroup();
 const peerLines = new Map(); // peer_id -> line
@@ -168,8 +166,6 @@ const losSampleMax = Number(config.losSampleMax) || 80;
 const losSampleStepMeters = Number(config.losSampleStepMeters) || 250;
 const losPeaksMax = Number(config.losPeaksMax) || 4;
 const mqttOnlineSeconds = Number(config.mqttOnlineSeconds) || 300;
-const mqttOnlineStatusTtlSeconds = Number(config.mqttOnlineStatusTtlSeconds) || mqttOnlineSeconds;
-const mqttOnlineInternalTtlSeconds = Number(config.mqttOnlineInternalTtlSeconds) || mqttOnlineSeconds;
 const defaultDistanceUnits = config.distanceUnits || 'km';
 const heatAvailable = typeof L.heatLayer === 'function';
 const heatLayer = heatAvailable ? L.heatLayer([], {
@@ -399,12 +395,7 @@ if (storedHeat === null) {
 }
 const mqttWindowLabel = document.getElementById('mqtt-online-label');
 if (mqttWindowLabel) {
-  const mqttWindowSeconds = Math.max(
-    mqttOnlineSeconds,
-    mqttOnlineStatusTtlSeconds,
-    mqttOnlineInternalTtlSeconds
-  );
-  mqttWindowLabel.textContent = `MQTT online (last ${formatOnlineWindow(mqttWindowSeconds)})`;
+  mqttWindowLabel.textContent = `MQTT online (last ${formatOnlineWindow(mqttOnlineSeconds)})`;
 }
 
 const propagationLayer = L.layerGroup().addTo(map);
@@ -478,21 +469,9 @@ function markerStyleForDevice(d) {
   return base;
 }
 
-function applyMqttPresenceSummary(summary) {
-  if (!summary || typeof summary !== 'object') return;
-  if (summary.connected_total != null) {
-    const n = Number(summary.connected_total);
-    if (Number.isFinite(n) && n >= 0) {
-      mqttConnectedTotal = Math.floor(n);
-      mqttPresenceKnown = true;
-    }
-  }
-}
-
 function setStats() {
-  const onlineOnMap = Array.from(deviceData.values()).filter(isMqttOnline).length;
-  const onlineTotal = mqttPresenceKnown ? mqttConnectedTotal : onlineOnMap;
-  document.getElementById('stats').textContent = `${markers.size} active devices • ${onlineTotal} MQTT online • ${routeLines.size} routes • ${historyLines.size} history`;
+  const onlineCount = Array.from(deviceData.values()).filter(isMqttOnline).length;
+  document.getElementById('stats').textContent = `${markers.size} active devices • ${onlineCount} MQTT online • ${routeLines.size} routes • ${historyLines.size} history`;
 }
 
 function formatOnlineWindow(seconds) {
@@ -1872,31 +1851,9 @@ function getLastSeenTs(d) {
 
 function isMqttOnline(d) {
   if (d.mqtt_forced) return true;
-  const now = Date.now() / 1000;
-  const statusValue = String(d.mqtt_status_value || '').trim().toLowerCase();
-  const statusTs = Number(d.mqtt_status_ts) || 0;
-  if (
-    statusTs &&
-    mqttOnlineStatusTtlSeconds > 0 &&
-    (now - statusTs) <= mqttOnlineStatusTtlSeconds &&
-    (statusValue === 'offline' || statusValue === 'disconnected')
-  ) {
-    return false;
-  }
-
-  const source = String(d.mqtt_online_source || '').trim().toLowerCase();
-  if (source === 'internal') {
-    const ts = Number(d.mqtt_internal_ts) || Number(d.mqtt_seen_ts) || 0;
-    return ts > 0 && mqttOnlineInternalTtlSeconds > 0 && (now - ts) <= mqttOnlineInternalTtlSeconds;
-  }
-  if (source === 'status') {
-    const ts = Number(d.mqtt_status_ts) || Number(d.mqtt_seen_ts) || 0;
-    return ts > 0 && mqttOnlineStatusTtlSeconds > 0 && (now - ts) <= mqttOnlineStatusTtlSeconds;
-  }
-
-  const lastSeen = Number(d.mqtt_seen_ts) || 0;
+  const lastSeen = d.mqtt_seen_ts || null;
   if (!lastSeen) return false;
-  return mqttOnlineSeconds > 0 && (now - lastSeen) <= mqttOnlineSeconds;
+  return (Date.now() / 1000 - lastSeen) <= mqttOnlineSeconds;
 }
 
 function updateMarkerLabel(m, d) {
@@ -4098,14 +4055,14 @@ function makePopup(d) {
     : `<span class="popup-title popup-id">${deviceLabel}</span>`;
   const role = resolveRole(d);
   const roleLabel = role === 'unknown' ? '' : role.charAt(0).toUpperCase() + role.slice(1);
-  const mqttOnline = isMqttOnline(d);
+  const mqttLabel = isMqttOnline(d) ? 'Online' : 'Offline';
   return `
         ${title}
         <span class="small">
           ${roleLabel ? `Role: ${roleLabel}<br/>` : ``}
           Location: ${d.lat.toFixed(6)}, ${d.lon.toFixed(6)}<br/>
           Last Contact: ${lastContact}<br/>
-          ${mqttOnline ? `MQTT: Online<br/>` : ``}
+          MQTT: ${mqttLabel}<br/>
           ${d.rssi != null ? `RSSI: ${d.rssi}<br/>` : ``}
           ${d.snr != null ? `SNR: ${d.snr}<br/>` : ``}
         </span>
@@ -4896,7 +4853,6 @@ async function initialSnapshot() {
     if (Array.isArray(snap.history_edges)) {
       snap.history_edges.forEach(edge => upsertHistoryEdge(edge));
     }
-    applyMqttPresenceSummary(snap.mqtt_presence);
     if (snap.history_window_seconds != null) {
       historyWindowSeconds = Number(snap.history_window_seconds);
       updateHistoryWindowLabel(historyWindowSeconds);
@@ -4940,7 +4896,6 @@ function connectWS() {
       if (Array.isArray(msg.history_edges)) {
         msg.history_edges.forEach(edge => upsertHistoryEdge(edge));
       }
-      applyMqttPresenceSummary(msg.mqtt_presence);
       if (msg.history_window_seconds != null) {
         historyWindowSeconds = Number(msg.history_window_seconds);
         updateHistoryWindowLabel(historyWindowSeconds);
@@ -4959,16 +4914,10 @@ function connectWS() {
 
     if (msg.type === "device_seen") {
       const id = msg.device_id;
-      applyMqttPresenceSummary(msg.mqtt_presence);
       const d = deviceData.get(id);
       if (d) {
         if (msg.last_seen_ts) d.last_seen_ts = msg.last_seen_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_seen_ts')) d.mqtt_seen_ts = msg.mqtt_seen_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_online_source')) d.mqtt_online_source = msg.mqtt_online_source;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_ts')) d.mqtt_status_ts = msg.mqtt_status_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_value')) d.mqtt_status_value = msg.mqtt_status_value;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_internal_ts')) d.mqtt_internal_ts = msg.mqtt_internal_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_packets_ts')) d.mqtt_packets_ts = msg.mqtt_packets_ts;
+        if (msg.mqtt_seen_ts) d.mqtt_seen_ts = msg.mqtt_seen_ts;
         deviceData.set(id, d);
         const m = markers.get(id);
         if (m) {
@@ -4978,13 +4927,6 @@ function connectWS() {
         }
         setStats();
       }
-      if (!d) setStats();
-      return;
-    }
-
-    if (msg.type === "mqtt_presence") {
-      applyMqttPresenceSummary(msg.mqtt_presence);
-      setStats();
       return;
     }
 
