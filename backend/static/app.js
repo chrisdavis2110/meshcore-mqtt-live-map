@@ -1710,14 +1710,8 @@ function showRouteDetails(meta) {
         : '';
 
       let idInfo = '';
-      if (displayIdx > 0 && displayHashes[displayIdx - 1]) {
-        const h = displayHashes[displayIdx - 1];
-        const label = hopPrefixIdLabel(h);
-        if (label) {
-          idInfo = `Prefix: ${label}`;
-        }
-      } else if (pt.hop_prefix) {
-        idInfo = `Prefix: ${pt.hop_prefix}`;
+      if (pt.node_prefix) {
+        idInfo = `Prefix: ${pt.node_prefix}`;
       }
 
       const metaInfo = [distInfo, idInfo].filter(Boolean).join(' • ');
@@ -4745,6 +4739,30 @@ function hopPrefixDetailLabel(hash) {
   return displayPrefix;
 }
 
+
+function pointIdNodePrefix(pointId, hopHash = null) {
+  if (!pointId) return null;
+  const rawPoint = String(pointId).trim();
+  if (!/^[0-9a-fA-F]+$/.test(rawPoint)) return null;
+  const normalizedPoint = rawPoint.toUpperCase();
+  const normalizedHop = normalizeHopHashPrefix(hopHash);
+  if (normalizedHop && normalizedPoint.startsWith(normalizedHop)) {
+    return normalizedHop;
+  }
+  return normalizedPoint.slice(0, 2) || null;
+}
+
+function pointIdNodePrefixDetail(pointId, hopHash = null) {
+  const prefix = pointIdNodePrefix(pointId, hopHash);
+  if (!prefix) return null;
+  const bits = prefix.length * 4;
+  const decVal = Number.parseInt(prefix, 16);
+  if (Number.isFinite(decVal)) {
+    return `${prefix} (${bits}-bit, ${decVal})`;
+  }
+  return prefix;
+}
+
 function buildRouteLogMeta(route) {
   if (!route || !Array.isArray(route.points)) return null;
   const hopCount = Math.max(0, route.points.length - 1);
@@ -4781,6 +4799,8 @@ function buildRouteLogMeta(route) {
       lon,
       point_id: pointId || null,
       point_label: pointId ? deviceLabelFromId(pointId) : null,
+      node_prefix: pointIdNodePrefix(pointId, hopHash),
+      node_prefix_detail: pointIdNodePrefixDetail(pointId, hopHash),
       hop_distance_m: hopDistance,
       hop_distance_label: Number.isFinite(hopDistance) ? formatDistanceUnits(hopDistance) : null,
       cumulative_m: cumulative,
@@ -4850,6 +4870,8 @@ function logRouteDetails(meta, clickLatLng) {
       index: pt.index,
       point_id: pt.point_id ? shortHash(pt.point_id) : null,
       point_label: pt.point_label || null,
+      node_prefix: pt.node_prefix || null,
+      node_prefix_detail: pt.node_prefix_detail || null,
       lat: Number.isFinite(pt.lat) ? pt.lat.toFixed(6) : pt.lat,
       lon: Number.isFinite(pt.lon) ? pt.lon.toFixed(6) : pt.lon,
       hop_distance: pt.hop_distance_label,
