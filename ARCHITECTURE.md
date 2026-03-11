@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.6.0` (see `VERSIONS.md`).
+Current version: `1.6.2` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -144,8 +144,8 @@ Handles multiple payload formats:
 2. **Text patterns** - `"lat 42.36 lon -71.05"`
 3. **MeshCore packets** - Hex-encoded, decoded via Node.js
 
-The Node.js decoder (`scripts/meshcore_decode.mjs`) uses the `@michaelhart/meshcore-decoder` package.
-Route path handling now supports mixed repeater prefixes (`AB` and `ABCD`) to prepare for 2-byte rollout compatibility.
+The Node.js decoder (`scripts/meshcore_decode.mjs`) uses the [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch) package instead of the official decoder so multibyte paths can be decoded.
+Route path handling now supports mixed repeater prefixes (`AB`, `ABCD`, and `ABCDEF`) to prepare for multibyte rollout compatibility.
 
 ### history.py (Route History)
 
@@ -192,7 +192,7 @@ A single file containing all client-side logic:
 
 Route rendering notes:
 - In dev mode (`PROD_MODE=false`), route lines are clickable and log hop-by-hop debug details to the browser console (PR #14).
-- Show Hops displays plain prefix values (`Prefix: AB` / `Prefix: ABCD`) from decoded path data.
+- Show Hops displays plain prefix values (`Prefix: AB` / `Prefix: ABCD` / `Prefix: ABCDEF`) from decoded path data and now uses backend `point_ids` for hop ordering.
 
 ### styles.css (Styling)
 
@@ -392,4 +392,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.6.0`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.6.2`).

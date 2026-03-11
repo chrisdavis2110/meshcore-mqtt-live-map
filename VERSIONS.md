@@ -1,5 +1,20 @@
 # Versions
 
+## v1.6.2 (03-11-2026)
+- Fixed route-details hop ordering in the UI by using backend route order and `point_ids` directly instead of frontend reversal/name heuristics.
+- Fixed hop-prefix display in the route details panel so 1-byte (`AB`), 2-byte (`ABCD`), and 3-byte (`ABCDEF`) prefixes all render correctly.
+- Improved device role detection from MQTT payloads by accepting nested role fields, numeric role codes, and common model/client hints from status and decoded packet data.
+- Added decoder role tests covering nested MQTT role hints and numeric-string MeshCore role codes.
+- Dev route debugging now includes resolved `point_id` / `point_label` data to make hop attribution issues easier to verify.
+- Fixed the Show Hops panel to display each matched node's true prefix from `point_id` instead of showing the incoming path token on the wrong row.
+
+## v1.6.1 (03-11-2026)
+- Replaced the official `@michaelhart/meshcore-decoder` package with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch) in the container runtime.
+- Expanded route prefix normalization and matching to support 1-byte (`AB`), 2-byte (`ABCD`), and 3-byte (`ABCDEF`) path segments.
+- Updated route resolution tests to cover mixed 1/2/3-byte paths and exact-prefix matching behavior.
+- Live dev validation now shows multibyte path strings arriving from the mesh feed; this release is intended to be ready for upcoming multibyte repeater rollouts.
+- Multibyte path ingest and resolution are now supported in the map, but full field validation across all mixed-network scenarios is still ongoing.
+
 ## v1.6.0 (03-07-2026)
 - Refactored weather backend logic into `backend/weather.py` and mounted it as a router (`/weather/radar/country-bounds`) to match the module layout used by LOS/history.
 - Weather is now treated as a right-side tool panel with independent `Radar` and `Wind` layer toggles.

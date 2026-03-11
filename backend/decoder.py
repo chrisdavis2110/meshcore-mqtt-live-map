@@ -47,7 +47,7 @@ RE_TWO_FLOATS = re.compile(r"(-?\d{1,2}\.\d+)\s*[,\s]+\s*(-?\d{1,3}\.\d+)")
 
 BASE64_LIKE = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
 NODE_HASH_RE = re.compile(r"^[0-9a-fA-F]+$")
-NODE_HASH_LENGTHS = (2, 4)
+NODE_HASH_LENGTHS = (2, 4, 6)
 
 _node_ready_once = False
 _node_unavailable_once = False
@@ -254,6 +254,8 @@ def _normalize_node_hash(value: Any) -> Optional[str]:
       return f"{value:02X}"
     if value <= 0xFFFF:
       return f"{value:04X}"
+    if value <= 0xFFFFFF:
+      return f"{value:06X}"
     return None
   if isinstance(value, (bytes, bytearray)):
     value = bytes(value).hex()
@@ -726,18 +728,47 @@ def _normalize_role(value: str) -> Optional[str]:
     return None
   if "repeater" in s or s in ("repeat", "relay"):
     return "repeater"
-  if "companion" in s or "chat node" in s or "chatnode" in s or s == "chat":
+  if (
+    "companion" in s or
+    "chat node" in s or
+    "chatnode" in s or
+    "chat-node" in s or
+    s == "chat"
+  ):
     return "companion"
-  if "room server" in s or "roomserver" in s or "room" in s:
+  if "room server" in s or "roomserver" in s or s == "room":
     return "room"
   return None
 
 
-def _extract_device_role(obj: Any, topic: str) -> Optional[str]:
-  if not isinstance(obj, dict):
+def _normalize_role_code(value: Any) -> Optional[str]:
+  try:
+    num = int(str(value).strip())
+  except (TypeError, ValueError):
     return None
+  if num == 2:
+    return "repeater"
+  if num == 3:
+    return "room"
+  if num == 1:
+    return "companion"
+  return None
 
-  for key in (
+
+def _extract_role_from_hint(value: Any) -> Optional[str]:
+  if isinstance(value, str):
+    role = _normalize_role(value)
+    if role:
+      return role
+    return _normalize_role_code(value)
+  if isinstance(value, (int, float)) and not isinstance(value, bool):
+    return _normalize_role_code(value)
+  return None
+
+
+def _extract_device_role(obj: Any, topic: str) -> Optional[str]:
+  del topic
+  role_keys = (
     "role",
     "device_role",
     "deviceRole",
@@ -749,14 +780,42 @@ def _extract_device_role(obj: Any, topic: str) -> Optional[str]:
     "deviceType",
     "class",
     "profile",
-  ):
-    value = obj.get(key)
-    if isinstance(value, str):
-      role = _normalize_role(value)
-      if role:
-        return role
+  )
+  role_hint_keys = (
+    "model",
+    "client_version",
+    "clientVersion",
+    "name",
+    "device_name",
+    "deviceName",
+    "origin",
+    "description",
+  )
 
-  return None
+  def walk(value: Any) -> Optional[str]:
+    if isinstance(value, dict):
+      for key in role_keys:
+        if key in value:
+          role = _extract_role_from_hint(value.get(key))
+          if role:
+            return role
+      for key in role_hint_keys:
+        if key in value:
+          role = _extract_role_from_hint(value.get(key))
+          if role:
+            return role
+      for child in value.values():
+        role = walk(child)
+        if role:
+          return role
+    elif isinstance(value, list):
+      for child in value:
+        role = walk(child)
+        if role:
+          return role
+    return None
+
+  return walk(obj)
 
 
 def _apply_meta_role(
@@ -766,20 +825,13 @@ def _apply_meta_role(
     return
   if not isinstance(meta, dict):
     return
-  role_value = meta.get("role") or meta.get("deviceRoleName")
-  if role_value is None:
-    device_role_code = meta.get("deviceRole")
-    if isinstance(device_role_code, int):
-      if device_role_code == 2:
-        role_value = "repeater"
-      elif device_role_code == 3:
-        role_value = "room"
-      elif device_role_code == 1:
-        role_value = "companion"
-  if isinstance(role_value, str):
-    normalized = _normalize_role(role_value)
+  for key in ("role", "deviceRoleName", "deviceRole"):
+    if key not in meta:
+      continue
+    normalized = _extract_role_from_hint(meta.get(key))
     if normalized:
       debug["device_role"] = normalized
+      return
 
 
 def _has_location_hints(obj: Any) -> bool:
@@ -859,7 +911,7 @@ def _ensure_node_decoder() -> bool:
         "node",
         "--input-type=module",
         "-e",
-        "import('@michaelhart/meshcore-decoder')",
+        "import('meshcore-decoder-multibyte-patch')",
       ],
       check=True,
       stdout=subprocess.DEVNULL,
@@ -868,11 +920,11 @@ def _ensure_node_decoder() -> bool:
     )
   except Exception:
     _node_unavailable_once = True
-    print("[decode] @michaelhart/meshcore-decoder not available")
+    print("[decode] meshcore-decoder-multibyte-patch not available")
     return False
 
   script = """#!/usr/bin/env node
-import { MeshCoreDecoder, getDeviceRoleName } from '@michaelhart/meshcore-decoder';
+import { MeshCoreDecoder, getDeviceRoleName } from 'meshcore-decoder-multibyte-patch';
 
 const hex = (process.argv[2] || '').trim();
 

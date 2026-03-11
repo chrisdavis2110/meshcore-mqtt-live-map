@@ -1676,136 +1676,42 @@ function showRouteDetails(meta) {
 
     // Generate list
     const color = stringHashColor(meta.id);
+    const displayPoints = meta.points.map((pt) => ({ ...pt }));
+    const displayHashes = Array.isArray(meta.hashes) ? [...meta.hashes] : [];
 
-    // Detect direction and normalize to Sender -> Receiver
-    // But we only have coordinates in points.
-    // We can try to match points[0] to receiver or origin deviceData logic?
-    // Heuristic: If we are the observer, and it's an inbound packet,
-    // usually points[0] is US (Receiver).
-    // Let's assume points are [P0, P1, ..., PN]
-    // We want to display [Sender, Hop1, Hop2, ..., Receiver]
+    const resolvePointName = (pt, displayIdx) => {
+      const isFirst = displayIdx === 0;
+      const isLast = displayIdx === displayPoints.length - 1;
+      let label = pt.point_label && pt.point_label !== 'Unknown' ? pt.point_label : null;
 
-    // Clone points to avoid mutating meta
-    let displayPoints = meta.points.map((pt, i) => ({ ...pt, originalIndex: i }));
-
-    // Check if points[0] is closer to Receiver than points[last]?
-    // Or use the heuristic that MeshCore usually sends [Receiver, ..., Sender] for inbound?
-    // Let's rely on finding names.
-
-    // First, populate names for all points to help query
-    const populateName = (pt) => {
-      let name = 'Unknown';
-      let id = null;
-      for (const [did, d] of deviceData.entries()) {
-        if (Math.abs(d.lat - pt.lat) < 0.0001 && Math.abs(d.lon - pt.lon) < 0.0001) {
-          name = d.name || did;
-          id = did;
-          if (d.name && d.name !== did) name = d.name;
-          break;
-        }
+      if (!label && isFirst && meta.origin_label && !meta.origin_label.toLowerCase().includes('packet')) {
+        label = meta.origin_label;
       }
-      pt.resolvedName = name;
-      pt.resolvedId = id;
+      if (!label && isLast && meta.receiver_label && !meta.receiver_label.toLowerCase().includes('packet')) {
+        label = meta.receiver_label;
+      }
+      if (!label && pt.point_id) {
+        label = deviceLabelFromId(pt.point_id);
+      }
+      if (!label) {
+        return isFirst ? 'Origin' : (isLast ? 'Receiver' : `Hop ${displayIdx}`);
+      }
+      return label;
     };
-    displayPoints.forEach(populateName);
-
-    // Heuristic: If index 0 is the Receiver (e.g. "Observer (You)" candidates), we reverse.
-    // Or if index 0 label matches meta.receiver_label.
-    // We assume if it's reversed, we want to flip it.
-
-    // Helper to check hex
-    const isHexId = (s) => /^[0-9a-fA-F]{2,}$/.test(s) || /^[0-9]+$/.test(s);
-
-    let isReversed = false;
-
-    // Check P0
-    const p0Name = displayPoints[0].resolvedName;
-    const pLastName = displayPoints[displayPoints.length - 1].resolvedName;
-
-    // If P0 is likely receiver (Observer) or matches receiver label
-    if (p0Name === 'Unknown' || isHexId(p0Name) || (meta.receiver_label && p0Name === meta.receiver_label)) {
-      // Strong indenticator: P0 is Receiver.
-      // Confirm by checking if Last matches Origin?
-      // Or just assume inbound routes need/have P0=Receiver.
-      // Let's check against meta.receiver_id if available?
-      // deviceData keys are string IDs.
-      if (displayPoints[0].resolvedId && displayPoints[0].resolvedId === meta.receiver_id) {
-        isReversed = true;
-      } else if (meta.receiver_label && (p0Name === meta.receiver_label || p0Name === 'Unknown')) {
-        // Loose matching
-        isReversed = true;
-      } else if (isHexId(p0Name) && !isHexId(pLastName)) {
-        // If P0 is an ID (likely local/unknown) and PLast is a Name (likely remote sender),
-        // it's likely reversed (Receiver first).
-        isReversed = true;
-      }
-    }
-
-    if (isReversed) {
-      displayPoints.reverse();
-    }
-    const displayHashes = Array.isArray(meta.hashes)
-      ? (isReversed ? [...meta.hashes].reverse() : [...meta.hashes])
-      : [];
 
     displayPoints.forEach((pt, displayIdx) => {
       const row = document.createElement('div');
       row.className = 'hop-row';
 
-      let paramName = pt.resolvedName;
-      const isFirst = displayIdx === 0;
-      const isLast = displayIdx === displayPoints.length - 1;
-
-      // Refine Names based on position
-      if (isFirst) {
-        // Sender / Origin
-        if (meta.origin_label && (paramName === 'Unknown' || isHexId(paramName))) {
-          paramName = meta.origin_label;
-        }
-        if (isHexId(paramName) && meta.origin_id && !isHexId(meta.origin_id)) {
-          // prefer label if name is hex
-        }
-      } else if (isLast) {
-        // Receiver / Dest
-        if (meta.receiver_label && (paramName === 'Unknown' || isHexId(paramName))) {
-          // Don't use packet
-          if (!meta.receiver_label.toLowerCase().includes('packet')) {
-            paramName = meta.receiver_label;
-          }
-        }
-        // Check current resolved name for "Observer" heuristic
-        // If resolvedId matches local ID? We don't have local ID easily unless we check knowns.
-        // But if paramName is still hex or Unknown, and it's last (Receiver), call it Observer?
-        // BUT USER SAID: "a8 is ... non-repeater node".
-        // If we reversed correctly, P_Last is 'a8'.
-        // This is the Observer/Receiver.
-        if (paramName === 'Unknown' || isHexId(paramName)) {
-          paramName = `Observer (${paramName})`;
-        }
-      } else {
-        // Hops
-        if (paramName === 'Unknown' || isHexId(paramName)) {
-          paramName = `Repeater ${displayIdx} (${paramName})`;
-        }
-      }
-      // Check packet label again
-      if (paramName && paramName.toLowerCase().includes('packet')) {
-        paramName = 'Unknown Repeater';
-      }
+      const paramName = resolvePointName(pt, displayIdx);
 
       const distInfo = Number.isFinite(pt.hop_distance_m)
         ? formatDistanceUnits(pt.hop_distance_m)
         : '';
 
       let idInfo = '';
-      if (displayIdx > 0 && displayHashes[displayIdx - 1]) {
-        const h = displayHashes[displayIdx - 1];
-        const label = hopPrefixIdLabel(h);
-        if (label) {
-          idInfo = `Prefix: ${label}`;
-        }
-      } else if (pt.hop_prefix) {
-        idInfo = `Prefix: ${pt.hop_prefix}`;
+      if (pt.node_prefix) {
+        idInfo = `Prefix: ${pt.node_prefix}`;
       }
 
       const metaInfo = [distInfo, idInfo].filter(Boolean).join(' • ');
@@ -4806,7 +4712,7 @@ function normalizeHopHashPrefix(hash) {
   if (normalized.length % 2 === 1) {
     normalized = `0${normalized}`;
   }
-  if (normalized.length !== 2 && normalized.length !== 4) {
+  if (normalized.length !== 2 && normalized.length !== 4 && normalized.length !== 6) {
     return null;
   }
   return normalized.toUpperCase();
@@ -4833,6 +4739,30 @@ function hopPrefixDetailLabel(hash) {
   return displayPrefix;
 }
 
+
+function pointIdNodePrefix(pointId, hopHash = null) {
+  if (!pointId) return null;
+  const rawPoint = String(pointId).trim();
+  if (!/^[0-9a-fA-F]+$/.test(rawPoint)) return null;
+  const normalizedPoint = rawPoint.toUpperCase();
+  const normalizedHop = normalizeHopHashPrefix(hopHash);
+  if (normalizedHop && normalizedPoint.startsWith(normalizedHop)) {
+    return normalizedHop;
+  }
+  return normalizedPoint.slice(0, 2) || null;
+}
+
+function pointIdNodePrefixDetail(pointId, hopHash = null) {
+  const prefix = pointIdNodePrefix(pointId, hopHash);
+  if (!prefix) return null;
+  const bits = prefix.length * 4;
+  const decVal = Number.parseInt(prefix, 16);
+  if (Number.isFinite(decVal)) {
+    return `${prefix} (${bits}-bit, ${decVal})`;
+  }
+  return prefix;
+}
+
 function buildRouteLogMeta(route) {
   if (!route || !Array.isArray(route.points)) return null;
   const hopCount = Math.max(0, route.points.length - 1);
@@ -4843,6 +4773,9 @@ function buildRouteLogMeta(route) {
     : null;
   let cumulative = 0;
   const hashes = Array.isArray(route.hashes) ? route.hashes : null;
+  const pointIds = Array.isArray(route.point_ids) && route.point_ids.length === route.points.length
+    ? route.point_ids
+    : null;
   const pointRows = route.points.map((pt, idx) => {
     const lat = Number(pt[0]);
     const lon = Number(pt[1]);
@@ -4859,10 +4792,15 @@ function buildRouteLogMeta(route) {
       }
     }
     const hopHash = hashes && idx > 0 ? hashes[idx - 1] : null;
+    const pointId = pointIds ? pointIds[idx] : null;
     return {
       index: idx,
       lat,
       lon,
+      point_id: pointId || null,
+      point_label: pointId ? deviceLabelFromId(pointId) : null,
+      node_prefix: pointIdNodePrefix(pointId, hopHash),
+      node_prefix_detail: pointIdNodePrefixDetail(pointId, hopHash),
       hop_distance_m: hopDistance,
       hop_distance_label: Number.isFinite(hopDistance) ? formatDistanceUnits(hopDistance) : null,
       cumulative_m: cumulative,
@@ -4930,6 +4868,10 @@ function logRouteDetails(meta, clickLatLng) {
   if (Array.isArray(meta.points) && meta.points.length && console.table) {
     const rows = meta.points.map((pt) => ({
       index: pt.index,
+      point_id: pt.point_id ? shortHash(pt.point_id) : null,
+      point_label: pt.point_label || null,
+      node_prefix: pt.node_prefix || null,
+      node_prefix_detail: pt.node_prefix_detail || null,
       lat: Number.isFinite(pt.lat) ? pt.lat.toFixed(6) : pt.lat,
       lon: Number.isFinite(pt.lon) ? pt.lon.toFixed(6) : pt.lon,
       hop_distance: pt.hop_distance_label,
