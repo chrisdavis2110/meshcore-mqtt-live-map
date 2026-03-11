@@ -1,5 +1,12 @@
 # Versions
 
+## v1.6.1 (03-11-2026)
+- Replaced the official `@michaelhart/meshcore-decoder` package with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch) in the container runtime.
+- Expanded route prefix normalization and matching to support 1-byte (`AB`), 2-byte (`ABCD`), and 3-byte (`ABCDEF`) path segments.
+- Updated route resolution tests to cover mixed 1/2/3-byte paths and exact-prefix matching behavior.
+- Live dev validation now shows multibyte path strings arriving from the mesh feed; this release is intended to be ready for upcoming multibyte repeater rollouts.
+- Multibyte path ingest and resolution are now supported in the map, but full field validation across all mixed-network scenarios is still ongoing.
+
 ## v1.6.0 (03-07-2026)
 - Refactored weather backend logic into `backend/weather.py` and mounted it as a router (`/weather/radar/country-bounds`) to match the module layout used by LOS/history.
 - Weather is now treated as a right-side tool panel with independent `Radar` and `Wind` layer toggles.
