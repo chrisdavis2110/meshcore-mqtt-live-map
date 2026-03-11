@@ -6,6 +6,7 @@
 - Improved device role detection from MQTT payloads by accepting nested role fields, numeric role codes, and common model/client hints from status and decoded packet data.
 - Added decoder role tests covering nested MQTT role hints and numeric-string MeshCore role codes.
 - Dev route debugging now includes resolved `point_id` / `point_label` data to make hop attribution issues easier to verify.
+- Fixed the Show Hops panel to display each matched node's true prefix from `point_id` instead of showing the incoming path token on the wrong row.
 
 ## v1.6.1 (03-11-2026)
 - Replaced the official `@michaelhart/meshcore-decoder` package with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch) in the container runtime.
