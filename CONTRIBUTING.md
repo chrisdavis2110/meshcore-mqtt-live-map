@@ -8,7 +8,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 3) Verify: `curl -s http://localhost:8080/snapshot`
 
 ## Versioning
-- Current version: `1.4.2` (see `VERSIONS.md`).
+- Current version: `1.6.0` (see `VERSIONS.md`).
 - Update `VERSION.txt` when adding features.
 - Append a new section to `VERSIONS.md` describing the change set.
 
@@ -33,6 +33,10 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - Turnstile only activates when `PROD_MODE=true`; if you are testing Turnstile,
   set `PROD_MODE=true` plus the `TURNSTILE_*` env vars.
 - If `COVERAGE_API_URL` is blank, confirm the Coverage button is hidden.
+- Weather panel check:
+  - `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true` keeps radar clipped to country bounds.
+  - `WEATHER_WIND_ENABLED=false` disables wind and should mark wind as unavailable in the Weather panel.
+  - If wind is enabled, validate `WEATHER_WIND_GRID_SIZE` (`1`-`5`) and `WEATHER_WIND_REFRESH_SECONDS` (>= `30`) behavior.
 - Note: coordinates at `0,0` (even as strings) are filtered and won’t render.
 - Radius filter: `MAP_RADIUS_KM=0` disables filtering; `.env.example` uses 241.4 km (150mi).
 - `CUSTOM_LINK_URL` shows an extra HUD link when set; leave blank to hide.

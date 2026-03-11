@@ -28,6 +28,7 @@
 
     .hud,
     .prop-panel,
+    .weather-panel,
     .peers-panel,
     .node-search-results {
       scrollbar-width: thin;
@@ -36,6 +37,7 @@
 
     .hud::-webkit-scrollbar,
     .prop-panel::-webkit-scrollbar,
+    .weather-panel::-webkit-scrollbar,
     .peers-panel::-webkit-scrollbar,
     .node-search-results::-webkit-scrollbar {
       width: 10px;
@@ -43,6 +45,7 @@
 
     .hud::-webkit-scrollbar-track,
     .prop-panel::-webkit-scrollbar-track,
+    .weather-panel::-webkit-scrollbar-track,
     .peers-panel::-webkit-scrollbar-track,
     .node-search-results::-webkit-scrollbar-track {
       background: rgba(15, 23, 42, .35);
@@ -51,6 +54,7 @@
 
     .hud::-webkit-scrollbar-thumb,
     .prop-panel::-webkit-scrollbar-thumb,
+    .weather-panel::-webkit-scrollbar-thumb,
     .peers-panel::-webkit-scrollbar-thumb,
     .node-search-results::-webkit-scrollbar-thumb {
       background: rgba(148, 163, 184, .7);
@@ -60,6 +64,7 @@
 
     .hud::-webkit-scrollbar-thumb:hover,
     .prop-panel::-webkit-scrollbar-thumb:hover,
+    .weather-panel::-webkit-scrollbar-thumb:hover,
     .peers-panel::-webkit-scrollbar-thumb:hover,
     .node-search-results::-webkit-scrollbar-thumb:hover {
       background: rgba(226, 232, 240, .85);
@@ -406,6 +411,31 @@
       white-space: nowrap;
     }
 
+    .weather-wind-icon {
+      background: transparent;
+      border: 0;
+    }
+
+    .weather-wind-arrow {
+      display: inline-block;
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 15px;
+      line-height: 1;
+      text-shadow: 0 0 3px rgba(15, 23, 42, 0.75);
+      margin-right: 3px;
+      transform-origin: center center;
+    }
+
+    .weather-wind-speed {
+      display: inline-block;
+      color: rgba(255, 255, 255, 0.95);
+      font-size: 10px;
+      line-height: 1;
+      text-shadow: 0 0 3px rgba(15, 23, 42, 0.85);
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+
     .prop-panel {
       position: absolute;
       top: 18px;
@@ -560,6 +590,39 @@
 
     .history-panel.active {
       display: block;
+    }
+
+    .weather-panel {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 320px;
+      max-height: 45vh;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, .78);
+      border: 1px solid rgba(255, 255, 255, .2);
+      color: #fff;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      display: none;
+      z-index: 892;
+      overflow: hidden;
+      box-sizing: border-box;
+      pointer-events: auto;
+    }
+
+    .weather-panel.active {
+      display: block;
+    }
+
+    .weather-controls {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .weather-controls .map-toggle {
+      width: 100%;
     }
 
     .panel-close {
@@ -757,6 +820,7 @@
 
       .los-panel,
       .prop-panel,
+      .weather-panel,
       .history-panel,
       .peers-panel {
         top: auto;

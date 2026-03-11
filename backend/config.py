@@ -62,6 +62,15 @@ HISTORY_EDGE_SAMPLE_LIMIT = 3
 MESSAGE_ORIGIN_TTL_SECONDS = int(os.getenv("MESSAGE_ORIGIN_TTL_SECONDS", "300"))
 HEAT_TTL_SECONDS = int(os.getenv("HEAT_TTL_SECONDS", "600"))
 MQTT_ONLINE_SECONDS = int(os.getenv("MQTT_ONLINE_SECONDS", "300"))
+MQTT_ONLINE_STATUS_TTL_SECONDS = int(
+  os.getenv("MQTT_ONLINE_STATUS_TTL_SECONDS", str(MQTT_ONLINE_SECONDS))
+)
+MQTT_ONLINE_INTERNAL_TTL_SECONDS = int(
+  os.getenv("MQTT_ONLINE_INTERNAL_TTL_SECONDS", str(MQTT_ONLINE_SECONDS))
+)
+MQTT_ACTIVITY_PACKETS_TTL_SECONDS = int(
+  os.getenv("MQTT_ACTIVITY_PACKETS_TTL_SECONDS", str(MQTT_ONLINE_SECONDS))
+)
 MQTT_SEEN_BROADCAST_MIN_SECONDS = float(
   os.getenv("MQTT_SEEN_BROADCAST_MIN_SECONDS", "5")
 )
@@ -75,6 +84,13 @@ MQTT_ONLINE_FORCE_NAMES = tuple(
   for s in os.getenv("MQTT_ONLINE_FORCE_NAMES", "").split(",") if s.strip()
 )
 MQTT_ONLINE_FORCE_NAMES_SET = {s.lower() for s in MQTT_ONLINE_FORCE_NAMES}
+MQTT_STATUS_OFFLINE_VALUES = tuple(
+  s.strip().lower()
+  for s in os.getenv(
+    "MQTT_STATUS_OFFLINE_VALUES", "offline,disconnected"
+  ).split(",") if s.strip()
+)
+MQTT_STATUS_OFFLINE_VALUES_SET = set(MQTT_STATUS_OFFLINE_VALUES)
 
 DEBUG_PAYLOAD = os.getenv("DEBUG_PAYLOAD", "false").lower() == "true"
 DEBUG_PAYLOAD_MAX = int(os.getenv("DEBUG_PAYLOAD_MAX", "400"))
@@ -170,6 +186,37 @@ ELEVATION_CACHE_TTL = int(os.getenv("ELEVATION_CACHE_TTL", "21600"))
 LOS_PEAKS_MAX = int(os.getenv("LOS_PEAKS_MAX", "4"))
 
 COVERAGE_API_URL = os.getenv("COVERAGE_API_URL", "").strip()
+WEATHER_RADAR_ENABLED = (
+  os.getenv("WEATHER_RADAR_ENABLED", "true").lower() == "true"
+)
+WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED = (
+  os.getenv("WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED", "false").lower() == "true"
+)
+WEATHER_RADAR_COUNTRY_LOOKUP_URL = os.getenv(
+  "WEATHER_RADAR_COUNTRY_LOOKUP_URL", "/weather/radar/country-bounds"
+).strip()
+WEATHER_WIND_ENABLED = (
+  os.getenv("WEATHER_WIND_ENABLED", "true").lower() == "true"
+)
+WEATHER_WIND_API_URL = os.getenv(
+  "WEATHER_WIND_API_URL", "https://api.open-meteo.com/v1/forecast"
+).strip()
+try:
+  WEATHER_WIND_GRID_SIZE = int(os.getenv("WEATHER_WIND_GRID_SIZE", "3"))
+except ValueError:
+  WEATHER_WIND_GRID_SIZE = 3
+if WEATHER_WIND_GRID_SIZE < 1:
+  WEATHER_WIND_GRID_SIZE = 1
+if WEATHER_WIND_GRID_SIZE > 5:
+  WEATHER_WIND_GRID_SIZE = 5
+try:
+  WEATHER_WIND_REFRESH_SECONDS = int(
+    os.getenv("WEATHER_WIND_REFRESH_SECONDS", "180")
+  )
+except ValueError:
+  WEATHER_WIND_REFRESH_SECONDS = 180
+if WEATHER_WIND_REFRESH_SECONDS < 30:
+  WEATHER_WIND_REFRESH_SECONDS = 30
 
 TURNSTILE_ENABLED_RAW = os.getenv("TURNSTILE_ENABLED", "false").lower() == "true"
 # Turnstile protection is only allowed when PROD_MODE is enabled.

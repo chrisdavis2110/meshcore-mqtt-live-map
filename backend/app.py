@@ -40,7 +40,6 @@ from decoder import (
   _route_points_from_device_ids,
   _safe_preview,
   _serialize_heat_events,
-  _topic_marks_online,
   _try_parse_payload,
   DIRECT_COORDS_TOPIC_RE,
   _node_ready_once,
@@ -52,6 +51,7 @@ from history import (
   _record_route_history,
   _route_history_saver,
 )
+from weather import create_weather_router
 from turnstile import TurnstileVerifier
 from los import (
   _fetch_elevations,
@@ -97,9 +97,12 @@ from config import (
   MESSAGE_ORIGIN_TTL_SECONDS,
   HEAT_TTL_SECONDS,
   MQTT_ONLINE_SECONDS,
+  MQTT_ONLINE_STATUS_TTL_SECONDS,
+  MQTT_ONLINE_INTERNAL_TTL_SECONDS,
+  MQTT_ACTIVITY_PACKETS_TTL_SECONDS,
   MQTT_SEEN_BROADCAST_MIN_SECONDS,
-  MQTT_ONLINE_TOPIC_SUFFIXES,
   MQTT_ONLINE_FORCE_NAMES_SET,
+  MQTT_STATUS_OFFLINE_VALUES_SET,
   DEBUG_PAYLOAD,
   DEBUG_PAYLOAD_MAX,
   TURNSTILE_ENABLED,
@@ -146,6 +149,13 @@ from config import (
   ELEVATION_CACHE_TTL,
   LOS_PEAKS_MAX,
   COVERAGE_API_URL,
+  WEATHER_RADAR_ENABLED,
+  WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED,
+  WEATHER_RADAR_COUNTRY_LOOKUP_URL,
+  WEATHER_WIND_ENABLED,
+  WEATHER_WIND_API_URL,
+  WEATHER_WIND_GRID_SIZE,
+  WEATHER_WIND_REFRESH_SECONDS,
   APP_DIR,
   NODE_SCRIPT_PATH,
 )
@@ -155,6 +165,11 @@ from state import (
   result_counts,
   seen_devices,
   mqtt_seen,
+  mqtt_online_source,
+  mqtt_status_seen,
+  mqtt_status_values,
+  mqtt_internal_seen,
+  mqtt_packets_seen,
   last_seen_broadcast,
   topic_counts,
   debug_last,
@@ -175,13 +190,30 @@ from state import (
   device_role_sources,
   device_coords,
   neighbor_edges,
+  first_seen_devices,
+  last_seen_in_advert,
 )
 
 # =========================
 # App / State
 # =========================
+mqtt_client: Optional[mqtt.Client] = None
+background_tasks: Set[asyncio.Task[Any]] = set()
+clients: Set[WebSocket] = set()
+update_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+git_update_info = {
+  "available": False,
+  "local": None,
+  "remote": None,
+  "local_short": None,
+  "remote_short": None,
+  "error": None,
+}
+mqtt_presence_last_summary: Dict[str, int] = {}
+
+
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def _lifespan(_app: FastAPI):
   global mqtt_client
 
   _load_state()
@@ -190,7 +222,7 @@ async def lifespan(_: FastAPI):
   _ensure_node_decoder()
   _check_git_updates()
 
-  loop = asyncio.get_event_loop()
+  loop = asyncio.get_running_loop()
   transport = "websockets" if MQTT_TRANSPORT == "websockets" else "tcp"
 
   topics_str = ", ".join(MQTT_TOPICS)
@@ -227,15 +259,25 @@ async def lifespan(_: FastAPI):
   mqtt_client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=30)
   mqtt_client.loop_start()
 
-  asyncio.create_task(broadcaster())
-  asyncio.create_task(reaper())
-  asyncio.create_task(_state_saver())
-  asyncio.create_task(_route_history_saver())
-  asyncio.create_task(_git_check_loop())
+  background_tasks.clear()
+  for coro in (
+    broadcaster(),
+    reaper(),
+    _state_saver(),
+    _route_history_saver(),
+    _git_check_loop(),
+  ):
+    background_tasks.add(asyncio.create_task(coro))
 
   try:
     yield
   finally:
+    for task in list(background_tasks):
+      task.cancel()
+    if background_tasks:
+      await asyncio.gather(*background_tasks, return_exceptions=True)
+    background_tasks.clear()
+
     if mqtt_client is not None:
       try:
         mqtt_client.loop_stop()
@@ -245,21 +287,8 @@ async def lifespan(_: FastAPI):
       mqtt_client = None
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=_lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-mqtt_client: Optional[mqtt.Client] = None
-clients: Set[WebSocket] = set()
-update_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
-git_update_info = {
-  "available": False,
-  "local": None,
-  "remote": None,
-  "local_short": None,
-  "remote_short": None,
-  "error": None,
-}
-
 # Initialize Turnstile verifier if enabled
 turnstile_verifier: Optional[TurnstileVerifier] = None
 if TURNSTILE_ENABLED and TURNSTILE_SECRET_KEY:
@@ -334,6 +363,46 @@ def _load_coord_overrides() -> Dict[str, Dict[str, float]]:
   return coords
 
 
+def _neighbor_override_pairs(data: Any) -> List[Tuple[str, str]]:
+  pairs: List[Tuple[str, str]] = []
+  if isinstance(data, dict):
+    for src, targets in data.items():
+      if not isinstance(src, str):
+        continue
+      src_id = src.strip()
+      if isinstance(targets, list):
+        for dst in targets:
+          if not isinstance(dst, str):
+            continue
+          dst_id = dst.strip()
+          if src_id and dst_id and src_id != dst_id:
+            pairs.append((src_id, dst_id))
+      elif isinstance(targets, str):
+        dst_id = targets.strip()
+        if src_id and dst_id and src_id != dst_id:
+          pairs.append((src_id, dst_id))
+  elif isinstance(data, list):
+    for item in data:
+      if (
+        isinstance(item, (list, tuple)) and len(item) >= 2 and
+        isinstance(item[0], str) and isinstance(item[1], str)
+      ):
+        src_id = item[0].strip()
+        dst_id = item[1].strip()
+      elif isinstance(item, dict):
+        src = item.get("from") or item.get("src") or item.get("a")
+        dst = item.get("to") or item.get("dst") or item.get("b")
+        if not isinstance(src, str) or not isinstance(dst, str):
+          continue
+        src_id = src.strip()
+        dst_id = dst.strip()
+      else:
+        continue
+      if src_id and dst_id and src_id != dst_id:
+        pairs.append((src_id, dst_id))
+  return pairs
+
+
 def _load_neighbor_overrides() -> None:
   if not NEIGHBOR_OVERRIDES_FILE or not os.path.exists(NEIGHBOR_OVERRIDES_FILE):
     return
@@ -345,38 +414,10 @@ def _load_neighbor_overrides() -> None:
     return
   now = time.time()
   added = 0
-
-  def _add_pair(src: str, dst: str) -> None:
-    nonlocal added
-    if not src or not dst or src == dst:
-      return
-    _touch_neighbor(src, dst, now, manual=True)
-    _touch_neighbor(dst, src, now, manual=True)
+  for src_id, dst_id in _neighbor_override_pairs(data):
+    _touch_neighbor(src_id, dst_id, now, manual=True)
+    _touch_neighbor(dst_id, src_id, now, manual=True)
     added += 1
-
-  if isinstance(data, dict):
-    for src, targets in data.items():
-      if not isinstance(src, str):
-        continue
-      if isinstance(targets, list):
-        for dst in targets:
-          if isinstance(dst, str):
-            _add_pair(src.strip(), dst.strip())
-      elif isinstance(targets, str):
-        _add_pair(src.strip(), targets.strip())
-  elif isinstance(data, list):
-    for item in data:
-      if (
-        isinstance(item, (list, tuple)) and len(item) >= 2 and
-        isinstance(item[0], str) and isinstance(item[1], str)
-      ):
-        _add_pair(item[0].strip(), item[1].strip())
-      elif isinstance(item, dict):
-        src = item.get("from") or item.get("src") or item.get("a")
-        dst = item.get("to") or item.get("dst") or item.get("b")
-        if isinstance(src, str) and isinstance(dst, str):
-          _add_pair(src.strip(), dst.strip())
-
   if added:
     print(
       f"[neighbors] loaded {added} override pairs from {NEIGHBOR_OVERRIDES_FILE}"
@@ -384,7 +425,10 @@ def _load_neighbor_overrides() -> None:
 
 
 def _touch_neighbor(
-  src_id: str, dst_id: str, ts: float, manual: bool = False
+  src_id: str,
+  dst_id: str,
+  ts: float,
+  manual: bool = False,
 ) -> None:
   if not src_id or not dst_id or src_id == dst_id:
     return
@@ -452,6 +496,8 @@ def _serialize_state() -> Dict[str, Any]:
     "device_roles": device_roles,
     "device_role_sources": device_role_sources,
     "last_seen_in_path": state.last_seen_in_path,
+    "first_seen_devices": first_seen_devices,
+    "last_seen_in_advert": last_seen_in_advert,
   }
 
 
@@ -534,6 +580,21 @@ def _device_payload(device_id: str, state: "DeviceState") -> Dict[str, Any]:
   mqtt_seen_ts = mqtt_seen.get(device_id)
   if mqtt_seen_ts:
     payload["mqtt_seen_ts"] = mqtt_seen_ts
+  mqtt_source = mqtt_online_source.get(device_id)
+  if mqtt_source:
+    payload["mqtt_online_source"] = mqtt_source
+  mqtt_status_ts = mqtt_status_seen.get(device_id)
+  if mqtt_status_ts:
+    payload["mqtt_status_ts"] = mqtt_status_ts
+  mqtt_status_value = mqtt_status_values.get(device_id)
+  if mqtt_status_value:
+    payload["mqtt_status_value"] = mqtt_status_value
+  mqtt_internal_ts = mqtt_internal_seen.get(device_id)
+  if mqtt_internal_ts:
+    payload["mqtt_internal_ts"] = mqtt_internal_ts
+  mqtt_packets_ts = mqtt_packets_seen.get(device_id)
+  if mqtt_packets_ts:
+    payload["mqtt_packets_ts"] = mqtt_packets_ts
   if MQTT_ONLINE_FORCE_NAMES_SET:
     name_value = (state.name or device_names.get(device_id) or
                   "").strip().lower()
@@ -554,6 +615,177 @@ def _iso_from_ts(ts: Optional[float]) -> Optional[str]:
     return None
 
 
+def _parse_meshcore_topic(
+  topic: str
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+  parts = topic.split("/")
+  if len(parts) < 4 or parts[0] != "meshcore":
+    return (None, None, None)
+  iata = parts[1].strip() or None
+  node_id = parts[2].strip() or None
+  kind = parts[3].strip().lower() or None
+  return (iata, node_id, kind)
+
+
+def _parse_json_dict(payload_bytes: bytes) -> Optional[Dict[str, Any]]:
+  try:
+    obj = json.loads(payload_bytes.decode("utf-8", errors="strict"))
+  except Exception:
+    return None
+  if isinstance(obj, dict):
+    return obj
+  return None
+
+
+def _extract_status_value(obj: Optional[Dict[str, Any]]) -> Optional[str]:
+  if not isinstance(obj, dict):
+    return None
+  for key in (
+    "status",
+    "state",
+    "mqtt_status",
+    "mqttStatus",
+    "connection",
+    "connection_state",
+  ):
+    value = obj.get(key)
+    if isinstance(value, str) and value.strip():
+      return value.strip().lower()
+  return None
+
+
+def _select_mqtt_online_source(
+  device_id: str, now: float
+) -> Tuple[Optional[str], Optional[float]]:
+  status_ts = mqtt_status_seen.get(device_id)
+  internal_ts = mqtt_internal_seen.get(device_id)
+  status_recent = (
+    bool(status_ts) and MQTT_ONLINE_STATUS_TTL_SECONDS > 0 and
+    (now - status_ts <= MQTT_ONLINE_STATUS_TTL_SECONDS)
+  )
+  internal_recent = (
+    bool(internal_ts) and MQTT_ONLINE_INTERNAL_TTL_SECONDS > 0 and
+    (now - internal_ts <= MQTT_ONLINE_INTERNAL_TTL_SECONDS)
+  )
+
+  status_value = (mqtt_status_values.get(device_id) or "").strip().lower()
+  if status_recent and status_value in MQTT_STATUS_OFFLINE_VALUES_SET:
+    return (None, None)
+  if internal_recent:
+    return ("internal", internal_ts)
+  if status_recent:
+    return ("status", status_ts)
+  return (None, None)
+
+
+def _mqtt_presence_payload(
+  device_id: str,
+  last_seen_ts: Optional[float] = None,
+  now: Optional[float] = None,
+) -> Dict[str, Any]:
+  now = now or time.time()
+  return {
+    "type": "device_seen",
+    "device_id": device_id,
+    "last_seen_ts": last_seen_ts,
+    "mqtt_seen_ts": mqtt_seen.get(device_id),
+    "mqtt_online_source": mqtt_online_source.get(device_id),
+    "mqtt_status_ts": mqtt_status_seen.get(device_id),
+    "mqtt_status_value": mqtt_status_values.get(device_id),
+    "mqtt_internal_ts": mqtt_internal_seen.get(device_id),
+    "mqtt_packets_ts": mqtt_packets_seen.get(device_id),
+    "mqtt_presence": _mqtt_presence_summary(now),
+  }
+
+
+def _is_packets_active(ts: Optional[float], now: float) -> bool:
+  if not ts or MQTT_ACTIVITY_PACKETS_TTL_SECONDS <= 0:
+    return False
+  return (now - ts) <= MQTT_ACTIVITY_PACKETS_TTL_SECONDS
+
+
+def _refresh_mqtt_presence(now: Optional[float] = None) -> None:
+  now = now or time.time()
+  candidate_ids = (
+    set(mqtt_seen.keys()) |
+    set(mqtt_online_source.keys()) |
+    set(mqtt_status_seen.keys()) |
+    set(mqtt_internal_seen.keys())
+  )
+  for device_id in list(candidate_ids):
+    source, source_ts = _select_mqtt_online_source(device_id, now)
+    if source and source_ts:
+      mqtt_seen[device_id] = source_ts
+      mqtt_online_source[device_id] = source
+      continue
+    mqtt_seen.pop(device_id, None)
+    mqtt_online_source.pop(device_id, None)
+
+
+def _mqtt_presence_summary(now: Optional[float] = None) -> Dict[str, int]:
+  now = now or time.time()
+  _refresh_mqtt_presence(now)
+  connected_total = len(mqtt_seen)
+  connected_on_map = sum(1 for device_id in mqtt_seen if device_id in devices)
+  feeding_total = sum(
+    1 for ts in mqtt_packets_seen.values() if _is_packets_active(ts, now)
+  )
+  feeding_on_map = sum(
+    1
+    for device_id, ts in mqtt_packets_seen.items()
+    if device_id in devices and _is_packets_active(ts, now)
+  )
+  return {
+    "connected_total": connected_total,
+    "connected_on_map": connected_on_map,
+    "connected_off_map": max(0, connected_total - connected_on_map),
+    "feeding_total": feeding_total,
+    "feeding_on_map": feeding_on_map,
+    "feeding_off_map": max(0, feeding_total - feeding_on_map),
+  }
+
+
+def _record_mqtt_presence(
+  topic: str, payload_bytes: bytes, now: float
+) -> Optional[Dict[str, Any]]:
+  _, device_id, topic_kind = _parse_meshcore_topic(topic)
+  if not device_id or topic_kind not in ("status", "internal", "packets"):
+    return None
+
+  was_online = device_id in mqtt_seen
+
+  if topic_kind == "status":
+    mqtt_status_seen[device_id] = now
+    status_value = _extract_status_value(_parse_json_dict(payload_bytes))
+    if status_value:
+      mqtt_status_values[device_id] = status_value
+  elif topic_kind == "internal":
+    mqtt_internal_seen[device_id] = now
+  elif topic_kind == "packets":
+    mqtt_packets_seen[device_id] = now
+
+  source, source_ts = _select_mqtt_online_source(device_id, now)
+  if source and source_ts:
+    mqtt_seen[device_id] = source_ts
+    mqtt_online_source[device_id] = source
+    seen_devices[device_id] = now
+  else:
+    mqtt_seen.pop(device_id, None)
+    mqtt_online_source.pop(device_id, None)
+
+  event = _mqtt_presence_payload(
+    device_id, seen_devices.get(device_id) if source else None, now=now
+  )
+  event["topic_kind"] = topic_kind
+  if not was_online and source:
+    event["presence_transition"] = "online"
+  elif was_online and not source:
+    event["presence_transition"] = "offline"
+  else:
+    event["presence_transition"] = "stable"
+  return event
+
+
 def _within_map_radius(lat: Any, lon: Any) -> bool:
   if MAP_RADIUS_KM <= 0:
     return True
@@ -572,10 +804,9 @@ def _evict_device(device_id: str) -> bool:
     devices.pop(device_id, None)
     removed = True
   trails.pop(device_id, None)
-  seen_devices.pop(device_id, None)
-  mqtt_seen.pop(device_id, None)
-  last_seen_broadcast.pop(device_id, None)
   state.last_seen_in_path.pop(device_id, None)
+  first_seen_devices.pop(device_id, None)
+  last_seen_in_advert.pop(device_id, None)
   if removed:
     state.state_dirty = True
     _rebuild_node_hash_map()
@@ -710,6 +941,9 @@ def _require_prod_token(request: Request) -> None:
     raise HTTPException(status_code=401, detail="unauthorized")
 
 
+app.include_router(create_weather_router(_require_prod_token))
+
+
 def _ws_authorized(ws: WebSocket) -> bool:
   if TURNSTILE_ENABLED and turnstile_verifier:
     auth_token = _extract_cookie_token(ws.headers, "meshmap_auth") or \
@@ -759,6 +993,16 @@ def _load_state() -> None:
   trails.update(data.get("trails") or {})
   seen_devices.clear()
   seen_devices.update(data.get("seen_devices") or {})
+  first_seen_devices.clear()
+  raw_first_seen = data.get("first_seen_devices") or {}
+  if isinstance(raw_first_seen, dict):
+    for key, value in raw_first_seen.items():
+      try:
+        first_seen_devices[str(key)] = float(value)
+      except (TypeError, ValueError):
+        continue
+  else:
+    raw_first_seen = {}
   cleaned_trails: Dict[str, list] = {}
   trails_dirty = False
   for device_id, trail in trails.items():
@@ -854,6 +1098,23 @@ def _load_state() -> None:
         state.last_seen_in_path[str(key)] = float(value)
       except (TypeError, ValueError):
         continue
+  raw_advert_seen = data.get("last_seen_in_advert") or {}
+  last_seen_in_advert.clear()
+  if isinstance(raw_advert_seen, dict):
+    for key, value in raw_advert_seen.items():
+      if dropped_ids and str(key) in dropped_ids:
+        continue
+      try:
+        last_seen_in_advert[str(key)] = float(value)
+      except (TypeError, ValueError):
+        continue
+  # If first_seen data is missing, fall back to loaded last_seen values.
+  if not raw_first_seen:
+    for device_id, seen_ts in seen_devices.items():
+      try:
+        first_seen_devices[device_id] = float(seen_ts)
+      except (TypeError, ValueError):
+        continue
   # Load and apply coordinate overrides
   coord_overrides = _load_coord_overrides()
   if coord_overrides:
@@ -862,6 +1123,8 @@ def _load_state() -> None:
   if dropped_ids:
     for device_id in dropped_ids:
       device_coords.pop(device_id, None)
+      first_seen_devices.pop(device_id, None)
+      last_seen_in_advert.pop(device_id, None)
   _rebuild_node_hash_map()
 
   for device_id, dev_state in devices.items():
@@ -913,24 +1176,21 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
   topic_counts[msg.topic] = topic_counts.get(msg.topic, 0) + 1
   loop: asyncio.AbstractEventLoop = userdata["loop"]
 
-  dev_guess = _device_id_from_topic(msg.topic)
-  if dev_guess and _topic_marks_online(msg.topic):
-    now = time.time()
-    seen_devices[dev_guess] = now
-    mqtt_seen[dev_guess] = now
-    if dev_guess in devices:
-      last_sent = last_seen_broadcast.get(dev_guess, 0)
+  now = time.time()
+  mqtt_presence_event = _record_mqtt_presence(msg.topic, msg.payload, now)
+  if mqtt_presence_event:
+    device_id = mqtt_presence_event["device_id"]
+    should_broadcast = False
+    transition = mqtt_presence_event.get("presence_transition")
+    if transition in ("online", "offline"):
+      should_broadcast = True
+    elif mqtt_presence_event.get("mqtt_seen_ts") and device_id in devices:
+      last_sent = last_seen_broadcast.get(device_id, 0)
       if now - last_sent >= MQTT_SEEN_BROADCAST_MIN_SECONDS:
-        last_seen_broadcast[dev_guess] = now
-        loop.call_soon_threadsafe(
-          update_queue.put_nowait,
-          {
-            "type": "device_seen",
-            "device_id": dev_guess,
-            "last_seen_ts": now,
-            "mqtt_seen_ts": now,
-          },
-        )
+        should_broadcast = True
+    if should_broadcast:
+      last_seen_broadcast[device_id] = now
+      loop.call_soon_threadsafe(update_queue.put_nowait, mqtt_presence_event)
 
   parsed, debug = _try_parse_payload(msg.topic, msg.payload)
   device_id_hint = parsed.get("device_id") if parsed else None
@@ -1190,6 +1450,12 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
   except (TypeError, ValueError):
     route_type = None
 
+  if payload_type == 4:
+    advert_device_id = route_origin_id or origin_id or receiver_id
+    if advert_device_id:
+      last_seen_in_advert[advert_device_id] = time.time()
+      state.state_dirty = True
+
   route_hashes = None
   if path_hashes and isinstance(path_hashes, list):
     route_hashes = path_hashes
@@ -1277,27 +1543,51 @@ async def broadcaster():
 
     if isinstance(event, dict) and event.get("type") == "device_seen":
       device_id = event.get("device_id")
-      device_state = devices.get(device_id)
-      if device_state:
-        seen_ts = event.get("last_seen_ts") or time.time()
-        mqtt_ts = event.get("mqtt_seen_ts")
+      if not device_id:
+        continue
+
+      seen_ts = event.get("last_seen_ts")
+      if seen_ts:
         seen_devices[device_id] = seen_ts
+      mqtt_ts_present = "mqtt_seen_ts" in event
+      if mqtt_ts_present:
+        mqtt_ts = event.get("mqtt_seen_ts")
         if mqtt_ts:
           mqtt_seen[device_id] = mqtt_ts
-        payload = {
-          "type": "device_seen",
-          "device_id": device_id,
-          "last_seen_ts": seen_ts,
-          "mqtt_seen_ts": mqtt_ts,
-        }
-        dead = []
-        for ws in list(clients):
-          try:
-            await ws.send_text(json.dumps(payload))
-          except Exception:
-            dead.append(ws)
-        for ws in dead:
-          clients.discard(ws)
+        else:
+          mqtt_seen.pop(device_id, None)
+      if "mqtt_online_source" in event:
+        source = event.get("mqtt_online_source")
+        if source:
+          mqtt_online_source[device_id] = source
+        else:
+          mqtt_online_source.pop(device_id, None)
+      if "mqtt_status_ts" in event:
+        status_ts = event.get("mqtt_status_ts")
+        if status_ts:
+          mqtt_status_seen[device_id] = status_ts
+      if "mqtt_status_value" in event:
+        status_value = event.get("mqtt_status_value")
+        if isinstance(status_value, str) and status_value.strip():
+          mqtt_status_values[device_id] = status_value.strip().lower()
+      if "mqtt_internal_ts" in event:
+        internal_ts = event.get("mqtt_internal_ts")
+        if internal_ts:
+          mqtt_internal_seen[device_id] = internal_ts
+      if "mqtt_packets_ts" in event:
+        packets_ts = event.get("mqtt_packets_ts")
+        if packets_ts:
+          mqtt_packets_seen[device_id] = packets_ts
+
+      payload = _mqtt_presence_payload(device_id, seen_devices.get(device_id))
+      dead = []
+      for ws in list(clients):
+        try:
+          await ws.send_text(json.dumps(payload))
+        except Exception:
+          dead.append(ws)
+      for ws in dead:
+        clients.discard(ws)
       continue
 
     if isinstance(event, dict) and event.get("type") == "device_remove":
@@ -1491,7 +1781,10 @@ async def broadcaster():
       device_state.lat = coord_override["lat"]
       device_state.lon = coord_override["lon"]
     devices[device_id] = device_state
-    seen_devices[device_id] = time.time()
+    now_seen = time.time()
+    seen_devices[device_id] = now_seen
+    if device_id not in first_seen_devices:
+      first_seen_devices[device_id] = now_seen
     state.state_dirty = True
     if is_new_device:
       _rebuild_node_hash_map()
@@ -1529,6 +1822,7 @@ async def broadcaster():
 
 
 async def reaper():
+  global mqtt_presence_last_summary
   while True:
     now = time.time()
 
@@ -1651,6 +1945,19 @@ async def reaper():
 
     _prune_neighbors(now)
 
+    presence_summary = _mqtt_presence_summary(now)
+    if presence_summary != mqtt_presence_last_summary:
+      mqtt_presence_last_summary = dict(presence_summary)
+      payload = {"type": "mqtt_presence", "mqtt_presence": presence_summary}
+      dead = []
+      for ws in list(clients):
+        try:
+          await ws.send_text(json.dumps(payload))
+        except Exception:
+          dead.append(ws)
+      for ws in dead:
+        clients.discard(ws)
+
     retention_window = max(
       DEVICE_TTL_WINDOW_SECONDS if DEVICE_TTL_WINDOW_SECONDS > 0 else 0,
       PATH_TTL_SECONDS if PATH_TTL_SECONDS > 0 else 0,
@@ -1659,6 +1966,9 @@ async def reaper():
     for dev_id, last in list(seen_devices.items()):
       if now - last > prune_after:
         seen_devices.pop(dev_id, None)
+        first_seen_devices.pop(dev_id, None)
+        last_seen_in_advert.pop(dev_id, None)
+        state.last_seen_in_path.pop(dev_id, None)
 
     await asyncio.sleep(5)
 
@@ -1886,8 +2196,28 @@ def root(request: Request):
       LOS_PEAKS_MAX,
     "MQTT_ONLINE_SECONDS":
       MQTT_ONLINE_SECONDS,
+    "MQTT_ONLINE_STATUS_TTL_SECONDS":
+      MQTT_ONLINE_STATUS_TTL_SECONDS,
+    "MQTT_ONLINE_INTERNAL_TTL_SECONDS":
+      MQTT_ONLINE_INTERNAL_TTL_SECONDS,
+    "MQTT_ACTIVITY_PACKETS_TTL_SECONDS":
+      MQTT_ACTIVITY_PACKETS_TTL_SECONDS,
     "COVERAGE_API_URL":
       COVERAGE_API_URL,
+    "WEATHER_RADAR_ENABLED":
+      str(WEATHER_RADAR_ENABLED).lower(),
+    "WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED":
+      str(WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED).lower(),
+    "WEATHER_RADAR_COUNTRY_LOOKUP_URL":
+      WEATHER_RADAR_COUNTRY_LOOKUP_URL,
+    "WEATHER_WIND_ENABLED":
+      str(WEATHER_WIND_ENABLED).lower(),
+    "WEATHER_WIND_API_URL":
+      WEATHER_WIND_API_URL,
+    "WEATHER_WIND_GRID_SIZE":
+      WEATHER_WIND_GRID_SIZE,
+    "WEATHER_WIND_REFRESH_SECONDS":
+      WEATHER_WIND_REFRESH_SECONDS,
     "UPDATE_AVAILABLE":
       str(bool(git_update_info.get("available"))).lower(),
     "UPDATE_LOCAL":
@@ -2270,7 +2600,17 @@ def map_page(request: Request):
     "LOS_SAMPLE_STEP_METERS": LOS_SAMPLE_STEP_METERS,
     "LOS_PEAKS_MAX": LOS_PEAKS_MAX,
     "MQTT_ONLINE_SECONDS": MQTT_ONLINE_SECONDS,
+    "MQTT_ONLINE_STATUS_TTL_SECONDS": MQTT_ONLINE_STATUS_TTL_SECONDS,
+    "MQTT_ONLINE_INTERNAL_TTL_SECONDS": MQTT_ONLINE_INTERNAL_TTL_SECONDS,
+    "MQTT_ACTIVITY_PACKETS_TTL_SECONDS": MQTT_ACTIVITY_PACKETS_TTL_SECONDS,
     "COVERAGE_API_URL": COVERAGE_API_URL,
+    "WEATHER_RADAR_ENABLED": str(WEATHER_RADAR_ENABLED).lower(),
+    "WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED": str(WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED).lower(),
+    "WEATHER_RADAR_COUNTRY_LOOKUP_URL": WEATHER_RADAR_COUNTRY_LOOKUP_URL,
+    "WEATHER_WIND_ENABLED": str(WEATHER_WIND_ENABLED).lower(),
+    "WEATHER_WIND_API_URL": WEATHER_WIND_API_URL,
+    "WEATHER_WIND_GRID_SIZE": WEATHER_WIND_GRID_SIZE,
+    "WEATHER_WIND_REFRESH_SECONDS": WEATHER_WIND_REFRESH_SECONDS,
     "UPDATE_AVAILABLE": str(bool(git_update_info.get("available"))).lower(),
     "UPDATE_LOCAL": git_update_info.get("local_short") or "",
     "UPDATE_REMOTE": git_update_info.get("remote_short") or "",
@@ -2329,6 +2669,7 @@ def service_worker():
 @app.get("/snapshot")
 def snapshot(request: Request):
   _require_prod_token(request)
+  now = time.time()
   return {
     "devices": {
       k: _device_payload(k, v)
@@ -2341,12 +2682,14 @@ def snapshot(request: Request):
     "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
     "heat": _serialize_heat_events(),
     "update": git_update_info,
-    "server_time": time.time(),
+    "mqtt_presence": _mqtt_presence_summary(now),
+    "server_time": now,
   }
 
 
 @app.get("/stats")
 def get_stats():
+  presence_summary = _mqtt_presence_summary()
   if PROD_MODE:
     return {
       "stats":
@@ -2362,6 +2705,7 @@ def get_stats():
       "route_count": len(routes),
       "history_edge_count": len(route_history_edges),
       "seen_devices": len(seen_devices),
+      "mqtt_presence": presence_summary,
       "server_time": time.time(),
     }
 
@@ -2384,6 +2728,8 @@ def get_stats():
       len(seen_devices),
     "seen_recent":
       sorted(seen_devices.items(), key=lambda kv: kv[1], reverse=True)[:20],
+    "mqtt_presence":
+      presence_summary,
     "top_topics":
       top_topics,
     "decoder":
@@ -2698,10 +3044,11 @@ async def get_coverage():
       response.raise_for_status()
       data = response.json()
       # /get-samples returns { keys: [...] }, extract the keys array
-      samples = (
+      samples_raw = (
         data.get("keys", []) if isinstance(data, dict) else
         (data if isinstance(data, list) else [])
       )
+      samples = samples_raw if isinstance(samples_raw, list) else []
       print(
         f"[coverage] Received {len(samples) if isinstance(samples, list) else 'non-list'} items from coverage API"
       )
@@ -2841,6 +3188,7 @@ async def ws_endpoint(ws: WebSocket):
         "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
         "heat": _serialize_heat_events(),
         "update": git_update_info,
+        "mqtt_presence": _mqtt_presence_summary(),
       }
     )
   )
@@ -2854,4 +3202,3 @@ async def ws_endpoint(ws: WebSocket):
     pass
   finally:
     clients.discard(ws)
-
