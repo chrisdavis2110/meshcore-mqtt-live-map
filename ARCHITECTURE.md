@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.6.1` (see `VERSIONS.md`).
+Current version: `1.6.2` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -192,7 +192,7 @@ A single file containing all client-side logic:
 
 Route rendering notes:
 - In dev mode (`PROD_MODE=false`), route lines are clickable and log hop-by-hop debug details to the browser console (PR #14).
-- Show Hops displays plain prefix values (`Prefix: AB` / `Prefix: ABCD` / `Prefix: ABCDEF`) from decoded path data.
+- Show Hops displays plain prefix values (`Prefix: AB` / `Prefix: ABCD` / `Prefix: ABCDEF`) from decoded path data and now uses backend `point_ids` for hop ordering.
 
 ### styles.css (Styling)
 
@@ -392,4 +392,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.6.1`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.6.2`).

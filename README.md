@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.6.1` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.6.2` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and streams updates to the browser via WebSockets.
 
@@ -20,9 +20,9 @@ Other community maps (versions may differ):
 
 ## Features
 - Live node markers with roles (Repeater, Companion, Room Server, Unknown)
-- MQTT online indicator (green outline + popup status) based on MQTT `status`/`internal` topics
+- MQTT online indicator (green outline + popup status) based on MQTT `status`/`internal` topics, with improved role inference from MQTT role/model hints
 - Animated route/trace lines
-- Dev route inspection: click a route line in dev (`PROD_MODE=false`) to log hop-by-hop details in the browser console (PR #14, credit: https://github.com/sefator)
+- Dev route inspection: click a route line in dev (`PROD_MODE=false`) to log hop-by-hop details in the browser console, including resolved `point_id` / `point_label` data (PR #14, credit: https://github.com/sefator)
 - Heat map for the last 10 minutes of message activity (includes adverts)
 - Persistent device state and optional trails (disable with `TRAIL_LEN=0`)
 - 24-hour route history tool with volume-based coloring, click-to-view packet details, a heat-band slider, and a link-size slider

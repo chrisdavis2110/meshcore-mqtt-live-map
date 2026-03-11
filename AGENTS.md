@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.6.1` (see `VERSIONS.md`).
+Current version: `1.6.2` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -17,7 +17,7 @@ Current version: `1.6.1` (see `VERSIONS.md`).
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.6.1`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.6.2`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -77,7 +77,7 @@ Current version: `1.6.1` (see `VERSIONS.md`).
 - History tool visibility is not persisted; it always loads off unless `history=on` is in the URL.
 
 ## Feature Notes
-- MQTT supports WSS/TLS or TCP; `meshcore-decoder-multibyte-patch` runs via a Node helper for advert/location parsing and 1/2/3-byte path decoding.
+- MQTT supports WSS/TLS or TCP; `meshcore-decoder-multibyte-patch` runs via a Node helper for advert/location parsing, 1/2/3-byte path decoding, and improved MQTT role extraction.
 - Routes are rendered as trace/message/advert lines with TTL cleanup; 0,0 coords (including stringy zeros) are filtered from trails/routes.
 - Route IDs are observer-aware (`message_hash:receiver_id`) so multi-observer receptions do not overwrite each other.
 - Dev route debug: in non-prod mode (`PROD_MODE=false`), clicking a route line logs hop-by-hop details to the browser console (distance, hashes, origin/receiver, timestamps).
