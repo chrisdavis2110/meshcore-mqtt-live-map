@@ -1,8 +1,8 @@
 # Mesh Live Map
 
-Version: `1.6.0` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.6.1` (see [VERSIONS.md](VERSIONS.md))
 
-Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with `@michaelhart/meshcore-decoder`, and streams updates to the browser via WebSockets.
+Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and streams updates to the browser via WebSockets.
 
 Live example sites:
 https://live.bostonme.sh/ - Greater Boston Mesh Map (reference)
@@ -42,7 +42,7 @@ Other community maps (versions may differ):
 - Route pruning via neighbor-aware closest-hop selection + max hop distance (configurable)
 - Route lines are derived from decoded packet paths only (no MQTT observer/receiver fallback)
 - First-hop collision fix prefers the closest repeater/room to the sender (Issue #11)
-- Mixed hop-prefix support for path decoding (`AB` and `ABCD`, including mixed networks during rollout)
+- Mixed hop-prefix support for path decoding (`AB`, `ABCD`, and `ABCDEF`, including mixed networks during rollout)
 - Propagation panel lives on the right and keeps the last render until you generate a new one (click an origin marker to remove it)
 - Propagation tool supports adjustable **TX antenna gain (dBi)**, and now defaults **Rx AGL** to **1m**
 - Installable PWA (manifest + service worker) for Add to Home Screen
@@ -52,7 +52,7 @@ Other community maps (versions may differ):
 - `backend/app.py`: FastAPI server wiring, MQTT lifecycle, WS broadcast
 - `backend/config.py`: environment configuration
 - `backend/state.py`: shared in-memory state + dataclasses
-- `backend/decoder.py`: payload parsing + meshcore-decoder integration
+- `backend/decoder.py`: payload parsing + multibyte MeshCore decoder integration
 - `backend/los.py`: LOS math + elevation helpers
 - `backend/history.py`: route history persistence + pruning
 - `backend/weather.py`: weather radar country-bounds lookup API
@@ -200,7 +200,7 @@ Map + LOS:
 - `LOS_PEAKS_MAX` (max peaks shown on LOS profile)
 
 Decoder helpers:
-- `DECODE_WITH_NODE` (toggle meshcore-decoder usage)
+- `DECODE_WITH_NODE` (toggle Node-based MeshCore decoder usage)
 - `NODE_DECODE_TIMEOUT_SECONDS`
 - `DIRECT_COORDS_MODE` (`topic` or `payload`)
 - `DIRECT_COORDS_TOPIC_REGEX` (topic matcher for direct coords)
@@ -257,7 +257,7 @@ Use it:
 - Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;
   protected API endpoints still require `PROD_TOKEN`.
 - If hop hashes collide, the backend prefers known neighbors (or overrides) before picking the closest hop and pruning beyond `ROUTE_MAX_HOP_DISTANCE`.
-- Route hop prefixes can now be 1-byte or 2-byte; Show Hops displays `Prefix: AB` / `Prefix: ABCD`.
+- Route hop prefixes can now be 1-byte, 2-byte, or 3-byte; Show Hops displays `Prefix: AB` / `Prefix: ABCD` / `Prefix: ABCDEF`.
 - Device pruning can use both stale windows together (`DEVICE_TTL_HOURS` and `PATH_TTL_SECONDS`).
 - Coordinates at `0,0` (including string values) are filtered from devices, trails, and routes.
 - With Turnstile enabled, common embed bots (Discord, Slack, etc.) can be

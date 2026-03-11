@@ -47,7 +47,7 @@ RE_TWO_FLOATS = re.compile(r"(-?\d{1,2}\.\d+)\s*[,\s]+\s*(-?\d{1,3}\.\d+)")
 
 BASE64_LIKE = re.compile(r"^[A-Za-z0-9+/]+={0,2}$")
 NODE_HASH_RE = re.compile(r"^[0-9a-fA-F]+$")
-NODE_HASH_LENGTHS = (2, 4)
+NODE_HASH_LENGTHS = (2, 4, 6)
 
 _node_ready_once = False
 _node_unavailable_once = False
@@ -254,6 +254,8 @@ def _normalize_node_hash(value: Any) -> Optional[str]:
       return f"{value:02X}"
     if value <= 0xFFFF:
       return f"{value:04X}"
+    if value <= 0xFFFFFF:
+      return f"{value:06X}"
     return None
   if isinstance(value, (bytes, bytearray)):
     value = bytes(value).hex()
@@ -859,7 +861,7 @@ def _ensure_node_decoder() -> bool:
         "node",
         "--input-type=module",
         "-e",
-        "import('@michaelhart/meshcore-decoder')",
+        "import('meshcore-decoder-multibyte-patch')",
       ],
       check=True,
       stdout=subprocess.DEVNULL,
@@ -868,11 +870,11 @@ def _ensure_node_decoder() -> bool:
     )
   except Exception:
     _node_unavailable_once = True
-    print("[decode] @michaelhart/meshcore-decoder not available")
+    print("[decode] meshcore-decoder-multibyte-patch not available")
     return False
 
   script = """#!/usr/bin/env node
-import { MeshCoreDecoder, getDeviceRoleName } from '@michaelhart/meshcore-decoder';
+import { MeshCoreDecoder, getDeviceRoleName } from 'meshcore-decoder-multibyte-patch';
 
 const hex = (process.argv[2] || '').trim();
 

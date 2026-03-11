@@ -8,7 +8,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 3) Verify: `curl -s http://localhost:8080/snapshot`
 
 ## Versioning
-- Current version: `1.6.0` (see `VERSIONS.md`).
+- Current version: `1.6.1` (see `VERSIONS.md`).
 - Update `VERSION.txt` when adding features.
 - Append a new section to `VERSIONS.md` describing the change set.
 
@@ -43,7 +43,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - Update banner uses `GIT_CHECK_ENABLED` + `GIT_CHECK_PATH` to compare local vs upstream.
 - Preview check: `/preview.png?lat=...&lon=...&zoom=...` shows tiles + device dots.
 - Routing controls: `ROUTE_MAX_HOP_DISTANCE` (km) and `ROUTE_INFRA_ONLY` (repeaters/rooms only).
-- Verify Show Hops prefix display stays plain hex (`AB` or `ABCD`) and matches route direction.
+- Verify Show Hops prefix display stays plain hex (`AB`, `ABCD`, or `ABCDEF`) and matches route direction.
 - Staleness controls: `DEVICE_TTL_HOURS` (device/adverts) and `PATH_TTL_SECONDS` (path activity).
 - Coordinate overrides: `DEVICE_COORDS_FILE` (default `/data/device_coords.json`).
 - Neighbor overrides: `NEIGHBOR_OVERRIDES_FILE` can force adjacency pairs for hash collisions.
