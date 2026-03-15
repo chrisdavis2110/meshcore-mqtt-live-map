@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.6.2` (see `VERSIONS.md`).
+Current version: `1.6.5` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.6.2`).
+- `VERSION.txt` holds the current version string (`1.6.5`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -112,7 +112,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Propagation origin markers can be removed individually by clicking them.
 - Propagation now supports adjustable TX antenna gain (dBi), and defaults Rx AGL to 1m.
 - Heatmap includes all route payload types (adverts are no longer skipped).
-- MQTT online status shows as a green marker outline and popup status; connected state is derived from `/status` and `/internal` timestamps, while `/packets` is feed activity only. Role detection now also uses nested role fields, numeric role codes, and model/client hints when available.
+- MQTT online status shows as a green marker outline and popup status; connected state is derived from `/status` and `/internal` timestamps, while `/packets` is feed activity only. Role detection is now conservative and only trusts explicit role fields and numeric role codes.
 - `MQTT_ONLINE_FORCE_NAMES` can force named nodes to show as MQTT online regardless of last seen.
 - PWA install support is enabled via `/manifest.webmanifest` and a service worker at `/sw.js`.
 - Preview image (`/preview.png`) renders in-bounds device dots for shared links.
