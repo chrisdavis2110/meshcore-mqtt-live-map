@@ -107,3 +107,65 @@ def test_device_payload_marks_forced_online_name(monkeypatch):
 
   payload = app._device_payload("ABCD1111", app.devices["ABCD1111"])
   assert payload.get("mqtt_forced") is True
+
+
+def test_route_event_pads_low_range_two_byte_int_hashes(monkeypatch):
+  _clear_runtime_state()
+  queue = _DummyQueue()
+  monkeypatch.setattr(app, "update_queue", queue)
+  monkeypatch.setattr(
+    app,
+    "_try_parse_payload",
+    lambda *_args, **_kwargs: (
+      None,
+      {
+        "result": "decoded_no_location",
+        "origin_id": "AA001111",
+        "decoder_meta": {
+          "payloadType": 8,
+          "routeType": 0,
+          "messageHash": "deadbeef",
+          "pathHashes": [0xAB, 0x1234],
+          "pathLength": 2,
+        },
+      },
+    ),
+  )
+
+  msg = _DummyMsg("meshcore/BOS/DD001111/packets")
+  app.mqtt_on_message(None, {"loop": _DummyLoop()}, msg)
+
+  route_events = [event for event in queue.events if event.get("type") == "route"]
+  assert route_events
+  assert route_events[0]["path_hashes"] == ["00AB", "1234"]
+
+
+def test_route_event_pads_low_range_three_byte_int_hashes(monkeypatch):
+  _clear_runtime_state()
+  queue = _DummyQueue()
+  monkeypatch.setattr(app, "update_queue", queue)
+  monkeypatch.setattr(
+    app,
+    "_try_parse_payload",
+    lambda *_args, **_kwargs: (
+      None,
+      {
+        "result": "decoded_no_location",
+        "origin_id": "AA001111",
+        "decoder_meta": {
+          "payloadType": 8,
+          "routeType": 0,
+          "messageHash": "feedface",
+          "pathHashes": [0xAB, 0x12ABCD],
+          "pathLength": 3,
+        },
+      },
+    ),
+  )
+
+  msg = _DummyMsg("meshcore/BOS/DD001111/packets")
+  app.mqtt_on_message(None, {"loop": _DummyLoop()}, msg)
+
+  route_events = [event for event in queue.events if event.get("type") == "route"]
+  assert route_events
+  assert route_events[0]["path_hashes"] == ["0000AB", "12ABCD"]

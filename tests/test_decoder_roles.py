@@ -1,15 +1,18 @@
 import decoder
 
 
-def test_extract_device_role_from_nested_model_hint():
+def test_extract_device_role_ignores_model_and_origin_hints():
   payload = {
     "status": {
       "model": "PyMC-Repeater",
+      "origin": "PR-Room-Server",
+      "client_version": "meshcore-room/1.2.3",
+      "description": "Living room node",
     }
   }
 
   assert decoder._extract_device_role(payload, "meshcore/BOS/test/status"
-                                     ) == "repeater"
+                                     ) is None
 
 
 def test_extract_device_role_from_numeric_role_code_string():
@@ -25,6 +28,21 @@ def test_extract_device_role_from_numeric_role_code_string():
 
   assert decoder._extract_device_role(payload, "meshcore/BOS/test/packets"
                                      ) == "room"
+
+
+def test_extract_device_role_from_explicit_nested_role_field():
+  payload = {
+    "payload": {
+      "decoded": {
+        "appData": {
+          "role": "repeater",
+        }
+      }
+    }
+  }
+
+  assert decoder._extract_device_role(payload, "meshcore/BOS/test/packets"
+                                     ) == "repeater"
 
 
 def test_apply_meta_role_accepts_numeric_string_role_codes():
