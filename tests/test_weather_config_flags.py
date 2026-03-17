@@ -7,11 +7,13 @@ def test_root_injects_weather_flags(monkeypatch):
   monkeypatch.setattr(app, "TURNSTILE_ENABLED", False)
   monkeypatch.setattr(app, "WEATHER_RADAR_ENABLED", False)
   monkeypatch.setattr(app, "WEATHER_WIND_ENABLED", True)
+  monkeypatch.setattr(app, "APP_VERSION", "9.9.9-test")
 
   client = TestClient(app.app)
   response = client.get("/")
 
   assert response.status_code == 200
+  assert 'data-app-version="9.9.9-test"' in response.text
   assert 'data-weather-radar-enabled="false"' in response.text
   assert 'data-weather-wind-enabled="true"' in response.text
 

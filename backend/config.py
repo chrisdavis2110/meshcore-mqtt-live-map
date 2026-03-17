@@ -237,4 +237,17 @@ TURNSTILE_BOT_ALLOWLIST = os.getenv(
 ).strip()
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+VERSION_FILE_CANDIDATES = (
+  "/repo/VERSION.txt",
+  os.path.join(os.path.dirname(APP_DIR), "VERSION.txt"),
+  os.path.join(APP_DIR, "VERSION.txt"),
+)
+APP_VERSION = "dev"
+for VERSION_FILE in VERSION_FILE_CANDIDATES:
+  try:
+    with open(VERSION_FILE, "r", encoding="utf-8") as handle:
+      APP_VERSION = handle.read().strip() or "dev"
+      break
+  except Exception:
+    continue
 NODE_SCRIPT_PATH = os.path.join(APP_DIR, "meshcore_decode.mjs")

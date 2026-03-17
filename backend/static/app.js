@@ -61,6 +61,8 @@ const initialUpdateRemote = (config.updateRemote || '').trim();
 const reportError = typeof window.__meshmapReportError === 'function'
   ? window.__meshmapReportError
   : (message) => console.warn(message);
+const appVersion = (config.appVersion || 'dev').trim() || 'dev';
+console.info(`[meshmap] version ${appVersion}`);
 
 const envStartLat = parseFloat(config.mapStartLat);
 const envStartLon = parseFloat(config.mapStartLon);
