@@ -781,25 +781,10 @@ def _extract_device_role(obj: Any, topic: str) -> Optional[str]:
     "class",
     "profile",
   )
-  role_hint_keys = (
-    "model",
-    "client_version",
-    "clientVersion",
-    "name",
-    "device_name",
-    "deviceName",
-    "origin",
-    "description",
-  )
 
   def walk(value: Any) -> Optional[str]:
     if isinstance(value, dict):
       for key in role_keys:
-        if key in value:
-          role = _extract_role_from_hint(value.get(key))
-          if role:
-            return role
-      for key in role_hint_keys:
         if key in value:
           role = _extract_role_from_hint(value.get(key))
           if role:

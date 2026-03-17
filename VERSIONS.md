@@ -1,5 +1,13 @@
 # Versions
 
+## v1.6.5 (03-14-2026)
+- Made MQTT role detection conservative for accuracy: the map now only assigns roles from explicit role fields and numeric MeshCore role codes.
+- Stopped inferring device roles from weak MQTT name/model/client/origin/description hints that could mislabel normal nodes as room servers.
+- Added regression coverage to ensure model/origin strings like `PyMC-Repeater` or `PR-Room-Server` no longer assign a role by themselves.
+- Added runtime version logging on startup in both the server logs and browser console so the running map version is visible without checking docs.
+- Fixed backend route hash normalization to respect decoder `pathLength` for low-range multibyte repeater IDs, so 2-byte and 3-byte integer hashes like `0x00AB` and `0x0000AB` do not collapse to shorter prefixes.
+- Added regression tests covering low-range 2-byte and 3-byte path-hash padding before route resolution.
+
 ## v1.6.2 (03-11-2026)
 - Fixed route-details hop ordering in the UI by using backend route order and `point_ids` directly instead of frontend reversal/name heuristics.
 - Fixed hop-prefix display in the route details panel so 1-byte (`AB`), 2-byte (`ABCD`), and 3-byte (`ABCDEF`) prefixes all render correctly.

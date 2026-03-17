@@ -156,6 +156,7 @@ from config import (
   WEATHER_WIND_API_URL,
   WEATHER_WIND_GRID_SIZE,
   WEATHER_WIND_REFRESH_SECONDS,
+  APP_VERSION,
   APP_DIR,
   NODE_SCRIPT_PATH,
 )
@@ -212,10 +213,38 @@ git_update_info = {
 mqtt_presence_last_summary: Dict[str, int] = {}
 
 
+def _normalize_route_hashes_for_path_length(
+  path_hashes: Any,
+  path_length: Any,
+) -> Optional[List[Any]]:
+  if not isinstance(path_hashes, list) or not path_hashes:
+    return None
+  try:
+    path_length_int = int(path_length) if path_length is not None else None
+  except (TypeError, ValueError):
+    path_length_int = None
+  if path_length_int not in (2, 3):
+    return list(path_hashes)
+  width = path_length_int * 2
+  normalized: List[Any] = []
+  changed = False
+  for item in path_hashes:
+    if isinstance(item, int):
+      if item < 0:
+        normalized.append(item)
+        continue
+      normalized.append(f"{item:0{width}X}")
+      changed = True
+      continue
+    normalized.append(item)
+  return normalized if changed else list(path_hashes)
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
   global mqtt_client
 
+  print(f"[startup] meshmap version={APP_VERSION}")
   _load_state()
   _load_route_history()
   _load_neighbor_overrides()
@@ -1412,6 +1441,7 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
   message_hash = decoder_meta.get("messageHash") or debug.get("packet_hash")
   snr_values = decoder_meta.get("snrValues")
   path_header = decoder_meta.get("path")
+  path_length = decoder_meta.get("pathLength")
   direction = debug.get("direction")
   receiver_id = _device_id_from_topic(msg.topic)
   route_origin_id = None
@@ -1462,6 +1492,7 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
   elif payload_type not in (8, 9) and isinstance(path_header, list):
     if route_type in (0, 1):
       route_hashes = path_header
+  route_hashes = _normalize_route_hashes_for_path_length(route_hashes, path_length)
 
   route_emitted = False
   if route_hashes and payload_type in ROUTE_PAYLOAD_TYPES_SET:
@@ -2156,6 +2187,8 @@ def root(request: Request):
       SITE_FEED_NOTE,
     "CUSTOM_LINK_URL":
       CUSTOM_LINK_URL,
+    "APP_VERSION":
+      APP_VERSION,
     "ASSET_VERSION":
       ASSET_VERSION,
     "DISTANCE_UNITS":
@@ -2580,6 +2613,7 @@ def map_page(request: Request):
     "SITE_ICON": SITE_ICON,
     "SITE_FEED_NOTE": SITE_FEED_NOTE,
     "CUSTOM_LINK_URL": CUSTOM_LINK_URL,
+    "APP_VERSION": APP_VERSION,
     "ASSET_VERSION": ASSET_VERSION,
     "DISTANCE_UNITS": DISTANCE_UNITS,
     "NODE_MARKER_RADIUS": NODE_MARKER_RADIUS,
