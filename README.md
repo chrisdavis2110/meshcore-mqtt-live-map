@@ -12,6 +12,7 @@ Other community maps (versions may differ):
 - https://livemap.wcmesh.com/ - West Coast Mesh
 - https://map.eastmesh.au/ - Aus Eastern Mesh Live Map
 - https://mapa.meshcore.cz/ - Czech Republic
+- https://map.meshcorebayreuth.de/ - Bayreuth Live Map
 
 
 ![Live map preview](example.gif)
