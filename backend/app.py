@@ -47,7 +47,11 @@ from decoder import (
 )
 from history import (
   _load_route_history,
+  PEER_HISTORY_BUCKET_SECONDS,
+  _peer_history_cutoff,
+  _prune_peer_history,
   _prune_route_history,
+  _rebuild_peer_history_from_segments,
   _record_route_history,
   _route_history_saver,
 )
@@ -181,6 +185,7 @@ from state import (
   heat_events,
   route_history_segments,
   route_history_edges,
+  peer_history_pairs,
   node_hash_to_device,
   node_hash_collisions,
   node_hash_candidates,
@@ -527,6 +532,7 @@ def _serialize_state() -> Dict[str, Any]:
     "last_seen_in_path": state.last_seen_in_path,
     "first_seen_devices": first_seen_devices,
     "last_seen_in_advert": last_seen_in_advert,
+    "peer_history_pairs": peer_history_pairs,
   }
 
 
@@ -1137,6 +1143,46 @@ def _load_state() -> None:
         last_seen_in_advert[str(key)] = float(value)
       except (TypeError, ValueError):
         continue
+  raw_peer_history = data.get("peer_history_pairs") or {}
+  peer_history_pairs.clear()
+  if isinstance(raw_peer_history, dict):
+    for pair_key, value in raw_peer_history.items():
+      if not isinstance(pair_key, str) or not isinstance(value, dict):
+        continue
+      a_id = value.get("a_id")
+      b_id = value.get("b_id")
+      buckets = value.get("buckets")
+      if not isinstance(a_id, str) or not a_id.strip():
+        continue
+      if not isinstance(b_id, str) or not b_id.strip():
+        continue
+      if not isinstance(buckets, dict):
+        continue
+      clean_buckets: Dict[str, int] = {}
+      for bucket_key, count in buckets.items():
+        try:
+          bucket_ts = int(float(bucket_key))
+          bucket_count = int(count)
+        except (TypeError, ValueError):
+          continue
+        if bucket_count <= 0:
+          continue
+        clean_buckets[str(bucket_ts)] = bucket_count
+      if not clean_buckets:
+        continue
+      last_ts = value.get("last_ts")
+      try:
+        last_ts_val = float(last_ts) if last_ts is not None else 0.0
+      except (TypeError, ValueError):
+        last_ts_val = 0.0
+      peer_history_pairs[pair_key] = {
+        "a_id": a_id.strip(),
+        "b_id": b_id.strip(),
+        "buckets": clean_buckets,
+        "last_ts": last_ts_val,
+      }
+  if _prune_peer_history():
+    state.state_dirty = True
   # If first_seen data is missing, fall back to loaded last_seen values.
   if not raw_first_seen:
     for device_id, seen_ts in seen_devices.items():
@@ -2000,6 +2046,8 @@ async def reaper():
         first_seen_devices.pop(dev_id, None)
         last_seen_in_advert.pop(dev_id, None)
         state.last_seen_in_path.pop(dev_id, None)
+    if _prune_peer_history(now):
+      state.state_dirty = True
 
     await asyncio.sleep(5)
 
@@ -2901,24 +2949,46 @@ def _peer_stats_for_device(device_id: str, limit: int) -> Dict[str, Any]:
   outbound: Dict[str, int] = {}
   inbound_last: Dict[str, float] = {}
   outbound_last: Dict[str, float] = {}
-  for entry in route_history_segments:
+  cutoff = _peer_history_cutoff()
+  if not peer_history_pairs and route_history_segments:
+    _rebuild_peer_history_from_segments()
+  for entry in peer_history_pairs.values():
     if not isinstance(entry, dict):
       continue
     a_id = entry.get("a_id")
     b_id = entry.get("b_id")
     if not a_id or not b_id:
       continue
-    ts = entry.get("ts") or 0
+    buckets = entry.get("buckets")
+    if not isinstance(buckets, dict):
+      continue
+    count = 0
+    last_ts = 0.0
+    for bucket_key, bucket_count in buckets.items():
+      try:
+        bucket_start = float(bucket_key)
+        bucket_value = int(bucket_count)
+      except (TypeError, ValueError):
+        continue
+      if bucket_value <= 0:
+        continue
+      bucket_end = bucket_start + PEER_HISTORY_BUCKET_SECONDS
+      if bucket_end < cutoff:
+        continue
+      count += bucket_value
+      last_ts = max(last_ts, bucket_end)
+    if count <= 0:
+      continue
     if a_id == device_id and b_id != device_id:
       if _peer_is_excluded(b_id):
         continue
-      outbound[b_id] = outbound.get(b_id, 0) + 1
-      outbound_last[b_id] = max(outbound_last.get(b_id, 0), float(ts))
+      outbound[b_id] = outbound.get(b_id, 0) + count
+      outbound_last[b_id] = max(outbound_last.get(b_id, 0), float(last_ts))
     if b_id == device_id and a_id != device_id:
       if _peer_is_excluded(a_id):
         continue
-      inbound[a_id] = inbound.get(a_id, 0) + 1
-      inbound_last[a_id] = max(inbound_last.get(a_id, 0), float(ts))
+      inbound[a_id] = inbound.get(a_id, 0) + count
+      inbound_last[a_id] = max(inbound_last.get(a_id, 0), float(last_ts))
 
   inbound_total = sum(inbound.values())
   outbound_total = sum(outbound.values())

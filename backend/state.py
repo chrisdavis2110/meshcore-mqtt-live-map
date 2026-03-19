@@ -49,6 +49,7 @@ routes: Dict[str, Dict[str, Any]] = {}
 heat_events: List[Dict[str, float]] = []
 route_history_segments: Deque[Dict[str, Any]] = deque()
 route_history_edges: Dict[str, Dict[str, Any]] = {}
+peer_history_pairs: Dict[str, Dict[str, Any]] = {}
 route_history_compact = False
 route_history_last_compact = 0.0
 node_hash_to_device: Dict[str, str] = {}

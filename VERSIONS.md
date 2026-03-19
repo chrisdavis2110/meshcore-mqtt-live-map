@@ -1,5 +1,11 @@
 # Versions
 
+## v1.6.6 (03-19-2026)
+- Fixed the Peers tool 24h counts on large meshes by moving peer statistics off raw `route_history_segments` and onto dedicated rolling peer-history buckets.
+- Peer counts are now time-windowed independently of `ROUTE_HISTORY_MAX_SEGMENTS`, so high traffic no longer causes the effective 24h window to shrink to a few hours.
+- Added peer-history bucket pruning/state persistence so `/peers/{device_id}` survives restarts and keeps the expected rolling window behavior.
+- Added regression tests covering peer counts after segment-cap pruning and peer-history state round trips.
+
 ## v1.6.5 (03-14-2026)
 - Made MQTT role detection conservative for accuracy: the map now only assigns roles from explicit role fields and numeric MeshCore role codes.
 - Stopped inferring device roles from weak MQTT name/model/client/origin/description hints that could mislabel normal nodes as room servers.
