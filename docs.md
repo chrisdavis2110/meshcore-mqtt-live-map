@@ -76,6 +76,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - The patched package replaces the official decoder so the map can ingest 1-byte, 2-byte, and 3-byte repeater prefixes.
 - `backend/decoder.py` writes a small Node helper and calls it to decode MeshCore packets.
 - Route path decoding now accepts mixed hop prefixes: 1-byte (`AB`), 2-byte (`ABCD`), and 3-byte (`ABCDEF`) values in the same path during upgrade rollouts.
+- Ambiguous 1-byte prefixes are now handled conservatively: if multiple nodes share the same first byte, the map skips broad closest/time-based guesses and only keeps the hop when there is stronger evidence such as a unique match or neighbor/manual adjacency.
 
 ## Frontend UI
 - Header includes a GitHub link icon and HUD summary (stats, feed note).
@@ -99,6 +100,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
 - Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
 - Coverage tool only appears when `COVERAGE_API_URL` is set; it supports both the legacy `/get-samples` format and MeshMapper `coverage.php` grid-square responses.
+- MeshMapper-only coverage envs are `COVERAGE_API_KEY`, `COVERAGE_MAX_AGE_DAYS`, `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS`, `COVERAGE_CACHE_FILE`, and `COVERAGE_SYNC_INTERVAL_SECONDS`; the legacy coverage map does not use them.
 - MeshMapper coverage is synced server-side into a local cache file and served from that file to users; it also uses a cooldown after HTTP 429 rate-limit responses.
 - Coverage responses are filtered by `COVERAGE_MAX_AGE_DAYS` before they reach the map; default is `30` days, while MeshMapper can still keep the full downloaded dataset in its local cache file.
 - Weather is a right-side tool panel with per-layer toggles:

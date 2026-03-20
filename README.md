@@ -134,11 +134,16 @@ MQTT:
 
 Coverage layer:
 - `COVERAGE_API_URL` (legacy coverage-map base URL, or `https://meshmapper.net`; button hidden when blank)
-- `COVERAGE_API_KEY` (optional; used for MeshMapper Coverage API requests to `coverage.php`)
-- `COVERAGE_MAX_AGE_DAYS` (default `30`; only coverage from the last N days is sent to the map, while MeshMapper can still cache the full upstream dataset locally)
+- `COVERAGE_API_KEY` (MeshMapper only; optional key for `https://meshmapper.net/coverage.php`; not used by legacy coverage maps)
+- `COVERAGE_MAX_AGE_DAYS` (MeshMapper only; default `30`; only coverage from the last N days is sent to the map, while MeshMapper can still cache the full upstream dataset locally; not used by legacy coverage maps)
 - `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS` (MeshMapper only; fallback cooldown after HTTP 429 if the API does not report `resets_in_hours`)
 - `COVERAGE_CACHE_FILE` (MeshMapper only; local JSON file served to users after server-side sync)
 - `COVERAGE_SYNC_INTERVAL_SECONDS` (MeshMapper only; how often the server refreshes the local coverage cache file, default hourly)
+
+Routing accuracy:
+- Ambiguous 1-byte hop prefixes are now handled conservatively on large meshes.
+- If multiple nodes share the same first byte, the map no longer guesses from broad closest/time-based fallbacks.
+- Colliding 1-byte hops only resolve when there is stronger evidence such as a unique candidate or known neighbor/manual adjacency.
 
 Weather overlay:
 - `WEATHER_RADAR_ENABLED`:

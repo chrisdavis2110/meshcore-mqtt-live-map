@@ -503,11 +503,12 @@ def _route_points_from_hashes(
   for key in normalized:
     device_id = None
     candidates = node_hash_candidates.get(key) or []
+    ambiguous_single_byte = len(key) == 2 and len(candidates) > 1
 
     if current_id and current_lat is not None and current_lon is not None:
       if len(candidates) > 1:
         # For the first hop, prefer the closest candidate to the origin.
-        if not points:
+        if not points and not ambiguous_single_byte:
           device_id = _choose_closest_device(key, current_lat, current_lon, ts)
         if not device_id:
           neighbor_id = _choose_neighbor_device(
@@ -526,10 +527,15 @@ def _route_points_from_hashes(
             )
 
     # If we have a location fix, try to find the "closest" candidate for this hash
-    if not device_id and current_lat is not None and current_lon is not None:
+    if (
+      not device_id and
+      current_lat is not None and
+      current_lon is not None and
+      not ambiguous_single_byte
+    ):
       device_id = _choose_closest_device(key, current_lat, current_lon, ts)
 
-    if not device_id:
+    if not device_id and not ambiguous_single_byte:
       # Fallback to older time-based logic or just picking first valid
       device_id = _choose_device_for_hash(key, ts)
       if not device_id:

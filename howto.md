@@ -149,6 +149,7 @@ Optional: enable the coverage layer by setting `COVERAGE_API_URL` (the Coverage 
 
 ```env
 COVERAGE_API_URL=https://coverage.example.com
+# The envs below are MeshMapper-only. The legacy coverage map does not use them.
 # Optional for MeshMapper coverage.php requests
 COVERAGE_API_KEY=
 # Show only the last N days on the map. Default 30. Set 0 to disable age filtering.
@@ -159,6 +160,10 @@ COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS=3600
 COVERAGE_CACHE_FILE=/data/coverage_cache.json
 # MeshMapper only: server-side refresh interval; default hourly
 COVERAGE_SYNC_INTERVAL_SECONDS=3600
+#
+# Routing note: on large meshes, ambiguous 1-byte prefixes are handled conservatively.
+# If multiple nodes share the same first byte, the map now skips broad guesses unless
+# there is stronger evidence such as a unique match or neighbor/manual adjacency.
 #
 # MeshMapper uses the documented domain:
 # COVERAGE_API_URL=https://meshmapper.net
