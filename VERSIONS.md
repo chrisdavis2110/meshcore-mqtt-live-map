@@ -1,5 +1,22 @@
 # Versions
 
+## v1.7.0 (03-20-2026)
+- Added dual coverage API support so the Coverage button now works with both the legacy `/get-samples` API and the new MeshMapper Coverage API.
+- Added MeshMapper API detection for the documented `https://meshmapper.net/coverage.php` endpoint, with automatic requests to `coverage.php`.
+- Added optional `COVERAGE_API_KEY` support for MeshMapper coverage requests without changing the legacy coverage integration.
+- Coverage rendering now supports MeshMapper `grid_squares` directly, preserving server-provided bounds and colors instead of forcing the legacy geohash tile aggregation.
+- Added MeshMapper-only server-side sync that stores coverage in a local cache file and serves users from that file instead of refetching `coverage.php` per request.
+- Added MeshMapper rate-limit cooldown handling for HTTP 429 responses, using `resets_in_hours` when provided and falling back to a local cooldown value otherwise.
+- When MeshMapper is rate-limited and cached coverage exists, the app now serves the last successful coverage payload instead of failing immediately.
+- Added coverage age filtering with `COVERAGE_MAX_AGE_DAYS` (default `30`) so the map only shows recent coverage while MeshMapper can still cache the full upstream dataset locally.
+- Added new coverage envs: `COVERAGE_MAX_AGE_DAYS`, `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS`, `COVERAGE_CACHE_FILE`, and `COVERAGE_SYNC_INTERVAL_SECONDS`.
+- MeshMapper coverage now preserves the API `region` code in the local cache and response headers, and the map shows a bottom-right `MeshMapper` link to `https://<region>.meshmapper.net` when the Coverage layer is active.
+- Added regression tests covering legacy coverage fetches, MeshMapper URL building, local cache-file serving/writes, and 429 fallback behavior.
+- Fixed route snapshot handling so nearly expired routes are not sent to newly loaded clients and immediately removed on page load.
+- Fixed route expiry timing in the frontend to use server-relative time instead of raw browser clock time, reducing premature route disappearance on clients with clock skew.
+- Fixed MQTT online marker styling to use the same server-relative time source, restoring the green outline on MQTT-connected nodes when the browser clock is ahead of the server.
+- Added websocket snapshot regression coverage for server time injection and near-expired route filtering.
+
 ## v1.6.6 (03-19-2026)
 - Fixed the Peers tool 24h counts on large meshes by moving peer statistics off raw `route_history_segments` and onto dedicated rolling peer-history buckets.
 - Peer counts are now time-windowed independently of `ROUTE_HISTORY_MAX_SEGMENTS`, so high traffic no longer causes the effective 24h window to shrink to a few hours.

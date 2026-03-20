@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.6.6` (see `VERSIONS.md`).
+Current version: `1.7.0` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -149,6 +149,19 @@ Optional: enable the coverage layer by setting `COVERAGE_API_URL` (the Coverage 
 
 ```env
 COVERAGE_API_URL=https://coverage.example.com
+# Optional for MeshMapper coverage.php requests
+COVERAGE_API_KEY=
+# Show only the last N days on the map. Default 30. Set 0 to disable age filtering.
+COVERAGE_MAX_AGE_DAYS=30
+# MeshMapper only: fallback cooldown after HTTP 429 if the API does not report resets_in_hours
+COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS=3600
+# MeshMapper only: local file used to serve cached coverage to users
+COVERAGE_CACHE_FILE=/data/coverage_cache.json
+# MeshMapper only: server-side refresh interval; default hourly
+COVERAGE_SYNC_INTERVAL_SECONDS=3600
+#
+# MeshMapper uses the documented domain:
+# COVERAGE_API_URL=https://meshmapper.net
 WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true
 # Optional override. Default is /weather/radar/country-bounds on this app.
 # This is an HTTP URL path, not a filesystem directory.
