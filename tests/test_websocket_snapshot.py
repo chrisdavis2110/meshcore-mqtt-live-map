@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 
 from starlette.websockets import WebSocketDisconnect
 
@@ -74,3 +75,31 @@ def test_ws_endpoint_accepts_query_token_in_prod_mode(monkeypatch):
   assert ws.accepted is True
   assert ws.closed_code is None
   assert len(ws.sent_messages) >= 1
+
+
+def test_ws_snapshot_omits_near_expired_routes_and_includes_server_time(monkeypatch):
+  ws = DummyWebSocket()
+  app.clients.clear()
+  app.routes.clear()
+  monkeypatch.setattr(app, "PROD_MODE", False)
+  now = 1000.0
+  monkeypatch.setattr(app.time, "time", lambda: now)
+  app.routes["keep"] = {
+    "id": "keep",
+    "points": [[1.0, 2.0], [3.0, 4.0]],
+    "expires_at": now + 30.0,
+  }
+  app.routes["drop"] = {
+    "id": "drop",
+    "points": [[1.0, 2.0], [3.0, 4.0]],
+    "expires_at": now + 2.0,
+  }
+
+  asyncio.run(app.ws_endpoint(ws))
+
+  payload = json.loads(ws.sent_messages[0])
+  route_ids = [route.get("id") for route in payload.get("routes", [])]
+  assert "keep" in route_ids
+  assert "drop" not in route_ids
+  assert payload.get("server_time") == now
+  app.routes.clear()

@@ -21,7 +21,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from urllib.parse import urlencode
+from urllib.parse import urlencode, parse_qsl, urlsplit, urlunsplit
 from io import BytesIO
 from PIL import Image, ImageDraw
 import math
@@ -153,6 +153,11 @@ from config import (
   ELEVATION_CACHE_TTL,
   LOS_PEAKS_MAX,
   COVERAGE_API_URL,
+  COVERAGE_API_KEY,
+  COVERAGE_MAX_AGE_DAYS,
+  COVERAGE_CACHE_FILE,
+  COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS,
+  COVERAGE_SYNC_INTERVAL_SECONDS,
   WEATHER_RADAR_ENABLED,
   WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED,
   WEATHER_RADAR_COUNTRY_LOOKUP_URL,
@@ -245,6 +250,383 @@ def _normalize_route_hashes_for_path_length(
   return normalized if changed else list(path_hashes)
 
 
+def _coverage_request_url(base_url: str, api_key: str) -> str:
+  raw = (base_url or "").strip()
+  if not raw:
+    return raw
+  parts = urlsplit(raw)
+  hostname = (parts.hostname or "").lower()
+  path = parts.path or ""
+
+  is_meshmapper = hostname == "meshmapper.net"
+  if is_meshmapper:
+    if not path or path == "/":
+      path = "/coverage.php"
+    elif not path.endswith("/coverage.php") and not path.endswith("coverage.php"):
+      path = path.rstrip("/") + "/coverage.php"
+    query_items = dict(parse_qsl(parts.query, keep_blank_values=True))
+    if api_key and not query_items.get("key"):
+      query_items["key"] = api_key
+    return urlunsplit(
+      (
+        parts.scheme,
+        parts.netloc,
+        path,
+        urlencode(query_items),
+        parts.fragment,
+      )
+    )
+
+  if path.endswith("/get-samples") or path.endswith("get-samples"):
+    return raw
+
+  return f"{raw.rstrip('/')}/get-samples"
+
+
+coverage_cache: Dict[str, Any] = {
+  "provider": None,
+  "data": None,
+  "fetched_at": 0.0,
+  "cooldown_until": 0.0,
+  "last_error": None,
+  "source": None,
+}
+
+
+def _is_meshmapper_coverage_url(base_url: str) -> bool:
+  parts = urlsplit((base_url or "").strip())
+  return (parts.hostname or "").lower() == "meshmapper.net"
+
+
+def _normalize_coverage_response(data: Any) -> Tuple[List[Dict[str, Any]], str]:
+  if isinstance(data, dict):
+    if isinstance(data.get("grid_squares"), list):
+      if data.get("success") is False:
+        error = str(data.get("error") or "coverage_api_error")
+        message = str(data.get("message") or error)
+        raise HTTPException(status_code=502, detail=f"coverage_api_error: {error}: {message}")
+      return data["grid_squares"], "meshmapper"
+    keys = data.get("keys", [])
+    if isinstance(keys, list):
+      return keys, "legacy"
+    return [], "legacy"
+  if isinstance(data, list):
+    return data, "legacy"
+  return [], "legacy"
+
+
+def _coverage_metadata_from_response(
+  data: Any,
+  provider: str,
+) -> Dict[str, Any]:
+  meta: Dict[str, Any] = {"provider": provider}
+  if provider != "meshmapper" or not isinstance(data, dict):
+    return meta
+  region = data.get("region")
+  if isinstance(region, str) and region.strip():
+    meta["region"] = region.strip().upper()
+  generated_at = _parse_coverage_timestamp(data.get("generated_at"))
+  if generated_at is not None:
+    meta["generated_at"] = generated_at
+  return meta
+
+
+def _coverage_cache_has_data() -> bool:
+  return isinstance(coverage_cache.get("data"), list)
+
+
+def _parse_coverage_timestamp(value: Any) -> Optional[float]:
+  if value is None:
+    return None
+  if isinstance(value, (int, float)):
+    numeric = float(value)
+  elif isinstance(value, str):
+    text = value.strip()
+    if not text:
+      return None
+    try:
+      numeric = float(text)
+    except ValueError:
+      dt_value = None
+      normalized = text
+      if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+      try:
+        dt_value = datetime.fromisoformat(normalized)
+      except ValueError:
+        for fmt in (
+          "%Y-%m-%d %H:%M:%S",
+          "%Y-%m-%dT%H:%M:%S",
+          "%d/%m/%Y %H:%M:%S",
+          "%m/%d/%Y %H:%M:%S",
+        ):
+          try:
+            dt_value = datetime.strptime(text, fmt)
+            break
+          except ValueError:
+            continue
+      if dt_value is None:
+        return None
+      if dt_value.tzinfo is None:
+        dt_value = dt_value.replace(tzinfo=timezone.utc)
+      return dt_value.timestamp()
+  else:
+    return None
+  if numeric > 946684800000:
+    numeric /= 1000.0
+  if numeric <= 0:
+    return None
+  return numeric
+
+
+def _coverage_item_timestamp(item: Any) -> Optional[float]:
+  if not isinstance(item, dict):
+    return None
+  for key in ("timestamp", "time"):
+    ts = _parse_coverage_timestamp(item.get(key))
+    if ts is not None:
+      return ts
+  observed = item.get("observed")
+  if isinstance(observed, dict):
+    for key in ("timestamp", "time"):
+      ts = _parse_coverage_timestamp(observed.get(key))
+      if ts is not None:
+        return ts
+  return None
+
+
+def _filter_coverage_by_age(
+  data: List[Dict[str, Any]],
+  now: Optional[float] = None,
+) -> List[Dict[str, Any]]:
+  try:
+    max_age_days = float(COVERAGE_MAX_AGE_DAYS)
+  except (TypeError, ValueError):
+    max_age_days = 30.0
+  if max_age_days <= 0:
+    return list(data)
+  now_value = float(now or time.time())
+  cutoff = now_value - (max_age_days * 86400.0)
+  filtered: List[Dict[str, Any]] = []
+  for item in data:
+    ts = _coverage_item_timestamp(item)
+    if ts is None or ts >= cutoff:
+      filtered.append(item)
+  return filtered
+
+
+def _coverage_response_headers(provider: Optional[str] = None) -> Dict[str, str]:
+  headers: Dict[str, str] = {}
+  provider_value = str(provider or coverage_cache.get("provider") or "").strip().lower()
+  if provider_value:
+    headers["X-Coverage-Provider"] = provider_value
+  region_value = str(coverage_cache.get("region") or "").strip().upper()
+  if provider_value == "meshmapper" and region_value:
+    headers["X-Coverage-Region"] = region_value
+  return headers
+
+def _update_coverage_cache(
+  provider: str,
+  data: List[Dict[str, Any]],
+  now: float,
+  source: str = "memory",
+  meta: Optional[Dict[str, Any]] = None,
+) -> None:
+  coverage_cache["provider"] = provider
+  coverage_cache["data"] = list(data)
+  coverage_cache["fetched_at"] = now
+  coverage_cache["cooldown_until"] = 0.0
+  coverage_cache["last_error"] = None
+  coverage_cache["source"] = source
+  coverage_cache["region"] = (
+    str(meta.get("region")).strip().upper()
+    if isinstance(meta, dict) and meta.get("region")
+    else None
+  )
+  generated_at = meta.get("generated_at") if isinstance(meta, dict) else None
+  coverage_cache["generated_at"] = float(generated_at) if generated_at else None
+
+
+def _apply_meshmapper_rate_limit_cooldown(
+  now: float,
+  response: Optional[httpx.Response] = None,
+) -> int:
+  cooldown_seconds = max(1, int(COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS))
+  if response is not None:
+    try:
+      data = response.json()
+    except Exception:
+      data = None
+    if isinstance(data, dict):
+      coverage_cache["last_error"] = data
+      resets_in_hours = data.get("resets_in_hours")
+      try:
+        resets_hours_value = float(resets_in_hours)
+      except (TypeError, ValueError):
+        resets_hours_value = None
+      if resets_hours_value and resets_hours_value > 0:
+        cooldown_seconds = max(1, int(math.ceil(resets_hours_value * 3600.0)))
+  coverage_cache["cooldown_until"] = now + cooldown_seconds
+  return cooldown_seconds
+
+
+def _load_coverage_cache_file() -> bool:
+  path = (COVERAGE_CACHE_FILE or "").strip()
+  if not path or not os.path.exists(path):
+    return False
+  try:
+    with open(path, "r", encoding="utf-8") as f:
+      payload = json.load(f)
+  except Exception as exc:
+    print(f"[coverage] Failed to load cache file {path}: {exc}")
+    return False
+  if not isinstance(payload, dict):
+    return False
+  data = payload.get("data")
+  if not isinstance(data, list):
+    return False
+  fetched_at = payload.get("fetched_at") or 0.0
+  try:
+    fetched_at_value = float(fetched_at)
+  except (TypeError, ValueError):
+    fetched_at_value = 0.0
+  provider = str(payload.get("provider") or "meshmapper")
+  coverage_cache["provider"] = provider
+  coverage_cache["data"] = list(data)
+  coverage_cache["fetched_at"] = fetched_at_value
+  coverage_cache["cooldown_until"] = float(payload.get("cooldown_until") or 0.0)
+  coverage_cache["last_error"] = payload.get("last_error")
+  coverage_cache["source"] = "file"
+  region = payload.get("region")
+  coverage_cache["region"] = (
+    str(region).strip().upper() if isinstance(region, str) and region.strip() else None
+  )
+  generated_at = payload.get("generated_at")
+  try:
+    coverage_cache["generated_at"] = float(generated_at) if generated_at else None
+  except (TypeError, ValueError):
+    coverage_cache["generated_at"] = None
+  print(
+    f"[coverage] Loaded cached coverage file {path} entries={len(data)} fetched_at={int(fetched_at_value) if fetched_at_value > 0 else 0}"
+  )
+  return True
+
+
+def _save_coverage_cache_file() -> None:
+  path = (COVERAGE_CACHE_FILE or "").strip()
+  if not path or not _coverage_cache_has_data():
+    return
+  payload = {
+    "provider": coverage_cache.get("provider") or "meshmapper",
+    "fetched_at": float(coverage_cache.get("fetched_at") or 0.0),
+    "cooldown_until": float(coverage_cache.get("cooldown_until") or 0.0),
+    "last_error": coverage_cache.get("last_error"),
+    "region": coverage_cache.get("region"),
+    "generated_at": coverage_cache.get("generated_at"),
+    "data": coverage_cache.get("data") or [],
+  }
+  try:
+    directory = os.path.dirname(path)
+    if directory:
+      os.makedirs(directory, exist_ok=True)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+      json.dump(payload, f, separators=(",", ":"))
+    os.replace(tmp_path, path)
+  except Exception as exc:
+    print(f"[coverage] Failed to save cache file {path}: {exc}")
+
+
+async def _fetch_coverage_upstream() -> Tuple[List[Dict[str, Any]], str, Dict[str, Any]]:
+  url = _coverage_request_url(COVERAGE_API_URL, COVERAGE_API_KEY)
+  print(f"[coverage] Fetching from {url}")
+  async with httpx.AsyncClient(timeout=10.0) as client:
+    response = await client.get(url)
+    response.raise_for_status()
+    data = response.json()
+    samples, provider = _normalize_coverage_response(data)
+    meta = _coverage_metadata_from_response(data, provider)
+    print(
+      f"[coverage] Received {len(samples) if isinstance(samples, list) else 'non-list'} items from coverage API provider={provider}"
+    )
+    if isinstance(samples, list) and len(samples) > 0:
+      print(
+        f"[coverage] Sample item keys: {list(samples[0].keys()) if samples[0] else 'N/A'}"
+        )
+    return samples, provider, meta
+
+
+async def _fetch_coverage_upstream_for_test(
+  base_url: str,
+  api_key: str,
+) -> Tuple[List[Dict[str, Any]], str]:
+  url = _coverage_request_url(base_url, api_key)
+  async with httpx.AsyncClient(timeout=10.0) as client:
+    response = await client.get(url)
+    response.raise_for_status()
+    return _normalize_coverage_response(response.json())
+
+
+async def _sync_meshmapper_coverage_once() -> bool:
+  now = time.time()
+  cooldown_until = float(coverage_cache.get("cooldown_until") or 0.0)
+  if cooldown_until > now:
+    remaining = int(max(1, math.ceil(cooldown_until - now)))
+    print(f"[coverage] MeshMapper sync cooldown active ({remaining}s remaining)")
+    return _coverage_cache_has_data()
+  try:
+    samples, provider, meta = await _fetch_coverage_upstream()
+    if provider != "meshmapper":
+      return False
+    _update_coverage_cache(
+      provider,
+      samples,
+      now,
+      source="meshmapper_sync",
+      meta=meta,
+    )
+    _save_coverage_cache_file()
+    return True
+  except httpx.TimeoutException:
+    coverage_cache["last_error"] = {"error": "coverage_api_timeout"}
+    print("[coverage] MeshMapper sync timeout")
+    return _coverage_cache_has_data()
+  except httpx.HTTPStatusError as exc:
+    if exc.response.status_code == 429:
+      cooldown_seconds = _apply_meshmapper_rate_limit_cooldown(now, exc.response)
+      print(
+        f"[coverage] MeshMapper sync rate limited cooldown={cooldown_seconds}s"
+      )
+      return _coverage_cache_has_data()
+    coverage_cache["last_error"] = {
+      "error": "coverage_api_error",
+      "status_code": exc.response.status_code,
+    }
+    print(
+      f"[coverage] MeshMapper sync HTTP error status={exc.response.status_code}"
+    )
+    return _coverage_cache_has_data()
+  except httpx.HTTPError as exc:
+    coverage_cache["last_error"] = {"error": f"coverage_api_error: {exc}"}
+    print(f"[coverage] MeshMapper sync HTTP error: {exc}")
+    return _coverage_cache_has_data()
+  except Exception as exc:
+    coverage_cache["last_error"] = {"error": f"coverage_fetch_error: {exc}"}
+    print(f"[coverage] MeshMapper sync failed: {exc}")
+    return _coverage_cache_has_data()
+
+
+async def _meshmapper_coverage_sync_loop() -> None:
+  if not _is_meshmapper_coverage_url(COVERAGE_API_URL):
+    return
+  _load_coverage_cache_file()
+  await _sync_meshmapper_coverage_once()
+  interval = max(60, int(COVERAGE_SYNC_INTERVAL_SECONDS))
+  while True:
+    await asyncio.sleep(interval)
+    await _sync_meshmapper_coverage_once()
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
   global mqtt_client
@@ -253,6 +635,8 @@ async def _lifespan(_app: FastAPI):
   _load_state()
   _load_route_history()
   _load_neighbor_overrides()
+  if _is_meshmapper_coverage_url(COVERAGE_API_URL):
+    _load_coverage_cache_file()
   _ensure_node_decoder()
   _check_git_updates()
 
@@ -300,6 +684,7 @@ async def _lifespan(_app: FastAPI):
     _state_saver(),
     _route_history_saver(),
     _git_check_loop(),
+    _meshmapper_coverage_sync_loop(),
   ):
     background_tasks.add(asyncio.create_task(coro))
 
@@ -350,6 +735,17 @@ def _compute_asset_version() -> str:
 
 
 ASSET_VERSION = _compute_asset_version()
+ROUTE_SNAPSHOT_MIN_TTL_SECONDS = 10.0
+
+
+def _snapshot_routes(now: Optional[float] = None) -> List[Dict[str, Any]]:
+  current = time.time() if now is None else float(now)
+  min_expires_at = current + ROUTE_SNAPSHOT_MIN_TTL_SECONDS
+  return [
+    _route_payload(route)
+    for route in routes.values()
+    if float(route.get("expires_at") or 0.0) > min_expires_at
+  ]
 
 
 # =========================
@@ -2758,7 +3154,7 @@ def snapshot(request: Request):
       for k, v in devices.items()
     },
     "trails": trails,
-    "routes": [_route_payload(r) for r in routes.values()],
+    "routes": _snapshot_routes(now),
     "history_edges":
       [_history_edge_payload(e) for e in route_history_edges.values()],
     "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
@@ -3141,26 +3537,32 @@ async def get_coverage():
       "coverage_api_not_configured: Set COVERAGE_API_URL in .env (e.g., http://localhost:3000)",
     )
   try:
-    url = f"{COVERAGE_API_URL}/get-samples"
-    print(f"[coverage] Fetching from {url}")
-    async with httpx.AsyncClient(timeout=10.0) as client:
-      response = await client.get(url)
-      response.raise_for_status()
-      data = response.json()
-      # /get-samples returns { keys: [...] }, extract the keys array
-      samples_raw = (
-        data.get("keys", []) if isinstance(data, dict) else
-        (data if isinstance(data, list) else [])
-      )
-      samples = samples_raw if isinstance(samples_raw, list) else []
-      print(
-        f"[coverage] Received {len(samples) if isinstance(samples, list) else 'non-list'} items from coverage API"
-      )
-      if isinstance(samples, list) and len(samples) > 0:
+    now = time.time()
+    is_meshmapper = _is_meshmapper_coverage_url(COVERAGE_API_URL)
+    if is_meshmapper:
+      if not _coverage_cache_has_data():
+        _load_coverage_cache_file()
+      if _coverage_cache_has_data():
+        age = int(max(0, now - float(coverage_cache.get("fetched_at") or 0.0)))
+        source = coverage_cache.get("source") or "cache"
+        cached_data = coverage_cache["data"]
+        filtered = _filter_coverage_by_age(cached_data, now=now)
         print(
-          f"[coverage] Sample item keys: {list(samples[0].keys()) if samples[0] else 'N/A'}"
+          f"[coverage] Serving MeshMapper cached data age={age}s source={source} filtered={len(filtered)}/{len(cached_data)}"
         )
-      return samples
+        return JSONResponse(filtered, headers=_coverage_response_headers("meshmapper"))
+      cooldown_until = float(coverage_cache.get("cooldown_until") or 0.0)
+      if cooldown_until > now:
+        remaining = int(max(1, math.ceil(cooldown_until - now)))
+        raise HTTPException(
+          status_code=429,
+          detail=f"coverage_rate_limited: retry_in_seconds={remaining}",
+        )
+      raise HTTPException(status_code=503, detail="coverage_cache_empty")
+    samples, provider, _meta = await _fetch_coverage_upstream()
+    filtered = _filter_coverage_by_age(samples, now=now)
+    print(f"[coverage] Serving filtered legacy coverage {len(filtered)}/{len(samples)}")
+    return JSONResponse(filtered, headers=_coverage_response_headers(provider))
   except httpx.TimeoutException:
     raise HTTPException(status_code=504, detail="coverage_api_timeout")
   except httpx.HTTPStatusError as e:
@@ -3169,6 +3571,8 @@ async def get_coverage():
       detail=
       f"coverage_api_error: HTTP {e.response.status_code} from {COVERAGE_API_URL}",
     )
+  except HTTPException:
+    raise
   except httpx.HTTPError as e:
     raise HTTPException(status_code=502, detail=f"coverage_api_error: {str(e)}")
   except Exception as e:
@@ -3286,13 +3690,14 @@ async def ws_endpoint(ws: WebSocket):
           for k, v in devices.items()
         },
         "trails": trails,
-        "routes": [_route_payload(r) for r in routes.values()],
+        "routes": _snapshot_routes(time.time()),
         "history_edges":
           [_history_edge_payload(e) for e in route_history_edges.values()],
         "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
         "heat": _serialize_heat_events(),
         "update": git_update_info,
         "mqtt_presence": _mqtt_presence_summary(),
+        "server_time": time.time(),
       }
     )
   )

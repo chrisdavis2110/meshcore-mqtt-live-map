@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.6.6` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.7.0` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and streams updates to the browser via WebSockets.
 
@@ -29,7 +29,7 @@ Other community maps (versions may differ):
 - 24-hour route history tool with volume-based coloring, click-to-view packet details, a heat-band slider, and a link-size slider
 - History panel can be dismissed with an X without hiding history lines (re-open via History tool)
 - Peers tool showing incoming/outgoing neighbors with on-map lines (blue = incoming, purple = outgoing)
-- Coverage layer from a [coverage map API](https://github.com/nullrouten0/meshcore-coverage-map) (button hidden when not configured)
+- Coverage layer from the legacy [coverage map API](https://github.com/nullrouten0/meshcore-coverage-map) or the new [MeshMapper Coverage API](https://github.com/MeshMapper/MeshMapper_Wiki/blob/main/docs/coverage-api.md) (button hidden when not configured)
 - Weather tool panel with independent Radar and Wind toggles
 - Update available banner (git local vs upstream) with dismiss
 - UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle
@@ -133,7 +133,17 @@ MQTT:
 - `MQTT_TOPIC` (e.g. `meshcore/#` or `meshcore/#,other/topic/+` for multiple topics)
 
 Coverage layer:
-- `COVERAGE_API_URL` (URL to coverage map API; button hidden when blank)
+- `COVERAGE_API_URL` (legacy coverage-map base URL, or `https://meshmapper.net`; button hidden when blank)
+- `COVERAGE_API_KEY` (MeshMapper only; optional key for `https://meshmapper.net/coverage.php`; not used by legacy coverage maps)
+- `COVERAGE_MAX_AGE_DAYS` (MeshMapper only; default `30`; only coverage from the last N days is sent to the map, while MeshMapper can still cache the full upstream dataset locally; not used by legacy coverage maps)
+- `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS` (MeshMapper only; fallback cooldown after HTTP 429 if the API does not report `resets_in_hours`)
+- `COVERAGE_CACHE_FILE` (MeshMapper only; local JSON file served to users after server-side sync)
+- `COVERAGE_SYNC_INTERVAL_SECONDS` (MeshMapper only; how often the server refreshes the local coverage cache file, default hourly)
+
+Routing accuracy:
+- Ambiguous 1-byte hop prefixes are now handled conservatively on large meshes.
+- If multiple nodes share the same first byte, the map no longer guesses from broad closest/time-based fallbacks.
+- Colliding 1-byte hops only resolve when there is stronger evidence such as a unique candidate or known neighbor/manual adjacency.
 
 Weather overlay:
 - `WEATHER_RADAR_ENABLED`:
