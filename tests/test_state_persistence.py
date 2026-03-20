@@ -78,6 +78,7 @@ def test_load_state_drops_zero_devices_and_keeps_valid_entries(
   state.device_roles.clear()
   state.device_role_sources.clear()
   state.last_seen_in_path.clear()
+  state.peer_history_pairs.clear()
 
   monkeypatch.setattr(app, "STATE_FILE", str(state_file))
   monkeypatch.setattr(app, "DEVICE_ROLES_FILE", "")
@@ -117,14 +118,17 @@ def test_route_history_round_trip_file_load(tmp_path, monkeypatch):
 
   state.route_history_segments.clear()
   state.route_history_edges.clear()
+  state.peer_history_pairs.clear()
   history._append_route_history_file([entry])
 
   state.route_history_segments.clear()
   state.route_history_edges.clear()
+  state.peer_history_pairs.clear()
   history._load_route_history()
 
   assert len(state.route_history_segments) == 1
   assert len(state.route_history_edges) == 1
+  assert len(state.peer_history_pairs) == 1
   loaded = state.route_history_segments[0]
   assert loaded["a_id"] == "AA001111"
   assert loaded["b_id"] == "BB001111"
@@ -192,9 +196,11 @@ def test_route_history_load_skips_bad_lines_and_marks_compact(
 
   state.route_history_segments.clear()
   state.route_history_edges.clear()
+  state.peer_history_pairs.clear()
   state.route_history_compact = False
   history._load_route_history()
 
   assert len(state.route_history_segments) == 1
   assert len(state.route_history_edges) == 1
+  assert len(state.peer_history_pairs) == 1
   assert state.route_history_compact is True

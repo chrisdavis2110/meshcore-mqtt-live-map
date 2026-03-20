@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.6.5` (see `VERSIONS.md`).
+Current version: `1.6.6` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -134,6 +134,7 @@ routes: Dict[str, Dict]             # Active route visualizations
 heat_events: List[Dict]             # Recent activity points
 route_history_segments: List[Dict]  # 24h route history
 route_history_edges: Dict[str, Dict]# Aggregated edge counts
+peer_history_pairs: Dict[str, Dict] # Rolling peer buckets for /peers stats
 neighbor_edges: Dict[str, Dict]     # Neighbor adjacency cache
 ```
 
@@ -392,4 +393,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.6.5`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.6.6`).

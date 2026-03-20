@@ -29,6 +29,115 @@ for _part in ROUTE_HISTORY_PAYLOAD_TYPES.split(","):
   except ValueError:
     pass
 
+PEER_HISTORY_BUCKET_SECONDS = 300
+
+
+def _peer_history_cutoff(now: Optional[float] = None) -> float:
+  current = time.time() if now is None else float(now)
+  return current - (ROUTE_HISTORY_HOURS * 3600)
+
+
+def _peer_history_bucket_start(ts: float) -> int:
+  return int(float(ts) // PEER_HISTORY_BUCKET_SECONDS) * PEER_HISTORY_BUCKET_SECONDS
+
+
+def _peer_history_pair_key(a_id: str, b_id: str) -> str:
+  return f"{a_id}|{b_id}"
+
+
+def _record_peer_history_segment(a_id: Any, b_id: Any, ts: float) -> bool:
+  if not ROUTE_HISTORY_ENABLED or ROUTE_HISTORY_HOURS <= 0:
+    return False
+  if not isinstance(a_id, str) or not a_id.strip():
+    return False
+  if not isinstance(b_id, str) or not b_id.strip():
+    return False
+  a_id = a_id.strip()
+  b_id = b_id.strip()
+  if a_id == b_id:
+    return False
+  bucket_start = _peer_history_bucket_start(ts)
+  pair_key = _peer_history_pair_key(a_id, b_id)
+  entry = state.peer_history_pairs.get(pair_key)
+  if not entry:
+    entry = {
+      "a_id": a_id,
+      "b_id": b_id,
+      "buckets": {},
+      "last_ts": float(ts),
+    }
+    state.peer_history_pairs[pair_key] = entry
+  buckets = entry.get("buckets")
+  if not isinstance(buckets, dict):
+    buckets = {}
+    entry["buckets"] = buckets
+  bucket_key = str(bucket_start)
+  buckets[bucket_key] = int(buckets.get(bucket_key, 0)) + 1
+  entry["last_ts"] = max(float(entry.get("last_ts", 0.0)), float(ts))
+  return True
+
+
+def _prune_peer_history(now: Optional[float] = None) -> bool:
+  if not state.peer_history_pairs:
+    return False
+  cutoff = _peer_history_cutoff(now)
+  changed = False
+  for pair_key in list(state.peer_history_pairs.keys()):
+    entry = state.peer_history_pairs.get(pair_key)
+    if not isinstance(entry, dict):
+      state.peer_history_pairs.pop(pair_key, None)
+      changed = True
+      continue
+    buckets = entry.get("buckets")
+    if not isinstance(buckets, dict):
+      state.peer_history_pairs.pop(pair_key, None)
+      changed = True
+      continue
+    new_buckets: Dict[str, int] = {}
+    last_ts = 0.0
+    for bucket_key, count in buckets.items():
+      try:
+        bucket_start = float(bucket_key)
+        bucket_count = int(count)
+      except (TypeError, ValueError):
+        changed = True
+        continue
+      if bucket_count <= 0:
+        changed = True
+        continue
+      bucket_end = bucket_start + PEER_HISTORY_BUCKET_SECONDS
+      if bucket_end < cutoff:
+        changed = True
+        continue
+      new_buckets[str(int(bucket_start))] = bucket_count
+      last_ts = max(last_ts, bucket_end)
+    if not new_buckets:
+      state.peer_history_pairs.pop(pair_key, None)
+      changed = True
+      continue
+    if len(new_buckets) != len(buckets):
+      changed = True
+    entry["buckets"] = new_buckets
+    entry["last_ts"] = max(last_ts, float(entry.get("last_ts", 0.0)))
+  return changed
+
+
+def _rebuild_peer_history_from_segments() -> bool:
+  state.peer_history_pairs.clear()
+  changed = False
+  for entry in state.route_history_segments:
+    if not isinstance(entry, dict):
+      continue
+    a_id = entry.get("a_id")
+    b_id = entry.get("b_id")
+    ts = entry.get("ts")
+    if not isinstance(ts, (int, float)):
+      continue
+    if _record_peer_history_segment(a_id, b_id, float(ts)):
+      changed = True
+  _prune_peer_history()
+  return changed
+
 
 def _history_payload_allowed(payload_type: Optional[int]) -> bool:
   if not ROUTE_HISTORY_ENABLED or ROUTE_HISTORY_HOURS <= 0:
@@ -162,6 +271,8 @@ def _record_route_history(
     edge["count"] = int(edge.get("count", 0)) + 1
     edge["last_ts"] = max(edge.get("last_ts", float(ts)), float(ts))
     _update_history_edge_recent(edge, sample)
+    if a_id and b_id:
+      _record_peer_history_segment(a_id, b_id, float(ts))
     updated_keys.add(key)
 
   if not new_entries:
@@ -169,6 +280,9 @@ def _record_route_history(
 
   state.route_history_segments.extend(new_entries)
   _append_route_history_file(new_entries)
+  if new_entries:
+    _prune_peer_history(ts)
+    state.state_dirty = True
 
   updates = [
     state.route_history_edges[key]
@@ -331,6 +445,9 @@ def _load_route_history() -> None:
 
   if not loaded_any:
     return
+
+  if not state.peer_history_pairs:
+    _rebuild_peer_history_from_segments()
 
   if ROUTE_HISTORY_MAX_SEGMENTS > 0 and len(
     state.route_history_segments
