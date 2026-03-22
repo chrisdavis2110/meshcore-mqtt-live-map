@@ -1,5 +1,9 @@
 # Versions
 
+## v1.7.6 (03-22-2026)
+- Added `PEERS_DEFAULT_LIMIT` so the Peers tool default list size is configurable from env instead of being hardcoded to `8`.
+- `/peers/{device_id}` still allows `?limit=` overrides, and both the env default and query override are clamped to a max of `50`.
+
 ## v1.7.5 (03-22-2026)
 - Added independent scrollable incoming/outgoing peer lists so the Peers panel can show the full peer set without truncating the panel content.
 - Route Details now preserves companion endpoints in the popup when the route line itself begins or ends at infrastructure nodes, including non-spatial endpoint rows for companions without GPS coordinates.

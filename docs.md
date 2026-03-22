@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.7.5` (see `VERSIONS.md`).
+Current version: `1.7.6` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.7.5`).
+- `VERSION.txt` holds the current version string (`1.7.6`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -39,6 +39,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## Env Notes (Recent Additions)
 - `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
 - `PACKET_ANALYZER_URL` adds an external link on Route Details hashes; set it to a base such as `https://analyzer.letsmesh.net/packets?packet_hash=`.
+- `PEERS_DEFAULT_LIMIT` controls the default number of peers returned by `/peers/{device_id}` when no `?limit=` is passed; default `8`, max `50`.
 - `MQTT_ONLINE_FORCE_NAMES` forces named nodes to show MQTT online and skips them in peers.
 - `MQTT_ONLINE_STATUS_TTL_SECONDS` controls MQTT connected TTL from `/status`.
 - `MQTT_ONLINE_INTERNAL_TTL_SECONDS` controls MQTT connected TTL from `/internal`.
