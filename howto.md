@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.7.5` (see `VERSIONS.md`).
+Current version: `1.7.6` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -157,6 +157,7 @@ Optional packet analyzer link base (used for Route Details hashes):
 
 ```env
 PACKET_ANALYZER_URL=https://analyzer.letsmesh.net/packets?packet_hash=
+PEERS_DEFAULT_LIMIT=8
 ```
 
 Optional: enable the coverage layer by setting `COVERAGE_API_URL` (the Coverage button hides itself when blank):

@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.7.5` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.7.6` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and streams updates to the browser via WebSockets.
 
@@ -118,6 +118,7 @@ Site metadata (page title + embeds):
 - `SITE_FEED_NOTE`
 - `CUSTOM_LINK_URL` (optional extra HUD link; hidden when blank)
 - `PACKET_ANALYZER_URL` (optional analyzer base URL for Route Details hashes; e.g. `https://analyzer.letsmesh.net/packets?packet_hash=`)
+- `PEERS_DEFAULT_LIMIT` (optional default number of incoming/outgoing peers returned by `/peers/{device_id}`; default `8`, max `50`)
 - `DISTANCE_UNITS` (`km` or `mi`, default display units)
 - `NODE_MARKER_RADIUS` (default node marker size in pixels)
 

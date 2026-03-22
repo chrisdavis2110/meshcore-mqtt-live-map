@@ -107,6 +107,7 @@ from config import (
   MQTT_SEEN_BROADCAST_MIN_SECONDS,
   MQTT_ONLINE_FORCE_NAMES_SET,
   MQTT_STATUS_OFFLINE_VALUES_SET,
+  PEERS_DEFAULT_LIMIT,
   DEBUG_PAYLOAD,
   DEBUG_PAYLOAD_MAX,
   TURNSTILE_ENABLED,
@@ -3314,11 +3315,12 @@ def api_nodes(
 
 
 @app.get("/peers/{device_id}")
-def get_peers(device_id: str, request: Request, limit: int = 8):
+def get_peers(device_id: str, request: Request, limit: Optional[int] = Query(None)):
   _require_prod_token(request)
   if not device_id:
     raise HTTPException(status_code=400, detail="device_id required")
-  limit_value = max(1, min(int(limit or 8), 50))
+  raw_limit = PEERS_DEFAULT_LIMIT if limit is None else limit
+  limit_value = max(1, min(int(raw_limit or PEERS_DEFAULT_LIMIT), 50))
   payload = _peer_stats_for_device(device_id, limit_value)
   state = devices.get(device_id)
   if state and not _coords_are_zero(state.lat, state.lon):
