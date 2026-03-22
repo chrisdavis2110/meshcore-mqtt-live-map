@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.7.0` (see `VERSIONS.md`).
+Current version: `1.7.5` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -143,6 +143,20 @@ AUTO_NEIGHBOR_OVERRIDES_FILE=/data/neighbor_overrides.auto.json
 AUTO_NEIGHBOR_ACTIVE_DAYS=7
 AUTO_NEIGHBOR_MIN_EDGE_COUNT=3
 AUTO_NEIGHBOR_REFRESH_SECONDS=60
+```
+
+Optional channel secrets file (for decrypting sender names from supported group-text packets):
+
+```env
+CHANNEL_SECRETS_FILE=/data/channel_secrets.json
+```
+
+Copy `channel_secrets.example.json` to your chosen path and keep only the channels you want to ship.
+
+Optional packet analyzer link base (used for Route Details hashes):
+
+```env
+PACKET_ANALYZER_URL=https://analyzer.letsmesh.net/packets?packet_hash=
 ```
 
 Optional: enable the coverage layer by setting `COVERAGE_API_URL` (the Coverage button hides itself when blank):

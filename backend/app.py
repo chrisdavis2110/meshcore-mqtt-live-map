@@ -130,6 +130,7 @@ from config import (
   SITE_ICON,
   SITE_FEED_NOTE,
   CUSTOM_LINK_URL,
+  PACKET_ANALYZER_URL,
   GIT_CHECK_ENABLED,
   GIT_CHECK_FETCH,
   GIT_CHECK_PATH,
@@ -1880,7 +1881,12 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
   path_hashes = decoder_meta.get("pathHashes")
   payload_type = decoder_meta.get("payloadType")
   route_type = decoder_meta.get("routeType")
-  message_hash = decoder_meta.get("messageHash") or debug.get("packet_hash")
+  sender_name = decoder_meta.get("senderName")
+  if not isinstance(sender_name, str) or not sender_name.strip():
+    sender_name = None
+  else:
+    sender_name = sender_name.strip()
+  message_hash = debug.get("packet_hash") or decoder_meta.get("messageHash")
   snr_values = decoder_meta.get("snrValues")
   path_header = decoder_meta.get("path")
   path_length = decoder_meta.get("pathLength")
@@ -1899,19 +1905,29 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
     if not cache:
       cache = {
         "origin_id": None,
+        "sender_name": None,
         "first_rx": None,
         "receivers": set(),
         "ts": time.time(),
       }
       message_origins[message_hash] = cache
     cache["ts"] = time.time()
-    origin_for_tx = origin_id or receiver_id
-    if direction_value == "tx" and origin_for_tx:
-      cache["origin_id"] = origin_for_tx
+    if route_origin_id:
+      cache["origin_id"] = route_origin_id
+    if sender_name:
+      cache["sender_name"] = sender_name
     if direction_value == "rx" and receiver_id:
       cache["receivers"].add(receiver_id)
       if not cache.get("first_rx"):
         cache["first_rx"] = receiver_id
+    if not route_origin_id:
+      cached_origin_id = cache.get("origin_id")
+      if isinstance(cached_origin_id, str) and cached_origin_id.strip():
+        route_origin_id = cached_origin_id
+    if not sender_name:
+      cached_sender_name = cache.get("sender_name")
+      if isinstance(cached_sender_name, str) and cached_sender_name.strip():
+        sender_name = cached_sender_name.strip()
   loop: asyncio.AbstractEventLoop = userdata["loop"]
   try:
     payload_type = int(payload_type) if payload_type is not None else None
@@ -1938,6 +1954,21 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
 
   route_emitted = False
   if route_hashes and payload_type in ROUTE_PAYLOAD_TYPES_SET:
+    if DEBUG_PAYLOAD:
+      origin_cache = message_origins.get(message_hash) if message_hash else None
+      print(
+        "[route-debug] "
+        f"hash={message_hash or '-'} "
+        f"payload={payload_type if payload_type is not None else '-'} "
+        f"dir={direction_value or '-'} "
+        f"topic_origin={origin_id or '-'} "
+        f"route_origin={route_origin_id or '-'} "
+        f"sender_name={sender_name or '-'} "
+        f"cached_origin={(origin_cache or {}).get('origin_id') or '-'} "
+        f"first_rx={(origin_cache or {}).get('first_rx') or '-'} "
+        f"receiver={receiver_id or '-'} "
+        f"path={route_hashes}"
+      )
     loop.call_soon_threadsafe(
       update_queue.put_nowait,
       {
@@ -1949,6 +1980,7 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
         "receiver_id": receiver_id,
         "snr_values": snr_values,
         "route_type": route_type,
+        "sender_name": sender_name,
         "ts": time.time(),
         "topic": msg.topic,
       },
@@ -2153,6 +2185,7 @@ async def broadcaster():
         "payload_type": event.get("payload_type"),
         "message_hash": event.get("message_hash"),
         "snr_values": event.get("snr_values"),
+        "sender_name": event.get("sender_name"),
         "topic": event.get("topic"),
       }
       _append_heat_points(points, route["ts"], event.get("payload_type"))
@@ -2631,6 +2664,8 @@ def root(request: Request):
       SITE_FEED_NOTE,
     "CUSTOM_LINK_URL":
       CUSTOM_LINK_URL,
+    "PACKET_ANALYZER_URL":
+      PACKET_ANALYZER_URL,
     "APP_VERSION":
       APP_VERSION,
     "ASSET_VERSION":
@@ -3057,6 +3092,7 @@ def map_page(request: Request):
     "SITE_ICON": SITE_ICON,
     "SITE_FEED_NOTE": SITE_FEED_NOTE,
     "CUSTOM_LINK_URL": CUSTOM_LINK_URL,
+    "PACKET_ANALYZER_URL": PACKET_ANALYZER_URL,
     "APP_VERSION": APP_VERSION,
     "ASSET_VERSION": ASSET_VERSION,
     "DISTANCE_UNITS": DISTANCE_UNITS,

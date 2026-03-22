@@ -158,6 +158,32 @@
       font-size: 12px;
     }
 
+    .popup-copy-location {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .popup-copy-location:hover {
+      opacity: 1;
+    }
+
+    .route-hash-link {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .route-hash-link:hover {
+      opacity: 1;
+    }
+
     .pill {
       display: inline-block;
       padding: 2px 8px;
@@ -787,6 +813,11 @@
     .peer-list {
       display: grid;
       gap: 4px;
+      max-height: 22vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 4px;
+      min-height: 0;
     }
 
     .peer-item {
@@ -822,13 +853,22 @@
       .prop-panel,
       .weather-panel,
       .history-panel,
-      .peers-panel {
+      .peers-panel,
+      .route-details-panel {
         top: auto;
         right: 12px;
         left: 12px;
         bottom: 12px;
         width: auto;
         max-height: 45vh;
+      }
+
+      .route-details-panel {
+        padding: 9px;
+      }
+
+      .hop-row {
+        padding: 3px 4px;
       }
     }
 
