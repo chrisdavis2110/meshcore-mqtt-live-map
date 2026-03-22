@@ -8,6 +8,7 @@
 - Added optional `PACKET_ANALYZER_URL` so Route Details hashes can link directly to an external packet analyzer.
 - Route Details now shows the full packet hash in the header instead of truncating it.
 - Route Details now prefers the MQTT packet hash for route identity and analyzer links instead of a shorter decoder `messageHash` when both are present.
+- Fixed the prod route payload so Route Details keeps the packet hash and sender name instead of falling back to the internal `hash:receiver` route id in the title.
 - Added `CHANNEL_SECRETS_FILE` support and a shipped `channel_secrets.example.json` so group-text sender names can be decrypted without using a long env var list.
 - Made the node popup `Location:` line clickable so it copies the displayed `Location: <lat>, <lon>` text directly to the clipboard.
 

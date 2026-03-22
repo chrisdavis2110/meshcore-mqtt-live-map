@@ -1317,6 +1317,8 @@ def _route_payload(route: Dict[str, Any]) -> Dict[str, Any]:
     "origin_id": route.get("origin_id"),
     "receiver_id": route.get("receiver_id"),
     "payload_type": route.get("payload_type"),
+    "message_hash": route.get("message_hash"),
+    "sender_name": route.get("sender_name"),
   }
 
 
