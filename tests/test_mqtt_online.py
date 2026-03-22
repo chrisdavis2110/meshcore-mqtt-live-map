@@ -169,3 +169,163 @@ def test_route_event_pads_low_range_three_byte_int_hashes(monkeypatch):
   route_events = [event for event in queue.events if event.get("type") == "route"]
   assert route_events
   assert route_events[0]["path_hashes"] == ["0000AB", "12ABCD"]
+
+
+def test_route_event_does_not_treat_tx_uploader_as_message_sender_origin(monkeypatch):
+  _clear_runtime_state()
+  queue = _DummyQueue()
+  monkeypatch.setattr(app, "update_queue", queue)
+
+  def _parse(topic, _payload):
+    if topic.endswith("/tx/packets"):
+      return None, {
+        "result": "decoded_no_location",
+        "origin_id": "CC001111",
+        "direction": "tx",
+        "packet_hash": "abc123",
+        "decoder_meta": {
+          "payloadType": 5,
+          "routeType": 0,
+          "messageHash": "abc123",
+          "path": ["AB"],
+        },
+      }
+    return None, {
+      "result": "decoded_no_location",
+      "origin_id": "DD009999",
+      "direction": "rx",
+      "packet_hash": "abc123",
+      "decoder_meta": {
+        "payloadType": 5,
+        "routeType": 0,
+        "messageHash": "abc123",
+        "path": ["AB"],
+      },
+    }
+
+  monkeypatch.setattr(app, "_try_parse_payload", _parse)
+
+  tx_msg = _DummyMsg("meshcore/BOS/CC001111/tx/packets")
+  app.mqtt_on_message(None, {"loop": _DummyLoop()}, tx_msg)
+
+  rx_msg = _DummyMsg("meshcore/BOS/EE002222/packets")
+  app.mqtt_on_message(None, {"loop": _DummyLoop()}, rx_msg)
+
+  route_events = [event for event in queue.events if event.get("type") == "route"]
+  assert len(route_events) >= 2
+  assert route_events[-1]["origin_id"] is None
+  assert route_events[-1]["receiver_id"] == "EE002222"
+
+
+def test_route_event_uses_cached_explicit_origin_pubkey(monkeypatch):
+  _clear_runtime_state()
+  queue = _DummyQueue()
+  monkeypatch.setattr(app, "update_queue", queue)
+
+  def _parse(topic, _payload):
+    if topic.endswith("/tx/packets"):
+      return None, {
+        "result": "decoded_no_location",
+        "origin_id": "CC001111",
+        "direction": "tx",
+        "packet_hash": "abc123",
+        "decoder_meta": {
+          "payloadType": 5,
+          "routeType": 0,
+          "messageHash": "abc123",
+          "location": {
+            "pubkey": "E8D10001",
+          },
+          "path": ["AB"],
+        },
+      }
+    return None, {
+      "result": "decoded_no_location",
+      "origin_id": "DD009999",
+      "direction": "rx",
+      "packet_hash": "abc123",
+      "decoder_meta": {
+        "payloadType": 5,
+        "routeType": 0,
+        "messageHash": "abc123",
+        "path": ["AB"],
+      },
+    }
+
+  monkeypatch.setattr(app, "_try_parse_payload", _parse)
+
+  tx_msg = _DummyMsg("meshcore/BOS/CC001111/tx/packets")
+  app.mqtt_on_message(None, {"loop": _DummyLoop()}, tx_msg)
+
+  rx_msg = _DummyMsg("meshcore/BOS/EE002222/packets")
+  app.mqtt_on_message(None, {"loop": _DummyLoop()}, rx_msg)
+
+  route_events = [event for event in queue.events if event.get("type") == "route"]
+  assert len(route_events) >= 2
+  assert route_events[-1]["origin_id"] == "E8D10001"
+  assert route_events[-1]["receiver_id"] == "EE002222"
+
+
+def test_route_event_includes_sender_name_from_packet(monkeypatch):
+  _clear_runtime_state()
+  queue = _DummyQueue()
+  monkeypatch.setattr(app, "update_queue", queue)
+  monkeypatch.setattr(
+    app,
+    "_try_parse_payload",
+    lambda *_args, **_kwargs: (
+      None,
+      {
+        "result": "decoded_no_location",
+        "origin_id": "CC001111",
+        "direction": "rx",
+        "packet_hash": "sendername1",
+        "decoder_meta": {
+          "payloadType": 5,
+          "routeType": 0,
+          "messageHash": "sendername1",
+          "senderName": "yellowcooln",
+          "path": ["AB"],
+        },
+      },
+    ),
+  )
+
+  msg = _DummyMsg("meshcore/BOS/DD001111/packets")
+  app.mqtt_on_message(None, {"loop": _DummyLoop()}, msg)
+
+  route_events = [event for event in queue.events if event.get("type") == "route"]
+  assert route_events
+  assert route_events[0]["sender_name"] == "yellowcooln"
+
+
+def test_route_event_prefers_packet_hash_for_route_identity(monkeypatch):
+  _clear_runtime_state()
+  queue = _DummyQueue()
+  monkeypatch.setattr(app, "update_queue", queue)
+  monkeypatch.setattr(
+    app,
+    "_try_parse_payload",
+    lambda *_args, **_kwargs: (
+      None,
+      {
+        "result": "decoded_no_location",
+        "origin_id": "CC001111",
+        "direction": "rx",
+        "packet_hash": "7232623D62E7848D",
+        "decoder_meta": {
+          "payloadType": 5,
+          "routeType": 0,
+          "messageHash": "82BD7767",
+          "path": ["AB"],
+        },
+      },
+    ),
+  )
+
+  msg = _DummyMsg("meshcore/BOS/DD001111/packets")
+  app.mqtt_on_message(None, {"loop": _DummyLoop()}, msg)
+
+  route_events = [event for event in queue.events if event.get("type") == "route"]
+  assert route_events
+  assert route_events[0]["message_hash"] == "7232623D62E7848D"

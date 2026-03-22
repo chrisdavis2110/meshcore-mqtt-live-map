@@ -31,6 +31,10 @@ NEIGHBOR_OVERRIDES_FILE = os.getenv(
   "NEIGHBOR_OVERRIDES_FILE",
   os.path.join(STATE_DIR, "neighbor_overrides.json"),
 )
+CHANNEL_SECRETS_FILE = os.getenv(
+  "CHANNEL_SECRETS_FILE",
+  os.path.join(STATE_DIR, "channel_secrets.json"),
+)
 STATE_SAVE_INTERVAL = float(os.getenv("STATE_SAVE_INTERVAL", "5"))
 
 DEVICE_TTL_HOURS = float(os.getenv("DEVICE_TTL_HOURS", "96"))  # 4 days default
@@ -125,6 +129,7 @@ SITE_URL = os.getenv("SITE_URL", "/")
 SITE_ICON = os.getenv("SITE_ICON", "/static/logo.png")
 SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "Feed: Boston MQTT.")
 CUSTOM_LINK_URL = os.getenv("CUSTOM_LINK_URL", "").strip()
+PACKET_ANALYZER_URL = os.getenv("PACKET_ANALYZER_URL", "").strip()
 GIT_CHECK_ENABLED = os.getenv("GIT_CHECK_ENABLED", "false").lower() == "true"
 GIT_CHECK_FETCH = os.getenv("GIT_CHECK_FETCH", "false").lower() == "true"
 GIT_CHECK_PATH = os.getenv("GIT_CHECK_PATH", os.getcwd()).strip()

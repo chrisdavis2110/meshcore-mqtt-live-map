@@ -2,12 +2,15 @@ import base64
 import json
 import os
 import re
+import select
 import subprocess
+import threading
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from config import (
   APP_DIR,
+  CHANNEL_SECRETS_FILE,
   DECODE_WITH_NODE,
   DIRECT_COORDS_ALLOW_ZERO,
   DIRECT_COORDS_MODE,
@@ -51,6 +54,66 @@ NODE_HASH_LENGTHS = (2, 4, 6)
 
 _node_ready_once = False
 _node_unavailable_once = False
+_node_worker_proc: Optional[subprocess.Popen[str]] = None
+_node_worker_lock = threading.Lock()
+_channel_secrets_cache: List[str] = []
+_channel_secrets_mtime: Optional[float] = None
+_channel_secrets_path: Optional[str] = None
+
+
+def _load_channel_secrets() -> List[str]:
+  global _channel_secrets_cache, _channel_secrets_mtime, _channel_secrets_path
+  path = (CHANNEL_SECRETS_FILE or "").strip()
+  if not path or not os.path.exists(path):
+    _channel_secrets_cache = []
+    _channel_secrets_mtime = None
+    _channel_secrets_path = path or None
+    return []
+  try:
+    mtime = os.path.getmtime(path)
+  except OSError:
+    mtime = None
+  if (
+    _channel_secrets_path == path and
+    _channel_secrets_mtime is not None and
+    mtime == _channel_secrets_mtime
+  ):
+    return list(_channel_secrets_cache)
+  try:
+    with open(path, "r", encoding="utf-8") as handle:
+      payload = json.load(handle)
+  except Exception as exc:
+    print(f"[decode] failed to load channel secrets file {path}: {exc}")
+    return list(_channel_secrets_cache)
+
+  values: List[Any]
+  if isinstance(payload, dict):
+    values = list(payload.values())
+  elif isinstance(payload, list):
+    values = list(payload)
+  else:
+    print(f"[decode] invalid channel secrets file format {path}")
+    return []
+
+  secrets: List[str] = []
+  seen: Set[str] = set()
+  for value in values:
+    if not isinstance(value, str):
+      continue
+    normalized = value.strip()
+    if not normalized:
+      continue
+    normalized = normalized.lower()
+    if not re.fullmatch(r"[0-9a-f]{32}", normalized):
+      continue
+    if normalized in seen:
+      continue
+    seen.add(normalized)
+    secrets.append(normalized)
+  _channel_secrets_cache = list(secrets)
+  _channel_secrets_mtime = mtime
+  _channel_secrets_path = path
+  return secrets
 
 ROUTE_PAYLOAD_TYPES_SET: Set[int] = set()
 for _part in ROUTE_PAYLOAD_TYPES.split(","):
@@ -915,9 +978,11 @@ def _ensure_node_decoder() -> bool:
     return False
 
   script = """#!/usr/bin/env node
-import { MeshCoreDecoder, getDeviceRoleName } from 'meshcore-decoder-multibyte-patch';
+import { MeshCorePacketDecoder, getDeviceRoleName } from 'meshcore-decoder-multibyte-patch';
+import readline from 'node:readline';
 
-const hex = (process.argv[2] || '').trim();
+let keyStore = undefined;
+let keySignature = '';
 
 function pickLocation(decodedPacket) {
   const payloadDecoded = decodedPacket?.payload?.decoded ?? null;
@@ -971,12 +1036,32 @@ function pickRole(decodedPacket) {
   return null;
 }
 
-try {
-  const decoded = MeshCoreDecoder.decode(hex);
+function syncKeyStore(channelSecrets) {
+  const normalized = Array.isArray(channelSecrets)
+    ? channelSecrets
+      .filter((value) => typeof value === 'string' && /^[0-9a-f]{32}$/i.test(value))
+      .map((value) => value.toLowerCase())
+      .sort()
+    : [];
+  const nextSignature = normalized.join(',');
+  if (nextSignature === keySignature) return;
+  keySignature = nextSignature;
+  keyStore = normalized.length
+    ? MeshCorePacketDecoder.createKeyStore({ channelSecrets: normalized })
+    : undefined;
+}
+
+function decodeHex(hex, channelSecrets) {
+  syncKeyStore(channelSecrets);
+  const decoded = MeshCorePacketDecoder.decode(hex, keyStore ? { keyStore } : undefined);
   const loc = pickLocation(decoded);
   const payloadDecoded = decoded?.payload?.decoded ?? decoded?.payload ?? null;
   const payloadRoot = decoded?.payload ?? null;
   const appData = payloadDecoded?.appData ?? payloadDecoded?.appdata ?? payloadRoot?.appData ?? payloadRoot?.appdata ?? null;
+  const senderName =
+    payloadDecoded?.decrypted?.sender ??
+    payloadRoot?.decrypted?.sender ??
+    null;
   const deviceRole = appData?.deviceRole ?? payloadDecoded?.deviceRole ?? payloadRoot?.deviceRole ?? null;
   const deviceRoleName = typeof deviceRole === 'number' ? getDeviceRoleName(deviceRole) : null;
   const role = pickRole(decoded) || deviceRoleName;
@@ -995,6 +1080,7 @@ try {
     role,
     deviceRole,
     deviceRoleName,
+    senderName,
     payloadKeys,
     appDataKeys,
     pathHashes,
@@ -1002,10 +1088,34 @@ try {
     path,
     pathLength,
   };
-  console.log(JSON.stringify(out));
-} catch (e) {
-  console.log(JSON.stringify({ ok: false, error: String(e) }));
+  return out;
 }
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  crlfDelay: Infinity,
+});
+
+rl.on('line', (line) => {
+  let request;
+  try {
+    request = JSON.parse(line);
+  } catch (e) {
+    process.stdout.write(JSON.stringify({ ok: false, error: 'invalid_request_json' }) + '\\n');
+    return;
+  }
+  try {
+    const hex = typeof request?.hex === 'string' ? request.hex.trim() : '';
+    if (!hex) {
+      process.stdout.write(JSON.stringify({ ok: false, error: 'missing_hex' }) + '\\n');
+      return;
+    }
+    const channelSecrets = Array.isArray(request?.channelSecrets) ? request.channelSecrets : [];
+    process.stdout.write(JSON.stringify(decodeHex(hex, channelSecrets)) + '\\n');
+  } catch (e) {
+    process.stdout.write(JSON.stringify({ ok: false, error: String(e) }) + '\\n');
+  }
+});
 """
 
   try:
@@ -1020,6 +1130,68 @@ try {
   _node_ready_once = True
   print("[decode] node decoder ready")
   return True
+
+
+def _stop_node_decoder_worker() -> None:
+  global _node_worker_proc
+  proc = _node_worker_proc
+  _node_worker_proc = None
+  if not proc:
+    return
+  try:
+    if proc.stdin:
+      proc.stdin.close()
+  except Exception:
+    pass
+  try:
+    proc.terminate()
+    proc.wait(timeout=1.0)
+  except Exception:
+    try:
+      proc.kill()
+      proc.wait(timeout=1.0)
+    except Exception:
+      pass
+
+
+def _start_node_decoder_worker() -> Optional[subprocess.Popen[str]]:
+  global _node_worker_proc, _node_unavailable_once
+  proc = _node_worker_proc
+  if proc and proc.poll() is None:
+    return proc
+  _stop_node_decoder_worker()
+  try:
+    proc = subprocess.Popen(
+      ["node", NODE_SCRIPT_PATH],
+      stdin=subprocess.PIPE,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.PIPE,
+      text=True,
+      cwd=APP_DIR,
+      bufsize=1,
+      env=os.environ.copy(),
+    )
+  except Exception as exc:
+    _node_unavailable_once = True
+    print(f"[decode] failed starting node worker: {exc}")
+    return None
+  _node_worker_proc = proc
+  return proc
+
+
+def _restart_node_decoder_worker() -> Optional[subprocess.Popen[str]]:
+  _stop_node_decoder_worker()
+  return _start_node_decoder_worker()
+
+
+def _node_worker_error(proc: Optional[subprocess.Popen[str]]) -> str:
+  if not proc or not proc.stderr:
+    return "node_worker_failed"
+  try:
+    err = proc.stderr.read().strip()
+  except Exception:
+    err = ""
+  return err or "node_worker_failed"
 
 
 def _decode_meshcore_hex(
@@ -1038,23 +1210,56 @@ def _decode_meshcore_hex(
       },
     )
 
-  try:
-    proc = subprocess.run(
-      ["node", NODE_SCRIPT_PATH, hex_str],
-      capture_output=True,
-      text=True,
-      timeout=NODE_DECODE_TIMEOUT_SECONDS,
-      cwd=APP_DIR,
-    )
-  except Exception as exc:
-    return (None, None, None, None, {"ok": False, "error": str(exc)})
+  request = {
+    "hex": hex_str,
+    "channelSecrets": _load_channel_secrets(),
+  }
+  out = ""
+  last_error = "node_worker_failed"
+  with _node_worker_lock:
+    for attempt in range(2):
+      proc = _start_node_decoder_worker() if attempt == 0 else _restart_node_decoder_worker()
+      if not proc or not proc.stdin or not proc.stdout:
+        last_error = "node_worker_unavailable"
+        continue
+      try:
+        proc.stdin.write(json.dumps(request) + "\n")
+        proc.stdin.flush()
+      except Exception as exc:
+        last_error = str(exc)
+        _stop_node_decoder_worker()
+        continue
+      try:
+        ready, _, _ = select.select([proc.stdout], [], [], NODE_DECODE_TIMEOUT_SECONDS)
+      except Exception as exc:
+        last_error = str(exc)
+        _stop_node_decoder_worker()
+        continue
+      if not ready:
+        last_error = "node_worker_timeout"
+        _stop_node_decoder_worker()
+        continue
+      try:
+        out = (proc.stdout.readline() or "").strip()
+      except Exception as exc:
+        last_error = str(exc)
+        _stop_node_decoder_worker()
+        continue
+      if out:
+        break
+      if proc.poll() is not None:
+        last_error = _node_worker_error(proc)
+      else:
+        last_error = "empty_decoder_output"
+        _stop_node_decoder_worker()
+    else:
+      return (None, None, None, None, {"ok": False, "error": last_error})
 
-  out = (proc.stdout or "").strip()
   if not out:
     return (
       None, None, None, None, {
         "ok": False,
-        "error": "empty_decoder_output"
+        "error": last_error or "empty_decoder_output"
       }
     )
 

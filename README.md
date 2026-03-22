@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.7.0` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.7.5` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and streams updates to the browser via WebSockets.
 
@@ -94,6 +94,7 @@ Storage + server:
 - `DEVICE_ROLES_FILE` (optional role override JSON file)
 - `DEVICE_COORDS_FILE` (optional coordinate override JSON file; default `/data/device_coords.json`)
 - `NEIGHBOR_OVERRIDES_FILE` (optional JSON mapping for neighbor overrides)
+- `CHANNEL_SECRETS_FILE` (optional JSON file of MeshCore channel secrets for decrypting sender names from group text packets)
 - `STATE_SAVE_INTERVAL` (seconds between state saves)
 - `WEB_PORT` (host port for the web UI)
 - `PROD_MODE` (true to require a token for API + WS)
@@ -116,6 +117,7 @@ Site metadata (page title + embeds):
 - `SITE_ICON`
 - `SITE_FEED_NOTE`
 - `CUSTOM_LINK_URL` (optional extra HUD link; hidden when blank)
+- `PACKET_ANALYZER_URL` (optional analyzer base URL for Route Details hashes; e.g. `https://analyzer.letsmesh.net/packets?packet_hash=`)
 - `DISTANCE_UNITS` (`km` or `mi`, default display units)
 - `NODE_MARKER_RADIUS` (default node marker size in pixels)
 
