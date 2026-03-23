@@ -107,7 +107,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
 - Coverage tool only appears when `COVERAGE_API_URL` is set; it supports both the legacy `/get-samples` format and MeshMapper `coverage.php` grid-square responses.
 - Polygon boundary mode uses the same filter for devices, routes, and history, so the visible map and stored history window stay consistent.
-- Use `map_boundary.example.json` for the file format and either `tools/map-boundary-builder.html` or `https://yellowcooln.com/map-boundary-builder/` to generate a polygon JSON file outside the live app.
+- Use `map_boundary.example.json` for the file format and either `tools/map-boundary-builder.html` or [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/) to generate a polygon JSON file outside the live app.
 - MeshMapper-only coverage envs are `COVERAGE_API_KEY`, `COVERAGE_MAX_AGE_DAYS`, `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS`, `COVERAGE_CACHE_FILE`, and `COVERAGE_SYNC_INTERVAL_SECONDS`; the legacy coverage map does not use them.
 - MeshMapper coverage is synced server-side into a local cache file and served from that file to users; it also uses a cooldown after HTTP 429 rate-limit responses.
 - Coverage responses are filtered by `COVERAGE_MAX_AGE_DAYS` before they reach the map; default is `30` days, while MeshMapper can still keep the full downloaded dataset in its local cache file.

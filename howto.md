@@ -172,7 +172,7 @@ MAP_BOUNDARY_SHOW=true
 
 Boundary files:
 - Use `map_boundary.example.json` as the schema reference.
-- Open `tools/map-boundary-builder.html` directly in a browser, or use the hosted copy at `https://yellowcooln.com/map-boundary-builder/`, to click out a polygon and export `map_boundary.json`.
+- Open `tools/map-boundary-builder.html` directly in a browser, or use the hosted copy at [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/), to click out a polygon and export `map_boundary.json`.
 
 Optional: enable the coverage layer by setting `COVERAGE_API_URL` (the Coverage button hides itself when blank):
 

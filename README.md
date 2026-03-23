@@ -307,7 +307,7 @@ Boundary mode:
 - Default behavior remains radius-based filtering.
 - Set `MAP_BOUNDARY_MODE=polygon` to filter nodes, routes, and history against a polygon from `MAP_BOUNDARY_FILE`.
 - Use `map_boundary.example.json` as the file format reference.
-- The repo includes a standalone builder at `tools/map-boundary-builder.html`; a hosted copy is available at `https://yellowcooln.com/map-boundary-builder/`.
+- The repo includes a standalone builder at `tools/map-boundary-builder.html`; a hosted copy is available at [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/).
 - Use either copy to click points on the map and export `map_boundary.json`.
   - Returns incoming/outgoing neighbors with counts/percentages from route history.
 

@@ -53,7 +53,7 @@ Current version: `1.7.7` (see `VERSIONS.md`).
 - Set `TRAIL_LEN=0` to disable trails entirely; the HUD trail hint is removed when trails are off.
 - Coverage button only appears when `COVERAGE_API_URL` is set.
 - Geographic filtering defaults to radius mode; polygon mode is optional via `MAP_BOUNDARY_MODE=polygon` and `MAP_BOUNDARY_FILE`.
-- Standalone boundary builder: `tools/map-boundary-builder.html` outputs the JSON consumed by `MAP_BOUNDARY_FILE`; hosted copy: `https://yellowcooln.com/map-boundary-builder/`.
+- Standalone boundary builder: `tools/map-boundary-builder.html` outputs the JSON consumed by `MAP_BOUNDARY_FILE`; hosted copy: [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/).
 - Radar country-bounds controls:
   `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED` and
   `WEATHER_RADAR_COUNTRY_LOOKUP_URL`.

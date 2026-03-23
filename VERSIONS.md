@@ -5,7 +5,7 @@
 - `/peers/{device_id}` still allows `?limit=` overrides, and both the env default and query override are clamped to a max of `50`.
 - Added optional boundary mode support with `MAP_BOUNDARY_MODE=polygon`, `MAP_BOUNDARY_FILE`, and `MAP_BOUNDARY_SHOW`; default behavior remains radius mode.
 - Polygon boundaries now filter devices, routes, and history consistently, and the frontend can render the active polygon overlay from backend-injected JSON.
-- Added `map_boundary.example.json` plus a standalone builder at `tools/map-boundary-builder.html` for generating polygon JSON files outside the live app; hosted copy: `https://yellowcooln.com/map-boundary-builder/`.
+- Added `map_boundary.example.json` plus a standalone builder at `tools/map-boundary-builder.html` for generating polygon JSON files outside the live app; hosted copy: [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/).
 
 ## v1.7.5 (03-22-2026)
 - Added independent scrollable incoming/outgoing peer lists so the Peers panel can show the full peer set without truncating the panel content.
