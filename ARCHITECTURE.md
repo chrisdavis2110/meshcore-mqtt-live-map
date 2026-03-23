@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.7.6` (see `VERSIONS.md`).
+Current version: `1.7.7` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -119,6 +119,8 @@ Loads all settings from environment variables with sensible defaults.
 - Map display (`MAP_START_LAT`, `MAP_START_LON`, `MAP_RADIUS_KM`,
   `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED`, `WEATHER_RADAR_COUNTRY_LOOKUP_URL`).
   `WEATHER_RADAR_COUNTRY_LOOKUP_URL` defaults to `/weather/radar/country-bounds` and is an HTTP route path (not a filesystem path).
+- Boundary mode (`MAP_BOUNDARY_MODE`, `MAP_BOUNDARY_FILE`,
+  `MAP_BOUNDARY_SHOW`) adds optional polygon filtering; radius mode remains the default.
 - Weather overlays (`WEATHER_WIND_ENABLED`, `WEATHER_WIND_API_URL`,
   `WEATHER_WIND_GRID_SIZE`, `WEATHER_WIND_REFRESH_SECONDS`)
 - Site metadata (`SITE_TITLE`, `SITE_DESCRIPTION`)
@@ -202,6 +204,7 @@ CSS organized by component:
 - `.legend` - Map legend
 - `.los-panel`, `.history-panel`, `.peers-panel` - Tool panels
 - `.prop-panel` - Propagation settings
+- Polygon boundary overlays are rendered client-side from backend-injected JSON when polygon mode is active.
 - Responsive breakpoints at 900px
 
 ### index.html (Template)
@@ -393,4 +396,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.7.6`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.7.7`).

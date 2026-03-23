@@ -86,6 +86,23 @@ const mapStartLon = Number.isFinite(queryLon) ? queryLon : defaultLon;
 const mapStartZoom = Number.isFinite(queryZoom) && queryZoom > 0 ? queryZoom : defaultZoom;
 const mapRadiusKm = Number(config.mapRadiusKm) || 0;
 const mapRadiusShow = String(config.mapRadiusShow).toLowerCase() === 'true';
+const mapBoundaryMode = String(config.mapBoundaryMode || 'radius').toLowerCase();
+const mapBoundaryShow = String(config.mapBoundaryShow).toLowerCase() === 'true';
+const mapBoundaryName = String(config.mapBoundaryName || '').trim();
+const mapBoundaryDataEl = document.getElementById('map-boundary-data');
+let mapBoundaryPoints = [];
+if (mapBoundaryDataEl) {
+  try {
+    const parsed = JSON.parse(mapBoundaryDataEl.textContent || '[]');
+    if (Array.isArray(parsed)) {
+      mapBoundaryPoints = parsed
+        .map((pt) => Array.isArray(pt) && pt.length >= 2 ? [Number(pt[0]), Number(pt[1])] : null)
+        .filter((pt) => Array.isArray(pt) && Number.isFinite(pt[0]) && Number.isFinite(pt[1]));
+    }
+  } catch (_err) {
+    mapBoundaryPoints = [];
+  }
+}
 let baseLayer = (config.mapDefaultLayer || 'light').toLowerCase();
 const validLayers = new Set(['dark', 'topo', 'light']);
 if (validLayers.has(queryLayer)) {
@@ -126,7 +143,8 @@ const topoTiles = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
   attribution: '&copy; OpenStreetMap contributors &copy; OpenTopoMap'
 });
 let mapRadiusCircle = null;
-if (mapRadiusShow && mapRadiusKm > 0) {
+const activeBoundaryShow = mapBoundaryShow || mapRadiusShow;
+if (mapBoundaryMode === 'radius' && activeBoundaryShow && mapRadiusKm > 0) {
   mapRadiusCircle = L.circle([mapStartLat, mapStartLon], {
     radius: mapRadiusKm * 1000.0,
     color: '#38bdf8',
@@ -136,6 +154,25 @@ if (mapRadiusShow && mapRadiusKm > 0) {
     fillOpacity: 0.05,
     interactive: false
   }).addTo(map);
+}
+let mapBoundaryPolygon = null;
+if (mapBoundaryMode === 'polygon' && activeBoundaryShow && mapBoundaryPoints.length >= 3) {
+  mapBoundaryPolygon = L.polygon(mapBoundaryPoints, {
+    color: '#38bdf8',
+    weight: 2,
+    dashArray: '6 8',
+    fillColor: '#38bdf8',
+    fillOpacity: 0.04,
+    interactive: false
+  }).addTo(map);
+  if (mapBoundaryName) {
+    mapBoundaryPolygon.bindTooltip(mapBoundaryName, {
+      permanent: false,
+      direction: 'center',
+      sticky: false,
+      opacity: 0.9
+    });
+  }
 }
 const storedLayer = localStorage.getItem('meshmapBaseLayer');
 if (!validLayers.has(queryLayer) && (storedLayer === 'dark' || storedLayer === 'topo' || storedLayer === 'light')) {

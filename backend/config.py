@@ -182,6 +182,13 @@ except ValueError:
 if MAP_RADIUS_KM < 0:
   MAP_RADIUS_KM = 0.0
 MAP_RADIUS_SHOW = os.getenv("MAP_RADIUS_SHOW", "false").lower() == "true"
+MAP_BOUNDARY_MODE = os.getenv("MAP_BOUNDARY_MODE", "radius").strip().lower()
+if MAP_BOUNDARY_MODE not in ("radius", "polygon"):
+  MAP_BOUNDARY_MODE = "radius"
+MAP_BOUNDARY_FILE = os.getenv(
+  "MAP_BOUNDARY_FILE", os.path.join(STATE_DIR, "map_boundary.json")
+).strip()
+MAP_BOUNDARY_SHOW = os.getenv("MAP_BOUNDARY_SHOW", "false").lower() == "true"
 
 PROD_MODE = os.getenv("PROD_MODE", "false").lower() == "true"
 PROD_TOKEN = os.getenv("PROD_TOKEN", "").strip()
