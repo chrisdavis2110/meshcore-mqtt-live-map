@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.7.6` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.7.7` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and streams updates to the browser via WebSockets.
 
@@ -119,6 +119,9 @@ Site metadata (page title + embeds):
 - `CUSTOM_LINK_URL` (optional extra HUD link; hidden when blank)
 - `PACKET_ANALYZER_URL` (optional analyzer base URL for Route Details hashes; e.g. `https://analyzer.letsmesh.net/packets?packet_hash=`)
 - `PEERS_DEFAULT_LIMIT` (optional default number of incoming/outgoing peers returned by `/peers/{device_id}`; default `8`, max `50`)
+- `MAP_BOUNDARY_MODE` (`radius` or `polygon`; default `radius`)
+- `MAP_BOUNDARY_FILE` (JSON file used when `MAP_BOUNDARY_MODE=polygon`; default `/data/map_boundary.json`)
+- `MAP_BOUNDARY_SHOW` (draw the active radius/polygon boundary overlay on the map)
 - `DISTANCE_UNITS` (`km` or `mi`, default display units)
 - `NODE_MARKER_RADIUS` (default node marker size in pixels)
 
@@ -299,6 +302,13 @@ Each node includes:
 
 Peer summary:
 - `GET /peers/{device_id}?token=YOUR_TOKEN`
+
+Boundary mode:
+- Default behavior remains radius-based filtering.
+- Set `MAP_BOUNDARY_MODE=polygon` to filter nodes, routes, and history against a polygon from `MAP_BOUNDARY_FILE`.
+- Use `map_boundary.example.json` as the file format reference.
+- The repo includes a standalone builder at `tools/map-boundary-builder.html`; a hosted copy is available at `https://yellowcooln.com/map-boundary-builder/`.
+- Use either copy to click points on the map and export `map_boundary.json`.
   - Returns incoming/outgoing neighbors with counts/percentages from route history.
 
 ## License

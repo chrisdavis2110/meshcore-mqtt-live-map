@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.7.6` (see `VERSIONS.md`).
+Current version: `1.7.7` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.7.6`).
+- `VERSION.txt` holds the current version string (`1.7.7`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -40,6 +40,9 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
 - `PACKET_ANALYZER_URL` adds an external link on Route Details hashes; set it to a base such as `https://analyzer.letsmesh.net/packets?packet_hash=`.
 - `PEERS_DEFAULT_LIMIT` controls the default number of peers returned by `/peers/{device_id}` when no `?limit=` is passed; default `8`, max `50`.
+- `MAP_BOUNDARY_MODE` switches geographic filtering between `radius` and `polygon`; default is `radius`.
+- `MAP_BOUNDARY_FILE` points at the polygon JSON file used when `MAP_BOUNDARY_MODE=polygon`.
+- `MAP_BOUNDARY_SHOW` controls whether the active radius/polygon boundary is drawn on the map.
 - `MQTT_ONLINE_FORCE_NAMES` forces named nodes to show MQTT online and skips them in peers.
 - `MQTT_ONLINE_STATUS_TTL_SECONDS` controls MQTT connected TTL from `/status`.
 - `MQTT_ONLINE_INTERNAL_TTL_SECONDS` controls MQTT connected TTL from `/internal`.
@@ -103,6 +106,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
 - Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
 - Coverage tool only appears when `COVERAGE_API_URL` is set; it supports both the legacy `/get-samples` format and MeshMapper `coverage.php` grid-square responses.
+- Polygon boundary mode uses the same filter for devices, routes, and history, so the visible map and stored history window stay consistent.
+- Use `map_boundary.example.json` for the file format and either `tools/map-boundary-builder.html` or `https://yellowcooln.com/map-boundary-builder/` to generate a polygon JSON file outside the live app.
 - MeshMapper-only coverage envs are `COVERAGE_API_KEY`, `COVERAGE_MAX_AGE_DAYS`, `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS`, `COVERAGE_CACHE_FILE`, and `COVERAGE_SYNC_INTERVAL_SECONDS`; the legacy coverage map does not use them.
 - MeshMapper coverage is synced server-side into a local cache file and served from that file to users; it also uses a cooldown after HTTP 429 rate-limit responses.
 - Coverage responses are filtered by `COVERAGE_MAX_AGE_DAYS` before they reach the map; default is `30` days, while MeshMapper can still keep the full downloaded dataset in its local cache file.

@@ -27,6 +27,12 @@ from PIL import Image, ImageDraw
 import math
 
 import state
+from boundary import (
+  get_map_boundary_name,
+  get_map_boundary_points,
+  load_map_boundary,
+  within_map_boundary,
+)
 from decoder import (
   ROUTE_PAYLOAD_TYPES_SET,
   _append_heat_points,
@@ -144,6 +150,9 @@ from config import (
   MAP_START_ZOOM,
   MAP_RADIUS_KM,
   MAP_RADIUS_SHOW,
+  MAP_BOUNDARY_MODE,
+  MAP_BOUNDARY_FILE,
+  MAP_BOUNDARY_SHOW,
   MAP_DEFAULT_LAYER,
   PROD_MODE,
   PROD_TOKEN,
@@ -634,6 +643,7 @@ async def _lifespan(_app: FastAPI):
   global mqtt_client
 
   print(f"[startup] meshmap version={APP_VERSION}")
+  load_map_boundary(force=True)
   _load_state()
   _load_route_history()
   _load_neighbor_overrides()
@@ -1220,15 +1230,7 @@ def _record_mqtt_presence(
 
 
 def _within_map_radius(lat: Any, lon: Any) -> bool:
-  if MAP_RADIUS_KM <= 0:
-    return True
-  try:
-    lat_val = float(lat)
-    lon_val = float(lon)
-  except (TypeError, ValueError):
-    return False
-  distance_m = _haversine_m(MAP_START_LAT, MAP_START_LON, lat_val, lon_val)
-  return distance_m <= (MAP_RADIUS_KM * 1000.0)
+  return within_map_boundary(lat, lon)
 
 
 def _evict_device(device_id: str) -> bool:
@@ -2650,9 +2652,11 @@ def root(request: Request):
   trail_info_suffix = ""
   if TRAIL_LEN > 0:
     trail_info_suffix = f" Trails show last ~{TRAIL_LEN} points."
+  boundary_json = json.dumps(get_map_boundary_points()).replace("</", "<\\/")
 
   # Escape og_url for HTML
   SAFE_OG_URL = html.escape(str(og_url), quote=True)
+  content = content.replace("{{MAP_BOUNDARY_JSON}}", boundary_json)
 
   replacements = {
     "SITE_TITLE":
@@ -2695,6 +2699,12 @@ def root(request: Request):
       MAP_RADIUS_KM,
     "MAP_RADIUS_SHOW":
       str(MAP_RADIUS_SHOW).lower(),
+    "MAP_BOUNDARY_MODE":
+      MAP_BOUNDARY_MODE,
+    "MAP_BOUNDARY_SHOW":
+      str(MAP_BOUNDARY_SHOW).lower(),
+    "MAP_BOUNDARY_NAME":
+      get_map_boundary_name(),
     "MAP_DEFAULT_LAYER":
       MAP_DEFAULT_LAYER,
     "LOS_ELEVATION_URL":
@@ -3085,8 +3095,10 @@ def map_page(request: Request):
   trail_info_suffix = ""
   if TRAIL_LEN > 0:
     trail_info_suffix = f" Trails show last ~{TRAIL_LEN} points."
+  boundary_json = json.dumps(get_map_boundary_points()).replace("</", "<\\/")
 
   SAFE_OG_URL = html.escape(SITE_URL, quote=True)
+  content = content.replace("{{MAP_BOUNDARY_JSON}}", boundary_json)
 
   replacements = {
     "SITE_TITLE": SITE_TITLE,
@@ -3109,6 +3121,9 @@ def map_page(request: Request):
     "MAP_START_ZOOM": MAP_START_ZOOM,
     "MAP_RADIUS_KM": MAP_RADIUS_KM,
     "MAP_RADIUS_SHOW": str(MAP_RADIUS_SHOW).lower(),
+    "MAP_BOUNDARY_MODE": MAP_BOUNDARY_MODE,
+    "MAP_BOUNDARY_SHOW": str(MAP_BOUNDARY_SHOW).lower(),
+    "MAP_BOUNDARY_NAME": get_map_boundary_name(),
     "MAP_DEFAULT_LAYER": MAP_DEFAULT_LAYER,
     "LOS_ELEVATION_URL": LOS_ELEVATION_URL,
     "LOS_ELEVATION_PROXY_URL": LOS_ELEVATION_PROXY_URL,

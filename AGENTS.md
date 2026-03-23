@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.7.6` (see `VERSIONS.md`).
+Current version: `1.7.7` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -17,7 +17,7 @@ Current version: `1.7.6` (see `VERSIONS.md`).
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.7.6`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.7.7`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -52,6 +52,8 @@ Current version: `1.7.6` (see `VERSIONS.md`).
 - `MAP_RADIUS_SHOW=true` draws a debug circle centered on `MAP_START_LAT/LON`.
 - Set `TRAIL_LEN=0` to disable trails entirely; the HUD trail hint is removed when trails are off.
 - Coverage button only appears when `COVERAGE_API_URL` is set.
+- Geographic filtering defaults to radius mode; polygon mode is optional via `MAP_BOUNDARY_MODE=polygon` and `MAP_BOUNDARY_FILE`.
+- Standalone boundary builder: `tools/map-boundary-builder.html` outputs the JSON consumed by `MAP_BOUNDARY_FILE`; hosted copy: `https://yellowcooln.com/map-boundary-builder/`.
 - Radar country-bounds controls:
   `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED` and
   `WEATHER_RADAR_COUNTRY_LOOKUP_URL`.
