@@ -112,7 +112,9 @@ if (!validLayers.has(baseLayer)) {
   baseLayer = 'light';
 }
 
-const map = L.map('map', { zoomControl: false }).setView([mapStartLat, mapStartLon], mapStartZoom);
+const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([mapStartLat, mapStartLon], mapStartZoom);
+const vectorRenderer = L.canvas({ padding: 0.3 });
+const animatedLineRenderer = L.svg({ padding: 0.3 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 if (!map.getPane('radarPane')) {
   map.createPane('radarPane');
@@ -336,6 +338,7 @@ const losHeightBInput = document.getElementById('los-height-b');
 const propPanel = document.getElementById('prop-panel');
 const historyPanel = document.getElementById('history-panel');
 const historyLegendGroup = document.getElementById('legend-history-group');
+const coverageLegendGroup = document.getElementById('legend-coverage-group');
 const historyPanelLabel = document.getElementById('history-panel-label');
 const historyHideButton = document.getElementById('history-hide');
 const weatherPanel = document.getElementById('weather-panel');
@@ -566,6 +569,26 @@ function setStats() {
   document.getElementById('stats').textContent = `${markers.size} active devices • ${onlineTotal} MQTT online • ${routeLines.size} routes • ${historyLines.size} history`;
 }
 
+let statsFramePending = false;
+let deferStats = false;
+
+function scheduleStatsUpdate() {
+  if (statsFramePending) return;
+  statsFramePending = true;
+  window.requestAnimationFrame(() => {
+    statsFramePending = false;
+    setStats();
+  });
+}
+
+function refreshStats() {
+  if (deferStats) {
+    scheduleStatsUpdate();
+    return;
+  }
+  setStats();
+}
+
 function formatOnlineWindow(seconds) {
   if (!seconds || seconds <= 0) return '0 min';
   if (seconds >= 3600) {
@@ -703,6 +726,48 @@ function updateCoverageAttribution() {
   }
 }
 
+function updateCoverageLegend() {
+  if (!coverageLegendGroup) return;
+  const active = coverageVisible && coverageProvider === 'meshmapper' && Array.isArray(coverageData) && coverageData.length > 0;
+  coverageLegendGroup.classList.toggle('active', active);
+}
+
+function getRenderBounds() {
+  if (!map || !map.getBounds) return null;
+  try {
+    return map.getBounds().pad(0.2);
+  } catch (_err) {
+    return null;
+  }
+}
+
+function boundsIntersectsViewport(south, west, north, east) {
+  const viewport = getRenderBounds();
+  if (!viewport) return true;
+  const tileBounds = L.latLngBounds([[south, west], [north, east]]);
+  return viewport.intersects(tileBounds);
+}
+
+function latLngInViewport(lat, lon) {
+  const viewport = getRenderBounds();
+  if (!viewport) return true;
+  return viewport.contains([lat, lon]);
+}
+
+function syncLayerMembership(layer, item, shouldAttach) {
+  if (!layer || !item) return;
+  const attached = item.__attached === true;
+  if (shouldAttach && !attached) {
+    layer.addLayer(item);
+    item.__attached = true;
+    return;
+  }
+  if (!shouldAttach && attached) {
+    layer.removeLayer(item);
+    item.__attached = false;
+  }
+}
+
 function coverageTimeLabel(ts) {
   const raw = typeof ts === 'string' ? Number.parseInt(ts, 10) : ts;
   if (!Number.isFinite(raw) || raw <= 0) return '';
@@ -722,12 +787,12 @@ function renderMeshMapperCoverage(data) {
     const north = Number(bounds.north);
     const east = Number(bounds.east);
     if (![south, west, north, east].every(Number.isFinite)) continue;
+    if (!boundsIntersectsViewport(south, west, north, east)) continue;
     const fillColor = square.fill_color || '#1e7e34';
-    const borderColor = square.border_color || fillColor;
     const rect = L.rectangle([[south, west], [north, east]], {
-      color: borderColor,
-      weight: 1,
-      fillOpacity: 0.55,
+      renderer: vectorRenderer,
+      stroke: false,
+      fillOpacity: 0.85,
       fillColor
     });
     const details = [];
@@ -749,11 +814,13 @@ function renderCoverage(data) {
   coverageLayer.clearLayers();
   if (!data || !Array.isArray(data)) {
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   if (data.some(sample => sample && typeof sample === 'object' && sample.bounds)) {
     renderMeshMapperCoverage(data);
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   // Aggregate samples by 6-char geohash prefix (coverage tile level)
@@ -792,6 +859,7 @@ function renderCoverage(data) {
   for (const [tileHash, tile] of tileMap.entries()) {
     try {
       const [minLat, minLon, maxLat, maxLon] = geohashDecodeBbox(tileHash);
+      if (!boundsIntersectsViewport(minLat, minLon, maxLat, maxLon)) continue;
       const totalSamples = tile.heard + tile.lost;
       if (totalSamples === 0) continue;
       const heardRatio = totalSamples > 0 ? tile.heard / totalSamples : 0;
@@ -799,6 +867,7 @@ function renderCoverage(data) {
       const baseOpacity = 0.75 * Math.min(1, totalSamples / 10);
       const opacity = heardRatio > 0 ? baseOpacity * heardRatio : Math.max(baseOpacity, 0.4);
       const rect = L.rectangle([[minLat, minLon], [maxLat, maxLon]], {
+        renderer: vectorRenderer,
         color: color,
         weight: 1,
         fillOpacity: Math.max(opacity, 0.2),
@@ -823,6 +892,7 @@ function renderCoverage(data) {
     }
   }
   updateCoverageAttribution();
+  updateCoverageLegend();
 }
 
 function setCoverageVisible(visible) {
@@ -837,6 +907,7 @@ function setCoverageVisible(visible) {
       map.removeLayer(coverageLayer);
     }
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   if (visible) {
@@ -854,6 +925,7 @@ function setCoverageVisible(visible) {
           }
           renderCoverage(result.data);
         } else {
+          updateCoverageLegend();
           reportError('Coverage API returned invalid data format');
         }
       });
@@ -865,6 +937,7 @@ function setCoverageVisible(visible) {
       map.removeLayer(coverageLayer);
     }
     updateCoverageAttribution();
+    updateCoverageLegend();
   }
 }
 
@@ -1596,6 +1669,7 @@ function setNodesVisible(visible) {
         peersData.outgoing || []
       );
     }
+    refreshViewportLayers();
   } else if (map.hasLayer(markerLayer)) {
     map.removeLayer(markerLayer);
     if (map.hasLayer(trailLayer)) {
@@ -4364,6 +4438,7 @@ async function copyPopupLocation(ev) {
 function upsertDevice(d, trail) {
   const id = d.device_id;
   const latlng = [d.lat, d.lon];
+  const visibleInViewport = latLngInViewport(d.lat, d.lon);
   const role = resolveRole(d);
   const style = markerStyleForDevice(d);
   deviceData.set(id, d);
@@ -4371,7 +4446,7 @@ function upsertDevice(d, trail) {
 
   // marker
   if (!markers.has(id)) {
-    const m = L.circleMarker(latlng, style).addTo(markerLayer);
+    const m = L.circleMarker(latlng, { ...style, renderer: vectorRenderer });
     m.bindPopup(makePopup(d), {
       maxWidth: 260,
       maxHeight: 320,
@@ -4477,12 +4552,14 @@ function upsertDevice(d, trail) {
     });
     markers.set(id, m);
     updateMarkerLabel(m, d);
+    syncLayerMembership(markerLayer, m, nodesVisible && visibleInViewport);
   } else {
     const m = markers.get(id);
     m.setLatLng(latlng);
     m.setPopupContent(makePopup(d));
     if (m.setStyle) m.setStyle(style);
     updateMarkerLabel(m, d);
+    syncLayerMembership(markerLayer, m, nodesVisible && visibleInViewport);
   }
 
   // trail polyline (skip companions)
@@ -4490,25 +4567,29 @@ function upsertDevice(d, trail) {
     const points = trail.map(p => [p[0], p[1]]);
     if (!polylines.has(id)) {
       const pl = L.polyline(points, {
+        renderer: animatedLineRenderer,
         color: '#38bdf8',
         weight: 3,
         opacity: 0.85,
         className: 'trail-animated'
-      }).addTo(trailLayer);
+      });
       polylines.set(id, pl);
+      syncLayerMembership(trailLayer, pl, nodesVisible && visibleInViewport);
     } else {
       const pl = polylines.get(id);
       pl.setLatLngs(points);
       if (pl.setStyle) {
         pl.setStyle({ color: '#38bdf8', weight: 3, opacity: 0.85 });
       }
+      syncLayerMembership(trailLayer, pl, nodesVisible && visibleInViewport);
     }
   } else if (polylines.has(id)) {
     trailLayer.removeLayer(polylines.get(id));
+    polylines.get(id).__attached = false;
     polylines.delete(id);
   }
 
-  setStats();
+  refreshStats();
   if (propagationActive && propagationOrigins.length) {
     const origin = propagationOrigins.find(item => item.id === id);
     if (origin) {
@@ -4541,7 +4622,7 @@ function removeDevices(ids) {
     }
     deviceMeta.delete(id);
   });
-  setStats();
+  refreshStats();
   refreshOnlineMarkers();
   if (propagationActive && propagationOrigins.length) {
     const removed = propagationOrigins.filter(origin => origin.id && ids.includes(origin.id));
@@ -4576,7 +4657,24 @@ function refreshOnlineMarkers() {
     if (m.setStyle) m.setStyle(style);
     if (m.getPopup()) m.setPopupContent(makePopup(d));
   });
-  setStats();
+  refreshStats();
+}
+
+function refreshViewportLayers() {
+  const shouldShowNodes = nodesVisible;
+  for (const [id, marker] of markers.entries()) {
+    const d = deviceData.get(id);
+    const visible = Boolean(d) && shouldShowNodes && latLngInViewport(d.lat, d.lon);
+    syncLayerMembership(markerLayer, marker, visible);
+  }
+  for (const [id, line] of polylines.entries()) {
+    const d = deviceData.get(id);
+    const visible = Boolean(d) && shouldShowNodes && latLngInViewport(d.lat, d.lon);
+    syncLayerMembership(trailLayer, line, visible);
+  }
+  if (coverageVisible && coverageData) {
+    renderCoverage(coverageData);
+  }
 }
 
 function removeRoutes(ids) {
@@ -4592,7 +4690,7 @@ function removeRoutes(ids) {
       hopMarkers.delete(id);
     }
   });
-  setStats();
+  refreshStats();
 }
 
 function clearRoutes() {
@@ -4601,7 +4699,7 @@ function clearRoutes() {
     routeLayer.removeLayer(entry.line);
   });
   routeLines.clear();
-  setStats();
+  refreshStats();
 }
 
 function clearHistoryLayer() {
@@ -4611,7 +4709,7 @@ function clearHistoryLayer() {
   });
   historyLines.clear();
   refreshHistoryStyles();
-  setStats();
+  refreshStats();
 }
 
 function removeHistoryEdges(ids) {
@@ -4623,7 +4721,7 @@ function removeHistoryEdges(ids) {
     historyCache.delete(id);
   });
   refreshHistoryStyles();
-  setStats();
+  refreshStats();
 }
 
 function historyWeight(count) {
@@ -4764,7 +4862,7 @@ function renderHistoryEdge(edge) {
   ];
   let entry = historyLines.get(id);
   if (!entry) {
-    const line = L.polyline(points, { color: '#7dd3fc', weight: 2, opacity: 0.6 }).addTo(historyLayer);
+    const line = L.polyline(points, { renderer: vectorRenderer, color: '#7dd3fc', weight: 2, opacity: 0.6 }).addTo(historyLayer);
     entry = { line, count: Number(edge.count) || 1, recent: [], lastTs: null };
     historyLines.set(id, entry);
     line.on('click', (ev) => {
@@ -4788,7 +4886,7 @@ function renderHistoryEdge(edge) {
 function renderHistoryFromCache() {
   historyCache.forEach(edge => renderHistoryEdge(edge));
   updateHistoryRendering();
-  setStats();
+  refreshStats();
 }
 
 function upsertHistoryEdge(edge) {
@@ -4797,7 +4895,7 @@ function upsertHistoryEdge(edge) {
   const edgeData = { ...edge, id };
   historyCache.set(id, edgeData);
   if (!historyVisible || !nodesVisible) {
-    setStats();
+    refreshStats();
     return;
   }
   renderHistoryEdge(edgeData);
@@ -5202,7 +5300,7 @@ function upsertRoute(r, skipHeat = false) {
   const routeMeta = buildRouteLogMeta({ ...r, id, points, hashes: r.hashes });
   let entry = routeLines.get(id);
   if (!entry) {
-    const line = L.polyline(points, style).addTo(routeLayer);
+    const line = L.polyline(points, { ...style, renderer: animatedLineRenderer }).addTo(routeLayer);
     if (!prodMode) {
       line.on('click', (ev) => handleRouteClick(id, ev));
     }
@@ -5233,7 +5331,7 @@ function upsertRoute(r, skipHeat = false) {
   if (hopsVisible) {
     renderHopMarkers(id, entry.meta);
   }
-  setStats();
+  refreshStats();
 }
 
 async function initialSnapshot() {
@@ -5265,9 +5363,98 @@ async function initialSnapshot() {
     if (snap.update) {
       setUpdateBanner(snap.update);
     }
-    setStats();
+    refreshStats();
   } catch (e) {
     console.warn("snapshot failed", e);
+  }
+}
+
+const pendingWsMessages = [];
+let wsFlushScheduled = false;
+
+function flushQueuedWsMessages() {
+  wsFlushScheduled = false;
+  if (!pendingWsMessages.length) return;
+  const batch = pendingWsMessages.splice(0, pendingWsMessages.length);
+  deferStats = true;
+  try {
+    for (const msg of batch) {
+      handleRealtimeMessage(msg);
+    }
+  } finally {
+    deferStats = false;
+  }
+  scheduleStatsUpdate();
+}
+
+function queueRealtimeMessage(msg) {
+  pendingWsMessages.push(msg);
+  if (wsFlushScheduled) return;
+  wsFlushScheduled = true;
+  window.requestAnimationFrame(flushQueuedWsMessages);
+}
+
+function handleRealtimeMessage(msg) {
+  if (msg.type === "update") {
+    upsertDevice(msg.device, msg.trail);
+    return;
+  }
+
+  if (msg.type === "device_seen") {
+    const id = msg.device_id;
+    applyMqttPresenceSummary(msg.mqtt_presence);
+    const d = deviceData.get(id);
+    if (d) {
+      if (msg.last_seen_ts) d.last_seen_ts = msg.last_seen_ts;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_seen_ts')) d.mqtt_seen_ts = msg.mqtt_seen_ts;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_online_source')) d.mqtt_online_source = msg.mqtt_online_source;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_ts')) d.mqtt_status_ts = msg.mqtt_status_ts;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_value')) d.mqtt_status_value = msg.mqtt_status_value;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_internal_ts')) d.mqtt_internal_ts = msg.mqtt_internal_ts;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_packets_ts')) d.mqtt_packets_ts = msg.mqtt_packets_ts;
+      deviceData.set(id, d);
+      const m = markers.get(id);
+      if (m) {
+        if (m.setStyle) m.setStyle(markerStyleForDevice(d));
+        m.setPopupContent(makePopup(d));
+        updateMarkerLabel(m, d);
+      }
+      refreshStats();
+    }
+    if (!d) refreshStats();
+    return;
+  }
+
+  if (msg.type === "mqtt_presence") {
+    applyMqttPresenceSummary(msg.mqtt_presence);
+    refreshStats();
+    return;
+  }
+
+  if (msg.type === "route") {
+    upsertRoute(msg.route);
+    return;
+  }
+
+  if (msg.type === "route_remove") {
+    removeRoutes(msg.route_ids || []);
+    return;
+  }
+
+  if (msg.type === "history_edges") {
+    const edges = Array.isArray(msg.edges) ? msg.edges : [];
+    edges.forEach(edge => upsertHistoryEdge(edge));
+    refreshStats();
+    return;
+  }
+
+  if (msg.type === "history_edges_remove") {
+    removeHistoryEdges(msg.edge_ids || []);
+    return;
+  }
+
+  if (msg.type === "stale") {
+    removeDevices(msg.device_ids || []);
   }
 }
 
@@ -5288,94 +5475,37 @@ function connectWS() {
     if (msg.type === "snapshot") {
       // same shape as /snapshot
       setServerTimeOffset(msg.server_time);
-      for (const [id, d] of Object.entries(msg.devices || {})) {
-        const trail = msg.trails ? msg.trails[id] : null;
-        upsertDevice(d, trail);
-      }
-      clearRoutes();
-      if (Array.isArray(msg.heat)) {
-        seedHeat(msg.heat);
-      }
-      if (Array.isArray(msg.routes)) {
-        msg.routes.forEach(r => upsertRoute(r, true));
-      }
-      if (Array.isArray(msg.history_edges)) {
-        msg.history_edges.forEach(edge => upsertHistoryEdge(edge));
-      }
-      applyMqttPresenceSummary(msg.mqtt_presence);
-      if (msg.history_window_seconds != null) {
-        historyWindowSeconds = Number(msg.history_window_seconds);
-        updateHistoryWindowLabel(historyWindowSeconds);
-      }
-      if (msg.update) {
-        setUpdateBanner(msg.update);
-      }
-      setStats();
-      return;
-    }
-
-    if (msg.type === "update") {
-      upsertDevice(msg.device, msg.trail);
-      return;
-    }
-
-    if (msg.type === "device_seen") {
-      const id = msg.device_id;
-      applyMqttPresenceSummary(msg.mqtt_presence);
-      const d = deviceData.get(id);
-      if (d) {
-        if (msg.last_seen_ts) d.last_seen_ts = msg.last_seen_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_seen_ts')) d.mqtt_seen_ts = msg.mqtt_seen_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_online_source')) d.mqtt_online_source = msg.mqtt_online_source;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_ts')) d.mqtt_status_ts = msg.mqtt_status_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_value')) d.mqtt_status_value = msg.mqtt_status_value;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_internal_ts')) d.mqtt_internal_ts = msg.mqtt_internal_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_packets_ts')) d.mqtt_packets_ts = msg.mqtt_packets_ts;
-        deviceData.set(id, d);
-        const m = markers.get(id);
-        if (m) {
-          if (m.setStyle) m.setStyle(markerStyleForDevice(d));
-          m.setPopupContent(makePopup(d));
-          updateMarkerLabel(m, d);
+      deferStats = true;
+      try {
+        for (const [id, d] of Object.entries(msg.devices || {})) {
+          const trail = msg.trails ? msg.trails[id] : null;
+          upsertDevice(d, trail);
         }
-        setStats();
+        clearRoutes();
+        if (Array.isArray(msg.heat)) {
+          seedHeat(msg.heat);
+        }
+        if (Array.isArray(msg.routes)) {
+          msg.routes.forEach(r => upsertRoute(r, true));
+        }
+        if (Array.isArray(msg.history_edges)) {
+          msg.history_edges.forEach(edge => upsertHistoryEdge(edge));
+        }
+        applyMqttPresenceSummary(msg.mqtt_presence);
+        if (msg.history_window_seconds != null) {
+          historyWindowSeconds = Number(msg.history_window_seconds);
+          updateHistoryWindowLabel(historyWindowSeconds);
+        }
+        if (msg.update) {
+          setUpdateBanner(msg.update);
+        }
+      } finally {
+        deferStats = false;
       }
-      if (!d) setStats();
-      return;
-    }
-
-    if (msg.type === "mqtt_presence") {
-      applyMqttPresenceSummary(msg.mqtt_presence);
       setStats();
       return;
     }
-
-    if (msg.type === "route") {
-      upsertRoute(msg.route);
-      return;
-    }
-
-    if (msg.type === "route_remove") {
-      removeRoutes(msg.route_ids || []);
-      return;
-    }
-
-    if (msg.type === "history_edges") {
-      const edges = Array.isArray(msg.edges) ? msg.edges : [];
-      edges.forEach(edge => upsertHistoryEdge(edge));
-      setStats();
-      return;
-    }
-
-    if (msg.type === "history_edges_remove") {
-      removeHistoryEdges(msg.edge_ids || []);
-      return;
-    }
-
-    if (msg.type === "stale") {
-      removeDevices(msg.device_ids || []);
-      return;
-    }
+    queueRealtimeMessage(msg);
   };
 }
 
@@ -6385,9 +6515,11 @@ if (propToggle) {
 }
 
 map.on('moveend', () => {
+  refreshViewportLayers();
   scheduleWeatherWindRefresh();
 });
 map.on('zoomend', () => {
+  refreshViewportLayers();
   scheduleWeatherWindRefresh();
 });
 

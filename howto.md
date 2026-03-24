@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.7.7` (see `VERSIONS.md`).
+Current version: `1.7.8` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -114,6 +114,7 @@ MQTT_PASSWORD=yourpass
 MQTT_TRANSPORT=websockets
 MQTT_WS_PATH=/
 MQTT_TLS=true
+# Comma-separated list supported, e.g. meshcore/BOS/#,meshcore/CON/#
 MQTT_TOPIC=meshcore/#
 
 # MQTT online presence tuning (v1.5+)
