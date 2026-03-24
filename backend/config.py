@@ -186,6 +186,17 @@ ELEVATION_CACHE_TTL = int(os.getenv("ELEVATION_CACHE_TTL", "21600"))
 LOS_PEAKS_MAX = int(os.getenv("LOS_PEAKS_MAX", "4"))
 
 COVERAGE_API_URL = os.getenv("COVERAGE_API_URL", "").strip()
+COVERAGE_API_KEY = os.getenv("COVERAGE_API_KEY", "").strip()
+COVERAGE_MAX_AGE_DAYS = float(os.getenv("COVERAGE_MAX_AGE_DAYS", "30"))
+COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS = int(
+  os.getenv("COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS", "3600")
+)
+COVERAGE_CACHE_FILE = os.getenv(
+  "COVERAGE_CACHE_FILE", os.path.join(STATE_DIR, "coverage_cache.json")
+).strip()
+COVERAGE_SYNC_INTERVAL_SECONDS = int(
+  os.getenv("COVERAGE_SYNC_INTERVAL_SECONDS", "3600")
+)
 WEATHER_RADAR_ENABLED = (
   os.getenv("WEATHER_RADAR_ENABLED", "true").lower() == "true"
 )

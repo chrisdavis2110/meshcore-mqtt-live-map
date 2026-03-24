@@ -63,6 +63,17 @@ const reportError = typeof window.__meshmapReportError === 'function'
   : (message) => console.warn(message);
 const appVersion = (config.appVersion || 'dev').trim() || 'dev';
 console.info(`[meshmap] version ${appVersion}`);
+let serverTimeOffsetMs = 0;
+
+function setServerTimeOffset(serverTimeSeconds) {
+  const serverMs = Number(serverTimeSeconds) * 1000;
+  if (!Number.isFinite(serverMs) || serverMs <= 0) return;
+  serverTimeOffsetMs = serverMs - Date.now();
+}
+
+function getServerNowMs() {
+  return Date.now() + serverTimeOffsetMs;
+}
 
 const envStartLat = parseFloat(config.mapStartLat);
 const envStartLon = parseFloat(config.mapStartLon);
@@ -203,6 +214,9 @@ const coverageEnabled = Boolean(coverageApiUrl);
 const coverageLayer = L.layerGroup();
 let coverageVisible = false;
 let coverageData = null;
+let coverageProvider = '';
+let coverageRegion = '';
+let coverageAttributionHtml = '';
 const radarLayerGroup = L.layerGroup();
 let radarLayer = null;
 let radarVisible = false;
@@ -620,7 +634,11 @@ async function fetchCoverageData() {
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
     const data = await response.json();
-    return data;
+    return {
+      data,
+      provider: String(response.headers.get('x-coverage-provider') || '').trim().toLowerCase(),
+      region: String(response.headers.get('x-coverage-region') || '').trim().toUpperCase()
+    };
   } catch (err) {
     const errorMsg = err && err.message ? err.message : String(err);
     reportError(`Failed to fetch coverage data: ${errorMsg}`);
@@ -628,9 +646,76 @@ async function fetchCoverageData() {
   }
 }
 
+function buildCoverageAttributionHtml() {
+  if (coverageProvider !== 'meshmapper' || !coverageRegion) return '';
+  if (!/^[A-Z0-9-]+$/.test(coverageRegion)) return '';
+  const regionHost = coverageRegion.toLowerCase();
+  return `<a href="https://${regionHost}.meshmapper.net" target="_blank" rel="noopener noreferrer">MeshMapper</a>`;
+}
+
+function updateCoverageAttribution() {
+  const next = (coverageVisible && coverageData) ? buildCoverageAttributionHtml() : '';
+  if (coverageAttributionHtml && map && map.attributionControl) {
+    map.attributionControl.removeAttribution(coverageAttributionHtml);
+    coverageAttributionHtml = '';
+  }
+  if (next && map && map.attributionControl) {
+    map.attributionControl.addAttribution(next);
+    coverageAttributionHtml = next;
+  }
+}
+
+function coverageTimeLabel(ts) {
+  const raw = typeof ts === 'string' ? Number.parseInt(ts, 10) : ts;
+  if (!Number.isFinite(raw) || raw <= 0) return '';
+  const ms = raw < 946684800000 ? raw * 1000 : raw;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString();
+}
+
+function renderMeshMapperCoverage(data) {
+  let rendered = 0;
+  for (const square of data) {
+    const bounds = square?.bounds;
+    if (!bounds) continue;
+    const south = Number(bounds.south);
+    const west = Number(bounds.west);
+    const north = Number(bounds.north);
+    const east = Number(bounds.east);
+    if (![south, west, north, east].every(Number.isFinite)) continue;
+    const fillColor = square.fill_color || '#1e7e34';
+    const borderColor = square.border_color || fillColor;
+    const rect = L.rectangle([[south, west], [north, east]], {
+      color: borderColor,
+      weight: 1,
+      fillOpacity: 0.55,
+      fillColor
+    });
+    const details = [];
+    if (square.coverage_type) details.push(`Type: ${square.coverage_type}`);
+    if (square.snr !== null && square.snr !== undefined) {
+      details.push(`SNR: ${square.snr} dB`);
+    }
+    const when = coverageTimeLabel(square.timestamp);
+    if (when) details.push(`Updated: ${when}`);
+    if (square.grid_id) details.push(`Grid: ${square.grid_id}`);
+    rect.bindPopup(details.join('<br/>'), { maxWidth: 320 });
+    coverageLayer.addLayer(rect);
+    rendered++;
+  }
+  return rendered;
+}
+
 function renderCoverage(data) {
   coverageLayer.clearLayers();
   if (!data || !Array.isArray(data)) {
+    updateCoverageAttribution();
+    return;
+  }
+  if (data.some(sample => sample && typeof sample === 'object' && sample.bounds)) {
+    renderMeshMapperCoverage(data);
+    updateCoverageAttribution();
     return;
   }
   // Aggregate samples by 6-char geohash prefix (coverage tile level)
@@ -699,6 +784,7 @@ function renderCoverage(data) {
       // Silently skip invalid tiles
     }
   }
+  updateCoverageAttribution();
 }
 
 function setCoverageVisible(visible) {
@@ -712,6 +798,7 @@ function setCoverageVisible(visible) {
     if (coverageLayer && map.hasLayer(coverageLayer)) {
       map.removeLayer(coverageLayer);
     }
+    updateCoverageAttribution();
     return;
   }
   if (visible) {
@@ -719,13 +806,15 @@ function setCoverageVisible(visible) {
       coverageLayer.addTo(map);
     }
     if (!coverageData) {
-      fetchCoverageData().then(data => {
-        if (data && Array.isArray(data)) {
-          coverageData = data;
-          if (data.length === 0) {
+      fetchCoverageData().then(result => {
+        if (result && Array.isArray(result.data)) {
+          coverageData = result.data;
+          coverageProvider = result.provider || '';
+          coverageRegion = result.region || '';
+          if (result.data.length === 0) {
             reportError('Coverage database appears to be empty. Add coverage data to your coverage map server.');
           }
-          renderCoverage(data);
+          renderCoverage(result.data);
         } else {
           reportError('Coverage API returned invalid data format');
         }
@@ -737,6 +826,7 @@ function setCoverageVisible(visible) {
     if (map.hasLayer(coverageLayer)) {
       map.removeLayer(coverageLayer);
     }
+    updateCoverageAttribution();
   }
 }
 
@@ -1931,7 +2021,7 @@ function getLastSeenTs(d) {
 
 function isMqttOnline(d) {
   if (d.mqtt_forced) return true;
-  const now = Date.now() / 1000;
+  const now = getServerNowMs() / 1000;
   const statusValue = String(d.mqtt_status_value || '').trim().toLowerCase();
   const statusTs = Number(d.mqtt_status_ts) || 0;
   if (
@@ -4771,7 +4861,7 @@ function buildRouteLogMeta(route) {
   const distanceMeters = computeRouteDistanceMeters(route.points);
   const expiresSeconds = Number(route.expires_at);
   const expiresInSeconds = Number.isFinite(expiresSeconds)
-    ? (expiresSeconds - Date.now() / 1000)
+    ? (expiresSeconds - getServerNowMs() / 1000)
     : null;
   let cumulative = 0;
   const hashes = Array.isArray(route.hashes) ? route.hashes : null;
@@ -4959,7 +5049,7 @@ function upsertRoute(r, skipHeat = false) {
 
   if (entry.timeout) clearTimeout(entry.timeout);
   if (r.expires_at) {
-    const ms = Math.max(1000, (r.expires_at * 1000) - Date.now());
+    const ms = Math.max(1000, (r.expires_at * 1000) - getServerNowMs());
     entry.timeout = setTimeout(() => removeRoutes([id]), ms);
   }
 
@@ -4976,6 +5066,7 @@ async function initialSnapshot() {
   try {
     const res = await fetch(withToken('/snapshot'), { headers: tokenHeaders() });
     const snap = await res.json();
+    setServerTimeOffset(snap.server_time);
     if (snap.devices) {
       for (const [id, d] of Object.entries(snap.devices)) {
         const trail = snap.trails ? snap.trails[id] : null;
@@ -5022,6 +5113,7 @@ function connectWS() {
 
     if (msg.type === "snapshot") {
       // same shape as /snapshot
+      setServerTimeOffset(msg.server_time);
       for (const [id, d] of Object.entries(msg.devices || {})) {
         const trail = msg.trails ? msg.trails[id] : null;
         upsertDevice(d, trail);

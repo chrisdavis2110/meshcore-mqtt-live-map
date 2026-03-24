@@ -13,12 +13,14 @@ def clear_runtime_state():
   state.node_hash_candidates.clear()
   state.node_hash_collisions.clear()
   state.node_hash_to_device.clear()
+  state.neighbor_edges.clear()
   yield
   state.devices.clear()
   state.seen_devices.clear()
   state.node_hash_candidates.clear()
   state.node_hash_collisions.clear()
   state.node_hash_to_device.clear()
+  state.neighbor_edges.clear()
 
 
 def _add_device(device_id, lat, lon, role="repeater"):
@@ -169,3 +171,45 @@ def test_route_points_resolve_three_byte_hashes_in_mixed_paths():
   assert points is not None
   assert used_hashes == ["ABCDEF", "BC", "CDEF"]
   assert point_ids[1:4] == ["ABCDEF11", "BC221111", "CDEF3311"]
+
+
+def test_ambiguous_one_byte_hash_without_neighbor_is_skipped():
+  _add_device("AA001111", 42.0000, -71.0000, role="repeater")
+  _add_device("ABCD1111", 42.0002, -71.0002, role="repeater")
+  _add_device("ABEF1111", 42.5000, -71.5000, role="repeater")
+  _add_device("DD001111", 42.0006, -71.0006, role="repeater")
+  decoder._rebuild_node_hash_map()
+
+  points, used_hashes, point_ids = decoder._route_points_from_hashes(
+    path_hashes=["AB"],
+    origin_id="AA001111",
+    receiver_id="DD001111",
+    ts=time.time(),
+  )
+
+  assert points is not None
+  assert used_hashes == []
+  assert point_ids == ["AA001111", "DD001111"]
+
+
+def test_ambiguous_one_byte_hash_with_neighbor_evidence_is_kept():
+  _add_device("AA001111", 42.0000, -71.0000, role="repeater")
+  _add_device("BC001111", 42.0002, -71.0002, role="repeater")
+  _add_device("ABCD1111", 42.5000, -71.5000, role="repeater")
+  _add_device("ABEF1111", 42.0004, -71.0004, role="repeater")
+  _add_device("DD001111", 42.0006, -71.0006, role="repeater")
+  decoder._rebuild_node_hash_map()
+  state.neighbor_edges["BC001111"] = {
+    "ABEF1111": {"count": 5, "last_seen": time.time(), "manual": True}
+  }
+
+  points, used_hashes, point_ids = decoder._route_points_from_hashes(
+    path_hashes=["BC", "AB"],
+    origin_id="AA001111",
+    receiver_id="DD001111",
+    ts=time.time(),
+  )
+
+  assert points is not None
+  assert used_hashes == ["BC", "AB"]
+  assert point_ids[1:3] == ["BC001111", "ABEF1111"]
