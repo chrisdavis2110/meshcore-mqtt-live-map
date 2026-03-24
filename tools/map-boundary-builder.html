@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Map Boundary Builder</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <style>
+    :root {
+      color-scheme: light;
+      --panel: rgba(255, 252, 246, 0.94);
+      --ink: #17212b;
+      --muted: #6c7b88;
+      --line: rgba(23, 33, 43, 0.16);
+      --accent: #18794e;
+      --accent-2: #b44f27;
+      --shadow: 0 20px 40px rgba(39, 47, 56, 0.14);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(24, 121, 78, 0.10), transparent 28%),
+        linear-gradient(180deg, #f6f3eb, #ece8de 58%, #e6e1d7);
+      min-height: 100vh;
+    }
+    .shell {
+      display: grid;
+      grid-template-columns: minmax(320px, 420px) 1fr;
+      min-height: 100vh;
+    }
+    .panel {
+      padding: 24px 20px;
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      border-right: 1px solid var(--line);
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+    h1 {
+      margin: 0;
+      font-family: Georgia, serif;
+      font-size: clamp(1.8rem, 3vw, 2.4rem);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+    }
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.96rem;
+    }
+    .field, .stack {
+      display: grid;
+      gap: 6px;
+    }
+    label {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font: inherit;
+      color: var(--ink);
+      background: rgba(255,255,255,0.82);
+    }
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 15px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      color: white;
+      background: var(--accent);
+      box-shadow: 0 10px 20px rgba(24, 121, 78, 0.18);
+    }
+    button.secondary {
+      background: #35546b;
+      box-shadow: none;
+    }
+    button.warn {
+      background: var(--accent-2);
+      box-shadow: none;
+    }
+    .meta {
+      display: grid;
+      gap: 8px;
+      padding: 12px 14px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      background: rgba(255,255,255,0.46);
+    }
+    .point-list {
+      max-height: 160px;
+      overflow: auto;
+      display: grid;
+      gap: 6px;
+      padding-right: 4px;
+    }
+    .point-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(23, 33, 43, 0.05);
+      font-size: 0.88rem;
+    }
+    #map {
+      min-height: 100vh;
+    }
+    .hint {
+      font-size: 0.84rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .repo-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .repo-link:hover {
+      text-decoration: underline;
+    }
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; }
+      .panel { border-right: 0; border-bottom: 1px solid var(--line); }
+      #map { min-height: 52vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="panel">
+      <div class="stack">
+        <div class="eyebrow">Repo Tool</div>
+        <h1>Boundary Builder</h1>
+        <p class="lead">Standalone polygon builder for <strong>meshcore-mqtt-live-map</strong>. Click the map to place points, then export <code>map_boundary.json</code> for <code>MAP_BOUNDARY_FILE</code>.</p>
+        <p class="hint">Repo: <a class="repo-link" href="https://github.com/yellowcooln/meshcore-mqtt-live-map" target="_blank" rel="noopener">github.com/yellowcooln/meshcore-mqtt-live-map</a></p>
+      </div>
+
+      <div class="field">
+        <label for="boundary-name">Boundary Name</label>
+        <input id="boundary-name" type="text" value="My Boundary" />
+      </div>
+
+      <div class="actions">
+        <button id="undo-btn" type="button" class="secondary">Remove Last</button>
+        <button id="clear-btn" type="button" class="warn">Clear</button>
+        <button id="load-btn" type="button" class="secondary">Load JSON</button>
+        <button id="copy-btn" type="button">Copy JSON</button>
+        <button id="download-btn" type="button">Download</button>
+      </div>
+
+      <div class="meta">
+        <div><strong>Points:</strong> <span id="point-count">0</span></div>
+        <div><strong>Status:</strong> <span id="status">Add at least 3 points.</span></div>
+      </div>
+
+      <div class="stack">
+        <label>Boundary Points</label>
+        <div class="point-list" id="point-list"></div>
+      </div>
+
+      <div class="stack">
+        <label for="output">Generated JSON</label>
+        <textarea id="output" spellcheck="false"></textarea>
+      </div>
+
+      <p class="hint">Format: <code>{ "name": "...", "points": [[lat, lon], ...] }</code>. The map closes the polygon automatically; do not repeat the first point at the end.</p>
+    </aside>
+
+    <div id="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const map = L.map('map').setView([42.3601, -71.0589], 9);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const points = [];
+    const markers = [];
+    let polygon = null;
+
+    const outputEl = document.getElementById('output');
+    const nameEl = document.getElementById('boundary-name');
+    const pointCountEl = document.getElementById('point-count');
+    const pointListEl = document.getElementById('point-list');
+    const statusEl = document.getElementById('status');
+
+    function toPayload() {
+      return {
+        name: nameEl.value.trim() || 'My Boundary',
+        points: points.map(([lat, lon]) => [Number(lat.toFixed(6)), Number(lon.toFixed(6))])
+      };
+    }
+
+    function render() {
+      outputEl.value = JSON.stringify(toPayload(), null, 2);
+      pointCountEl.textContent = String(points.length);
+      statusEl.textContent = points.length >= 3 ? 'Ready to export.' : 'Add at least 3 points.';
+      pointListEl.innerHTML = '';
+      points.forEach(([lat, lon], idx) => {
+        const row = document.createElement('div');
+        row.className = 'point-item';
+        row.innerHTML = `<span>${idx + 1}</span><span>${lat.toFixed(6)}, ${lon.toFixed(6)}</span>`;
+        pointListEl.appendChild(row);
+      });
+      if (polygon) {
+        map.removeLayer(polygon);
+        polygon = null;
+      }
+      if (points.length >= 2) {
+        polygon = L.polygon(points, {
+          color: '#18794e',
+          weight: 2,
+          dashArray: '6 8',
+          fillColor: '#18794e',
+          fillOpacity: 0.08
+        }).addTo(map);
+      }
+    }
+
+    function createPointMarker(index, latlng) {
+      const marker = L.marker(latlng, {
+        draggable: true,
+        title: `Point ${index + 1}`
+      }).addTo(map);
+      marker.on('drag', (event) => {
+        const next = event.target.getLatLng();
+        points[index] = [next.lat, next.lng];
+        render();
+      });
+      marker.on('dragend', () => {
+        statusEl.textContent = `Moved point ${index + 1}.`;
+      });
+      return marker;
+    }
+
+    function addPoint(latlng) {
+      if (!latlng || !Number.isFinite(latlng.lat) || !Number.isFinite(latlng.lng)) return;
+      points.push([latlng.lat, latlng.lng]);
+      const marker = createPointMarker(points.length - 1, latlng);
+      markers.push(marker);
+      render();
+    }
+
+    function removeLast() {
+      points.pop();
+      const marker = markers.pop();
+      if (marker) map.removeLayer(marker);
+      render();
+    }
+
+    function clearAll() {
+      points.splice(0, points.length);
+      while (markers.length) {
+        const marker = markers.pop();
+        if (marker) map.removeLayer(marker);
+      }
+      render();
+    }
+
+    document.getElementById('undo-btn').addEventListener('click', removeLast);
+    document.getElementById('clear-btn').addEventListener('click', clearAll);
+    document.getElementById('copy-btn').addEventListener('click', async () => {
+      await navigator.clipboard.writeText(outputEl.value);
+      statusEl.textContent = 'Copied JSON to clipboard.';
+    });
+    document.getElementById('download-btn').addEventListener('click', () => {
+      const blob = new Blob([outputEl.value], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'map_boundary.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      statusEl.textContent = 'Downloaded map_boundary.json.';
+    });
+    document.getElementById('load-btn').addEventListener('click', () => {
+      try {
+        const parsed = JSON.parse(outputEl.value || '{}');
+        const loaded = Array.isArray(parsed.points) ? parsed.points : [];
+        clearAll();
+        nameEl.value = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : 'My Boundary';
+        loaded.forEach((pt) => {
+          if (!Array.isArray(pt) || pt.length < 2) return;
+          const lat = Number(pt[0]);
+          const lon = Number(pt[1]);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+          addPoint({ lat, lng: lon });
+        });
+        statusEl.textContent = 'Loaded boundary JSON.';
+      } catch (err) {
+        statusEl.textContent = `Invalid JSON: ${err.message}`;
+      }
+    });
+    nameEl.addEventListener('input', render);
+    map.on('click', (event) => addPoint(event.latlng));
+    render();
+  </script>
+</body>
+</html>

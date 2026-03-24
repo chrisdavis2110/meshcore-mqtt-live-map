@@ -31,6 +31,10 @@ NEIGHBOR_OVERRIDES_FILE = os.getenv(
   "NEIGHBOR_OVERRIDES_FILE",
   os.path.join(STATE_DIR, "neighbor_overrides.json"),
 )
+CHANNEL_SECRETS_FILE = os.getenv(
+  "CHANNEL_SECRETS_FILE",
+  os.path.join(STATE_DIR, "channel_secrets.json"),
+)
 STATE_SAVE_INTERVAL = float(os.getenv("STATE_SAVE_INTERVAL", "5"))
 
 DEVICE_TTL_HOURS = float(os.getenv("DEVICE_TTL_HOURS", "96"))  # 4 days default
@@ -91,6 +95,14 @@ MQTT_STATUS_OFFLINE_VALUES = tuple(
   ).split(",") if s.strip()
 )
 MQTT_STATUS_OFFLINE_VALUES_SET = set(MQTT_STATUS_OFFLINE_VALUES)
+try:
+  PEERS_DEFAULT_LIMIT = int(os.getenv("PEERS_DEFAULT_LIMIT", "8"))
+except ValueError:
+  PEERS_DEFAULT_LIMIT = 8
+if PEERS_DEFAULT_LIMIT < 1:
+  PEERS_DEFAULT_LIMIT = 1
+if PEERS_DEFAULT_LIMIT > 50:
+  PEERS_DEFAULT_LIMIT = 50
 
 DEBUG_PAYLOAD = os.getenv("DEBUG_PAYLOAD", "false").lower() == "true"
 DEBUG_PAYLOAD_MAX = int(os.getenv("DEBUG_PAYLOAD_MAX", "400"))
@@ -125,6 +137,7 @@ SITE_URL = os.getenv("SITE_URL", "/")
 SITE_ICON = os.getenv("SITE_ICON", "/static/logo.png")
 SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "Feed: Boston MQTT.")
 CUSTOM_LINK_URL = os.getenv("CUSTOM_LINK_URL", "").strip()
+PACKET_ANALYZER_URL = os.getenv("PACKET_ANALYZER_URL", "").strip()
 GIT_CHECK_ENABLED = os.getenv("GIT_CHECK_ENABLED", "false").lower() == "true"
 GIT_CHECK_FETCH = os.getenv("GIT_CHECK_FETCH", "false").lower() == "true"
 GIT_CHECK_PATH = os.getenv("GIT_CHECK_PATH", os.getcwd()).strip()
@@ -169,6 +182,13 @@ except ValueError:
 if MAP_RADIUS_KM < 0:
   MAP_RADIUS_KM = 0.0
 MAP_RADIUS_SHOW = os.getenv("MAP_RADIUS_SHOW", "false").lower() == "true"
+MAP_BOUNDARY_MODE = os.getenv("MAP_BOUNDARY_MODE", "radius").strip().lower()
+if MAP_BOUNDARY_MODE not in ("radius", "polygon"):
+  MAP_BOUNDARY_MODE = "radius"
+MAP_BOUNDARY_FILE = os.getenv(
+  "MAP_BOUNDARY_FILE", os.path.join(STATE_DIR, "map_boundary.json")
+).strip()
+MAP_BOUNDARY_SHOW = os.getenv("MAP_BOUNDARY_SHOW", "false").lower() == "true"
 
 PROD_MODE = os.getenv("PROD_MODE", "false").lower() == "true"
 PROD_TOKEN = os.getenv("PROD_TOKEN", "").strip()

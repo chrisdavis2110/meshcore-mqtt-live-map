@@ -28,7 +28,9 @@
 
 <body data-map-start-lat="{{MAP_START_LAT}}" data-map-start-lon="{{MAP_START_LON}}"
   data-map-start-zoom="{{MAP_START_ZOOM}}" data-map-radius-km="{{MAP_RADIUS_KM}}"
-  data-map-radius-show="{{MAP_RADIUS_SHOW}}" data-map-default-layer="{{MAP_DEFAULT_LAYER}}"
+  data-map-radius-show="{{MAP_RADIUS_SHOW}}" data-map-boundary-mode="{{MAP_BOUNDARY_MODE}}"
+  data-map-boundary-show="{{MAP_BOUNDARY_SHOW}}" data-map-boundary-name="{{MAP_BOUNDARY_NAME}}"
+  data-map-default-layer="{{MAP_DEFAULT_LAYER}}"
   data-prod-mode="{{PROD_MODE}}" data-prod-token="{{PROD_TOKEN}}" data-los-elevation-url="{{LOS_ELEVATION_URL}}"
   data-los-elevation-proxy-url="{{LOS_ELEVATION_PROXY_URL}}"
   data-los-sample-min="{{LOS_SAMPLE_MIN}}" data-los-sample-max="{{LOS_SAMPLE_MAX}}"
@@ -40,6 +42,7 @@
   data-distance-units="{{DISTANCE_UNITS}}"
   data-node-radius="{{NODE_MARKER_RADIUS}}" data-history-link-scale="{{HISTORY_LINK_SCALE}}"
   data-coverage-api-url="{{COVERAGE_API_URL}}" data-custom-link-url="{{CUSTOM_LINK_URL}}"
+  data-packet-analyzer-url="{{PACKET_ANALYZER_URL}}"
   data-app-version="{{APP_VERSION}}"
   data-weather-radar-enabled="{{WEATHER_RADAR_ENABLED}}"
   data-weather-radar-country-bounds-enabled="{{WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED}}"
@@ -49,6 +52,7 @@
   data-weather-wind-refresh-seconds="{{WEATHER_WIND_REFRESH_SECONDS}}"
   data-update-available="{{UPDATE_AVAILABLE}}" data-update-local="{{UPDATE_LOCAL}}"
   data-update-remote="{{UPDATE_REMOTE}}" data-turnstile-enabled="{{TURNSTILE_ENABLED}}">
+  <script id="map-boundary-data" type="application/json">{{MAP_BOUNDARY_JSON}}</script>
   <script>
     window.__meshmapStarted = false;
     window.__meshmapReportError = (message) => console.warn(message);

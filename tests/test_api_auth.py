@@ -99,7 +99,8 @@ def test_prod_route_payload_keeps_hop_hashes_for_ui(monkeypatch):
       "ts": 1.0,
       "expires_at": 2.0,
       "payload_type": 5,
-      "message_hash": "hidden-in-prod",
+      "message_hash": "7232623D62E7848D",
+      "sender_name": "yellowcooln",
     }
   )
 
@@ -107,7 +108,8 @@ def test_prod_route_payload_keeps_hop_hashes_for_ui(monkeypatch):
   assert payload["point_ids"] == ["AA1111", "BB2222", "CC3333"]
   assert payload["origin_id"] == "AA1111"
   assert payload["receiver_id"] == "CC3333"
-  assert "message_hash" not in payload
+  assert payload["message_hash"] == "7232623D62E7848D"
+  assert payload["sender_name"] == "yellowcooln"
 
 
 def test_ws_authorized_in_prod_mode_accepts_query_and_header_tokens(monkeypatch):

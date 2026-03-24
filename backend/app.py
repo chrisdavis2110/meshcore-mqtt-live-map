@@ -27,6 +27,12 @@ from PIL import Image, ImageDraw
 import math
 
 import state
+from boundary import (
+  get_map_boundary_name,
+  get_map_boundary_points,
+  load_map_boundary,
+  within_map_boundary,
+)
 from decoder import (
   ROUTE_PAYLOAD_TYPES_SET,
   _append_heat_points,
@@ -107,6 +113,7 @@ from config import (
   MQTT_SEEN_BROADCAST_MIN_SECONDS,
   MQTT_ONLINE_FORCE_NAMES_SET,
   MQTT_STATUS_OFFLINE_VALUES_SET,
+  PEERS_DEFAULT_LIMIT,
   DEBUG_PAYLOAD,
   DEBUG_PAYLOAD_MAX,
   TURNSTILE_ENABLED,
@@ -130,6 +137,7 @@ from config import (
   SITE_ICON,
   SITE_FEED_NOTE,
   CUSTOM_LINK_URL,
+  PACKET_ANALYZER_URL,
   GIT_CHECK_ENABLED,
   GIT_CHECK_FETCH,
   GIT_CHECK_PATH,
@@ -142,6 +150,9 @@ from config import (
   MAP_START_ZOOM,
   MAP_RADIUS_KM,
   MAP_RADIUS_SHOW,
+  MAP_BOUNDARY_MODE,
+  MAP_BOUNDARY_FILE,
+  MAP_BOUNDARY_SHOW,
   MAP_DEFAULT_LAYER,
   PROD_MODE,
   PROD_TOKEN,
@@ -632,6 +643,7 @@ async def _lifespan(_app: FastAPI):
   global mqtt_client
 
   print(f"[startup] meshmap version={APP_VERSION}")
+  load_map_boundary(force=True)
   _load_state()
   _load_route_history()
   _load_neighbor_overrides()
@@ -1218,15 +1230,7 @@ def _record_mqtt_presence(
 
 
 def _within_map_radius(lat: Any, lon: Any) -> bool:
-  if MAP_RADIUS_KM <= 0:
-    return True
-  try:
-    lat_val = float(lat)
-    lon_val = float(lon)
-  except (TypeError, ValueError):
-    return False
-  distance_m = _haversine_m(MAP_START_LAT, MAP_START_LON, lat_val, lon_val)
-  return distance_m <= (MAP_RADIUS_KM * 1000.0)
+  return within_map_boundary(lat, lon)
 
 
 def _evict_device(device_id: str) -> bool:
@@ -1316,6 +1320,8 @@ def _route_payload(route: Dict[str, Any]) -> Dict[str, Any]:
     "origin_id": route.get("origin_id"),
     "receiver_id": route.get("receiver_id"),
     "payload_type": route.get("payload_type"),
+    "message_hash": route.get("message_hash"),
+    "sender_name": route.get("sender_name"),
   }
 
 
@@ -1880,7 +1886,12 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
   path_hashes = decoder_meta.get("pathHashes")
   payload_type = decoder_meta.get("payloadType")
   route_type = decoder_meta.get("routeType")
-  message_hash = decoder_meta.get("messageHash") or debug.get("packet_hash")
+  sender_name = decoder_meta.get("senderName")
+  if not isinstance(sender_name, str) or not sender_name.strip():
+    sender_name = None
+  else:
+    sender_name = sender_name.strip()
+  message_hash = debug.get("packet_hash") or decoder_meta.get("messageHash")
   snr_values = decoder_meta.get("snrValues")
   path_header = decoder_meta.get("path")
   path_length = decoder_meta.get("pathLength")
@@ -1899,19 +1910,29 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
     if not cache:
       cache = {
         "origin_id": None,
+        "sender_name": None,
         "first_rx": None,
         "receivers": set(),
         "ts": time.time(),
       }
       message_origins[message_hash] = cache
     cache["ts"] = time.time()
-    origin_for_tx = origin_id or receiver_id
-    if direction_value == "tx" and origin_for_tx:
-      cache["origin_id"] = origin_for_tx
+    if route_origin_id:
+      cache["origin_id"] = route_origin_id
+    if sender_name:
+      cache["sender_name"] = sender_name
     if direction_value == "rx" and receiver_id:
       cache["receivers"].add(receiver_id)
       if not cache.get("first_rx"):
         cache["first_rx"] = receiver_id
+    if not route_origin_id:
+      cached_origin_id = cache.get("origin_id")
+      if isinstance(cached_origin_id, str) and cached_origin_id.strip():
+        route_origin_id = cached_origin_id
+    if not sender_name:
+      cached_sender_name = cache.get("sender_name")
+      if isinstance(cached_sender_name, str) and cached_sender_name.strip():
+        sender_name = cached_sender_name.strip()
   loop: asyncio.AbstractEventLoop = userdata["loop"]
   try:
     payload_type = int(payload_type) if payload_type is not None else None
@@ -1938,6 +1959,21 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
 
   route_emitted = False
   if route_hashes and payload_type in ROUTE_PAYLOAD_TYPES_SET:
+    if DEBUG_PAYLOAD:
+      origin_cache = message_origins.get(message_hash) if message_hash else None
+      print(
+        "[route-debug] "
+        f"hash={message_hash or '-'} "
+        f"payload={payload_type if payload_type is not None else '-'} "
+        f"dir={direction_value or '-'} "
+        f"topic_origin={origin_id or '-'} "
+        f"route_origin={route_origin_id or '-'} "
+        f"sender_name={sender_name or '-'} "
+        f"cached_origin={(origin_cache or {}).get('origin_id') or '-'} "
+        f"first_rx={(origin_cache or {}).get('first_rx') or '-'} "
+        f"receiver={receiver_id or '-'} "
+        f"path={route_hashes}"
+      )
     loop.call_soon_threadsafe(
       update_queue.put_nowait,
       {
@@ -1949,6 +1985,7 @@ def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
         "receiver_id": receiver_id,
         "snr_values": snr_values,
         "route_type": route_type,
+        "sender_name": sender_name,
         "ts": time.time(),
         "topic": msg.topic,
       },
@@ -2153,6 +2190,7 @@ async def broadcaster():
         "payload_type": event.get("payload_type"),
         "message_hash": event.get("message_hash"),
         "snr_values": event.get("snr_values"),
+        "sender_name": event.get("sender_name"),
         "topic": event.get("topic"),
       }
       _append_heat_points(points, route["ts"], event.get("payload_type"))
@@ -2614,9 +2652,11 @@ def root(request: Request):
   trail_info_suffix = ""
   if TRAIL_LEN > 0:
     trail_info_suffix = f" Trails show last ~{TRAIL_LEN} points."
+  boundary_json = json.dumps(get_map_boundary_points()).replace("</", "<\\/")
 
   # Escape og_url for HTML
   SAFE_OG_URL = html.escape(str(og_url), quote=True)
+  content = content.replace("{{MAP_BOUNDARY_JSON}}", boundary_json)
 
   replacements = {
     "SITE_TITLE":
@@ -2631,6 +2671,8 @@ def root(request: Request):
       SITE_FEED_NOTE,
     "CUSTOM_LINK_URL":
       CUSTOM_LINK_URL,
+    "PACKET_ANALYZER_URL":
+      PACKET_ANALYZER_URL,
     "APP_VERSION":
       APP_VERSION,
     "ASSET_VERSION":
@@ -2657,6 +2699,12 @@ def root(request: Request):
       MAP_RADIUS_KM,
     "MAP_RADIUS_SHOW":
       str(MAP_RADIUS_SHOW).lower(),
+    "MAP_BOUNDARY_MODE":
+      MAP_BOUNDARY_MODE,
+    "MAP_BOUNDARY_SHOW":
+      str(MAP_BOUNDARY_SHOW).lower(),
+    "MAP_BOUNDARY_NAME":
+      get_map_boundary_name(),
     "MAP_DEFAULT_LAYER":
       MAP_DEFAULT_LAYER,
     "LOS_ELEVATION_URL":
@@ -3047,8 +3095,10 @@ def map_page(request: Request):
   trail_info_suffix = ""
   if TRAIL_LEN > 0:
     trail_info_suffix = f" Trails show last ~{TRAIL_LEN} points."
+  boundary_json = json.dumps(get_map_boundary_points()).replace("</", "<\\/")
 
   SAFE_OG_URL = html.escape(SITE_URL, quote=True)
+  content = content.replace("{{MAP_BOUNDARY_JSON}}", boundary_json)
 
   replacements = {
     "SITE_TITLE": SITE_TITLE,
@@ -3057,6 +3107,7 @@ def map_page(request: Request):
     "SITE_ICON": SITE_ICON,
     "SITE_FEED_NOTE": SITE_FEED_NOTE,
     "CUSTOM_LINK_URL": CUSTOM_LINK_URL,
+    "PACKET_ANALYZER_URL": PACKET_ANALYZER_URL,
     "APP_VERSION": APP_VERSION,
     "ASSET_VERSION": ASSET_VERSION,
     "DISTANCE_UNITS": DISTANCE_UNITS,
@@ -3070,6 +3121,9 @@ def map_page(request: Request):
     "MAP_START_ZOOM": MAP_START_ZOOM,
     "MAP_RADIUS_KM": MAP_RADIUS_KM,
     "MAP_RADIUS_SHOW": str(MAP_RADIUS_SHOW).lower(),
+    "MAP_BOUNDARY_MODE": MAP_BOUNDARY_MODE,
+    "MAP_BOUNDARY_SHOW": str(MAP_BOUNDARY_SHOW).lower(),
+    "MAP_BOUNDARY_NAME": get_map_boundary_name(),
     "MAP_DEFAULT_LAYER": MAP_DEFAULT_LAYER,
     "LOS_ELEVATION_URL": LOS_ELEVATION_URL,
     "LOS_ELEVATION_PROXY_URL": LOS_ELEVATION_PROXY_URL,
@@ -3276,11 +3330,12 @@ def api_nodes(
 
 
 @app.get("/peers/{device_id}")
-def get_peers(device_id: str, request: Request, limit: int = 8):
+def get_peers(device_id: str, request: Request, limit: Optional[int] = Query(None)):
   _require_prod_token(request)
   if not device_id:
     raise HTTPException(status_code=400, detail="device_id required")
-  limit_value = max(1, min(int(limit or 8), 50))
+  raw_limit = PEERS_DEFAULT_LIMIT if limit is None else limit
+  limit_value = max(1, min(int(raw_limit or PEERS_DEFAULT_LIMIT), 50))
   payload = _peer_stats_for_device(device_id, limit_value)
   state = devices.get(device_id)
   if state and not _coords_are_zero(state.lat, state.lon):

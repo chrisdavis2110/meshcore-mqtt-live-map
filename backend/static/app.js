@@ -86,6 +86,23 @@ const mapStartLon = Number.isFinite(queryLon) ? queryLon : defaultLon;
 const mapStartZoom = Number.isFinite(queryZoom) && queryZoom > 0 ? queryZoom : defaultZoom;
 const mapRadiusKm = Number(config.mapRadiusKm) || 0;
 const mapRadiusShow = String(config.mapRadiusShow).toLowerCase() === 'true';
+const mapBoundaryMode = String(config.mapBoundaryMode || 'radius').toLowerCase();
+const mapBoundaryShow = String(config.mapBoundaryShow).toLowerCase() === 'true';
+const mapBoundaryName = String(config.mapBoundaryName || '').trim();
+const mapBoundaryDataEl = document.getElementById('map-boundary-data');
+let mapBoundaryPoints = [];
+if (mapBoundaryDataEl) {
+  try {
+    const parsed = JSON.parse(mapBoundaryDataEl.textContent || '[]');
+    if (Array.isArray(parsed)) {
+      mapBoundaryPoints = parsed
+        .map((pt) => Array.isArray(pt) && pt.length >= 2 ? [Number(pt[0]), Number(pt[1])] : null)
+        .filter((pt) => Array.isArray(pt) && Number.isFinite(pt[0]) && Number.isFinite(pt[1]));
+    }
+  } catch (_err) {
+    mapBoundaryPoints = [];
+  }
+}
 let baseLayer = (config.mapDefaultLayer || 'light').toLowerCase();
 const validLayers = new Set(['dark', 'topo', 'light']);
 if (validLayers.has(queryLayer)) {
@@ -126,7 +143,8 @@ const topoTiles = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'
   attribution: '&copy; OpenStreetMap contributors &copy; OpenTopoMap'
 });
 let mapRadiusCircle = null;
-if (mapRadiusShow && mapRadiusKm > 0) {
+const activeBoundaryShow = mapBoundaryShow || mapRadiusShow;
+if (mapBoundaryMode === 'radius' && activeBoundaryShow && mapRadiusKm > 0) {
   mapRadiusCircle = L.circle([mapStartLat, mapStartLon], {
     radius: mapRadiusKm * 1000.0,
     color: '#38bdf8',
@@ -136,6 +154,25 @@ if (mapRadiusShow && mapRadiusKm > 0) {
     fillOpacity: 0.05,
     interactive: false
   }).addTo(map);
+}
+let mapBoundaryPolygon = null;
+if (mapBoundaryMode === 'polygon' && activeBoundaryShow && mapBoundaryPoints.length >= 3) {
+  mapBoundaryPolygon = L.polygon(mapBoundaryPoints, {
+    color: '#38bdf8',
+    weight: 2,
+    dashArray: '6 8',
+    fillColor: '#38bdf8',
+    fillOpacity: 0.04,
+    interactive: false
+  }).addTo(map);
+  if (mapBoundaryName) {
+    mapBoundaryPolygon.bindTooltip(mapBoundaryName, {
+      permanent: false,
+      direction: 'center',
+      sticky: false,
+      opacity: 0.9
+    });
+  }
 }
 const storedLayer = localStorage.getItem('meshmapBaseLayer');
 if (!validLayers.has(queryLayer) && (storedLayer === 'dark' || storedLayer === 'topo' || storedLayer === 'light')) {
@@ -210,6 +247,7 @@ const losPointIcon = L.divIcon({
 });
 const coverageApiUrl = (config.coverageApiUrl || '').trim();
 const customLinkUrl = (config.customLinkUrl || '').trim();
+const packetAnalyzerUrl = (config.packetAnalyzerUrl || '').trim();
 const coverageEnabled = Boolean(coverageApiUrl);
 const coverageLayer = L.layerGroup();
 let coverageVisible = false;
@@ -1754,7 +1792,25 @@ function showRouteDetails(meta) {
   }
 
   if (routeDetailsTitle) {
-    routeDetailsTitle.textContent = `Route: ${meta.id.slice(0, 8)}... (${meta.hop_count} hops)`;
+    const routeHash = typeof meta.message_hash === 'string' && meta.message_hash.trim()
+      ? meta.message_hash.trim()
+      : (typeof meta.id === 'string' ? meta.id.trim() : '');
+    const routeLabel = routeHash || 'unknown';
+    routeDetailsTitle.innerHTML = '';
+    routeDetailsTitle.append(document.createTextNode('Route: '));
+    if (packetAnalyzerUrl && routeHash) {
+      const link = document.createElement('a');
+      link.href = `${packetAnalyzerUrl}${encodeURIComponent(routeHash)}`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.className = 'route-hash-link';
+      link.textContent = routeLabel;
+      link.title = routeHash;
+      routeDetailsTitle.append(link);
+    } else {
+      routeDetailsTitle.append(document.createTextNode(routeLabel));
+    }
+    routeDetailsTitle.append(document.createTextNode(` (${meta.hop_count} hops)`));
   }
   if (routeDetailsTotal) {
     const totalDistance = Number.isFinite(meta.distance_m)
@@ -1806,7 +1862,21 @@ function showRouteDetails(meta) {
         idInfo = `Prefix: ${pt.node_prefix}`;
       }
 
-      const metaInfo = [distInfo, idInfo].filter(Boolean).join(' • ');
+      let roleInfo = '';
+      if (pt.role_label) {
+        roleInfo = `Role: ${pt.role_label}`;
+      }
+
+      let endpointInfo = '';
+      if (pt.endpoint_only && pt.endpoint_kind === 'sender_name') {
+        endpointInfo = 'Sender name';
+      } else if (pt.endpoint_only && pt.endpoint_kind === 'origin') {
+        endpointInfo = 'Origin endpoint';
+      } else if (pt.endpoint_only && pt.endpoint_kind === 'receiver') {
+        endpointInfo = 'Receiver endpoint';
+      }
+
+      const metaInfo = [endpointInfo, roleInfo, distInfo, idInfo].filter(Boolean).join(' • ');
 
       let badgeContent = displayIdx;
       let badgeClass = 'hop-badge';
@@ -4243,6 +4313,9 @@ function findLosPeaks(points, elevations, distanceMeters) {
 function makePopup(d) {
   const lastContact = formatLastContact(getLastSeenTs(d));
   const deviceLabel = deviceShortId(d);
+  const latText = Number(d.lat).toFixed(6);
+  const lonText = Number(d.lon).toFixed(6);
+  const locationText = `Location: ${latText}, ${lonText}`;
   const title = d.name
     ? `<span class="popup-title">${d.name}</span><span class="popup-id">${deviceLabel}</span>`
     : `<span class="popup-title popup-id">${deviceLabel}</span>`;
@@ -4253,13 +4326,39 @@ function makePopup(d) {
         ${title}
         <span class="small">
           ${roleLabel ? `Role: ${roleLabel}<br/>` : ``}
-          Location: ${d.lat.toFixed(6)}, ${d.lon.toFixed(6)}<br/>
+          <button
+            type="button"
+            class="popup-copy-location"
+            data-copy-text="${locationText}"
+            title="Copy location"
+          >${locationText}</button><br/>
           Last Contact: ${lastContact}<br/>
           ${mqttOnline ? `MQTT: Online<br/>` : ``}
           ${d.rssi != null ? `RSSI: ${d.rssi}<br/>` : ``}
           ${d.snr != null ? `SNR: ${d.snr}<br/>` : ``}
         </span>
       `;
+}
+
+async function copyPopupLocation(ev) {
+  const btn = ev?.currentTarget;
+  if (!btn) return;
+  const text = typeof btn.dataset.copyText === 'string' ? btn.dataset.copyText : '';
+  if (!text) return;
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (_err) {
+    copied = false;
+  }
+  const original = btn.textContent || text;
+  btn.textContent = copied ? 'Copied' : text;
+  window.setTimeout(() => {
+    btn.textContent = original;
+  }, 1200);
 }
 
 function upsertDevice(d, trail) {
@@ -4278,6 +4377,14 @@ function upsertDevice(d, trail) {
       maxHeight: 320,
       autoPan: false,
       keepInView: false
+    });
+    m.on('popupopen', (ev) => {
+      const root = ev?.popup?.getElement?.();
+      if (!root) return;
+      const btn = root.querySelector('.popup-copy-location');
+      if (!btn || btn.dataset.boundClick === 'true') return;
+      btn.dataset.boundClick = 'true';
+      btn.addEventListener('click', copyPopupLocation);
     });
     m.__suppressClick = false;
     m.__longPressTimer = null;
@@ -4855,9 +4962,72 @@ function pointIdNodePrefixDetail(pointId, hopHash = null) {
   return prefix;
 }
 
+function pointIdRoleLabel(pointId) {
+  if (!pointId) return null;
+  const device = deviceData.get(pointId);
+  if (!device) return null;
+  const role = resolveRole(device);
+  if (!role || role === 'unknown') return null;
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function buildRouteDetailsDisplayPoints(route, pointIds) {
+  if (!route || !Array.isArray(route.points)) return [];
+  const rows = route.points.map((pt, idx) => ({
+    coords: pt,
+    route_index: idx,
+    point_id: pointIds ? pointIds[idx] || null : null,
+    endpoint_only: false,
+    endpoint_kind: null
+  }));
+
+  const senderName = typeof route.sender_name === 'string' ? route.sender_name.trim() : '';
+  if (senderName) {
+    rows.unshift({
+      coords: null,
+      route_index: null,
+      point_id: null,
+      point_label: senderName,
+      role_label: 'Companion',
+      endpoint_only: true,
+      endpoint_kind: 'sender_name'
+    });
+  }
+
+  const maybeAddCompanionEndpoint = (deviceId, kind) => {
+    if (!deviceId) return;
+    if (pointIds && pointIds.includes(deviceId)) return;
+    const device = deviceData.get(deviceId);
+    if (!device || resolveRole(device) !== 'companion') return;
+    const lat = Number(device.lat);
+    const lon = Number(device.lon);
+    const coords = Number.isFinite(lat) && Number.isFinite(lon) ? [lat, lon] : null;
+    const row = {
+      coords,
+      route_index: null,
+      point_id: deviceId,
+      endpoint_only: true,
+      endpoint_kind: kind
+    };
+    if (kind === 'origin') {
+      rows.unshift(row);
+    } else {
+      rows.push(row);
+    }
+  };
+
+  maybeAddCompanionEndpoint(route.origin_id, 'origin');
+  maybeAddCompanionEndpoint(route.receiver_id, 'receiver');
+  return rows;
+}
+
 function buildRouteLogMeta(route) {
   if (!route || !Array.isArray(route.points)) return null;
-  const hopCount = Math.max(0, route.points.length - 1);
+  const pointIds = Array.isArray(route.point_ids) && route.point_ids.length === route.points.length
+    ? route.point_ids
+    : null;
+  const displayPoints = buildRouteDetailsDisplayPoints(route, pointIds);
+  const hopCount = Math.max(0, displayPoints.length - 1);
   const distanceMeters = computeRouteDistanceMeters(route.points);
   const expiresSeconds = Number(route.expires_at);
   const expiresInSeconds = Number.isFinite(expiresSeconds)
@@ -4865,17 +5035,16 @@ function buildRouteLogMeta(route) {
     : null;
   let cumulative = 0;
   const hashes = Array.isArray(route.hashes) ? route.hashes : null;
-  const pointIds = Array.isArray(route.point_ids) && route.point_ids.length === route.points.length
-    ? route.point_ids
-    : null;
-  const pointRows = route.points.map((pt, idx) => {
-    const lat = Number(pt[0]);
-    const lon = Number(pt[1]);
+  const pointRows = displayPoints.map((entry, idx) => {
+    const coords = Array.isArray(entry.coords) ? entry.coords : [];
+    const lat = Number(coords[0]);
+    const lon = Number(coords[1]);
     let hopDistance = null;
     if (idx > 0 && Number.isFinite(lat) && Number.isFinite(lon)) {
-      const prev = route.points[idx - 1];
-      const prevLat = Number(prev[0]);
-      const prevLon = Number(prev[1]);
+      const prevEntry = displayPoints[idx - 1];
+      const prevCoords = Array.isArray(prevEntry.coords) ? prevEntry.coords : [];
+      const prevLat = Number(prevCoords[0]);
+      const prevLon = Number(prevCoords[1]);
       if (Number.isFinite(prevLat) && Number.isFinite(prevLon)) {
         hopDistance = haversineMeters(prevLat, prevLon, lat, lon);
         if (Number.isFinite(hopDistance)) {
@@ -4883,14 +5052,18 @@ function buildRouteLogMeta(route) {
         }
       }
     }
-    const hopHash = hashes && idx > 0 ? hashes[idx - 1] : null;
-    const pointId = pointIds ? pointIds[idx] : null;
+    const routeIndex = Number.isInteger(entry.route_index) ? entry.route_index : null;
+    const hopHash = hashes && routeIndex != null && routeIndex > 0 ? hashes[routeIndex - 1] : null;
+    const pointId = entry.point_id || null;
     return {
       index: idx,
       lat,
       lon,
       point_id: pointId || null,
-      point_label: pointId ? deviceLabelFromId(pointId) : null,
+      point_label: entry.point_label || (pointId ? deviceLabelFromId(pointId) : null),
+      role_label: entry.role_label || pointIdRoleLabel(pointId),
+      endpoint_only: !!entry.endpoint_only,
+      endpoint_kind: entry.endpoint_kind || null,
       node_prefix: pointIdNodePrefix(pointId, hopHash),
       node_prefix_detail: pointIdNodePrefixDetail(pointId, hopHash),
       hop_distance_m: hopDistance,
@@ -4915,6 +5088,7 @@ function buildRouteLogMeta(route) {
     origin_label: deviceLabelFromId(route.origin_id),
     receiver_id: route.receiver_id,
     receiver_label: deviceLabelFromId(route.receiver_id),
+    sender_name: route.sender_name || null,
     message_hash: route.message_hash,
     topic: route.topic,
     snr_values: route.snr_values,

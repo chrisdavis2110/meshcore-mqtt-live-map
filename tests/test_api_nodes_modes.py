@@ -88,3 +88,53 @@ def test_api_nodes_updated_since_and_full_mode_override(monkeypatch):
     assert full["updated_since_ignored"] is True
   finally:
     _clear_state()
+
+
+def test_get_peers_uses_env_default_limit(monkeypatch):
+  monkeypatch.setattr(app, "PROD_MODE", False)
+  monkeypatch.setattr(app, "PEERS_DEFAULT_LIMIT", 25)
+  captured = {}
+
+  def _fake_peer_stats(device_id, limit):
+    captured["device_id"] = device_id
+    captured["limit"] = limit
+    return {
+      "device_id": device_id,
+      "incoming_total": 0,
+      "outgoing_total": 0,
+      "incoming": [],
+      "outgoing": [],
+      "window_hours": 24,
+    }
+
+  monkeypatch.setattr(app, "_peer_stats_for_device", _fake_peer_stats)
+
+  payload = app.get_peers("AA001111", _request("/peers/AA001111"), limit=None)
+
+  assert payload["device_id"] == "AA001111"
+  assert captured == {"device_id": "AA001111", "limit": 25}
+
+
+def test_get_peers_limit_query_overrides_and_caps(monkeypatch):
+  monkeypatch.setattr(app, "PROD_MODE", False)
+  monkeypatch.setattr(app, "PEERS_DEFAULT_LIMIT", 25)
+  captured = {}
+
+  def _fake_peer_stats(device_id, limit):
+    captured["device_id"] = device_id
+    captured["limit"] = limit
+    return {
+      "device_id": device_id,
+      "incoming_total": 0,
+      "outgoing_total": 0,
+      "incoming": [],
+      "outgoing": [],
+      "window_hours": 24,
+    }
+
+  monkeypatch.setattr(app, "_peer_stats_for_device", _fake_peer_stats)
+
+  payload = app.get_peers("AA001111", _request("/peers/AA001111?limit=999"), limit=999)
+
+  assert payload["device_id"] == "AA001111"
+  assert captured == {"device_id": "AA001111", "limit": 50}

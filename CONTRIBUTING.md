@@ -8,7 +8,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 3) Verify: `curl -s http://localhost:8080/snapshot`
 
 ## Versioning
-- Current version: `1.7.0` (see `VERSIONS.md`).
+- Current version: `1.7.7` (see `VERSIONS.md`).
 - Update `VERSION.txt` when adding features.
 - Append a new section to `VERSIONS.md` describing the change set.
 
@@ -33,6 +33,7 @@ Thanks for helping improve the MeshCore Live Map. This repo is intentionally lig
 - Turnstile only activates when `PROD_MODE=true`; if you are testing Turnstile,
   set `PROD_MODE=true` plus the `TURNSTILE_*` env vars.
 - If `COVERAGE_API_URL` is blank, confirm the Coverage button is hidden.
+- If `MAP_BOUNDARY_MODE=polygon`, verify `MAP_BOUNDARY_FILE` exists and that the polygon overlay/filter matches the file contents.
 - Weather panel check:
   - `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED=true` keeps radar clipped to country bounds.
   - `WEATHER_WIND_ENABLED=false` disables wind and should mark wind as unavailable in the Weather panel.

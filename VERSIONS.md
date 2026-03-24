@@ -1,5 +1,24 @@
 # Versions
 
+## v1.7.7 (03-22-2026)
+- Added `PEERS_DEFAULT_LIMIT` so the Peers tool default list size is configurable from env instead of being hardcoded to `8`.
+- `/peers/{device_id}` still allows `?limit=` overrides, and both the env default and query override are clamped to a max of `50`.
+- Added optional boundary mode support with `MAP_BOUNDARY_MODE=polygon`, `MAP_BOUNDARY_FILE`, and `MAP_BOUNDARY_SHOW`; default behavior remains radius mode.
+- Polygon boundaries now filter devices, routes, and history consistently, and the frontend can render the active polygon overlay from backend-injected JSON.
+- Added `map_boundary.example.json` plus a standalone builder at `tools/map-boundary-builder.html` for generating polygon JSON files outside the live app; hosted copy: [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/).
+
+## v1.7.5 (03-22-2026)
+- Added independent scrollable incoming/outgoing peer lists so the Peers panel can show the full peer set without truncating the panel content.
+- Route Details now preserves companion endpoints in the popup when the route line itself begins or ends at infrastructure nodes, including non-spatial endpoint rows for companions without GPS coordinates.
+- Route Details can now show a display-only sender-name row as hop 0 when the packet decode includes a message sender name but not a stable sender identity.
+- Route Details hop counts now match the visible list when a display-only sender companion row is present, and that sender row is labeled with role `Companion`.
+- Added optional `PACKET_ANALYZER_URL` so Route Details hashes can link directly to an external packet analyzer.
+- Route Details now shows the full packet hash in the header instead of truncating it.
+- Route Details now prefers the MQTT packet hash for route identity and analyzer links instead of a shorter decoder `messageHash` when both are present.
+- Fixed the prod route payload so Route Details keeps the packet hash and sender name instead of falling back to the internal `hash:receiver` route id in the title.
+- Added `CHANNEL_SECRETS_FILE` support and a shipped `channel_secrets.example.json` so group-text sender names can be decrypted without using a long env var list.
+- Made the node popup `Location:` line clickable so it copies the displayed `Location: <lat>, <lon>` text directly to the clipboard.
+
 ## v1.7.0 (03-20-2026)
 - Added dual coverage API support so the Coverage button now works with both the legacy `/get-samples` API and the new MeshMapper Coverage API.
 - Added MeshMapper API detection for the documented `https://meshmapper.net/coverage.php` endpoint, with automatic requests to `coverage.php`.
