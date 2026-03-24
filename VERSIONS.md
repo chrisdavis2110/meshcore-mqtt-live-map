@@ -1,5 +1,10 @@
 # Versions
 
+## v1.7.8 (03-23-2026)
+- Adjusted MeshMapper coverage rendering to match the native MeshMapper look more closely by removing visible square borders and increasing fill density.
+- Legacy coverage rendering is unchanged; the visual change applies only to MeshMapper `grid_squares`.
+- Added a MeshMapper coverage legend in the HUD that appears only while the Coverage layer is active, using the native MeshMapper categories: `BIDIR`, `DISC / TRACE`, `TX`, `RX`, `DEAD`, and `DROP`.
+
 ## v1.7.7 (03-22-2026)
 - Added `PEERS_DEFAULT_LIMIT` so the Peers tool default list size is configurable from env instead of being hardcoded to `8`.
 - `/peers/{device_id}` still allows `?limit=` overrides, and both the env default and query override are clamped to a max of `50`.

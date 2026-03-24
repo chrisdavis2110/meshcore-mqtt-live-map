@@ -336,6 +336,7 @@ const losHeightBInput = document.getElementById('los-height-b');
 const propPanel = document.getElementById('prop-panel');
 const historyPanel = document.getElementById('history-panel');
 const historyLegendGroup = document.getElementById('legend-history-group');
+const coverageLegendGroup = document.getElementById('legend-coverage-group');
 const historyPanelLabel = document.getElementById('history-panel-label');
 const historyHideButton = document.getElementById('history-hide');
 const weatherPanel = document.getElementById('weather-panel');
@@ -703,6 +704,12 @@ function updateCoverageAttribution() {
   }
 }
 
+function updateCoverageLegend() {
+  if (!coverageLegendGroup) return;
+  const active = coverageVisible && coverageProvider === 'meshmapper' && Array.isArray(coverageData) && coverageData.length > 0;
+  coverageLegendGroup.classList.toggle('active', active);
+}
+
 function coverageTimeLabel(ts) {
   const raw = typeof ts === 'string' ? Number.parseInt(ts, 10) : ts;
   if (!Number.isFinite(raw) || raw <= 0) return '';
@@ -723,11 +730,9 @@ function renderMeshMapperCoverage(data) {
     const east = Number(bounds.east);
     if (![south, west, north, east].every(Number.isFinite)) continue;
     const fillColor = square.fill_color || '#1e7e34';
-    const borderColor = square.border_color || fillColor;
     const rect = L.rectangle([[south, west], [north, east]], {
-      color: borderColor,
-      weight: 1,
-      fillOpacity: 0.55,
+      stroke: false,
+      fillOpacity: 0.85,
       fillColor
     });
     const details = [];
@@ -749,11 +754,13 @@ function renderCoverage(data) {
   coverageLayer.clearLayers();
   if (!data || !Array.isArray(data)) {
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   if (data.some(sample => sample && typeof sample === 'object' && sample.bounds)) {
     renderMeshMapperCoverage(data);
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   // Aggregate samples by 6-char geohash prefix (coverage tile level)
@@ -823,6 +830,7 @@ function renderCoverage(data) {
     }
   }
   updateCoverageAttribution();
+  updateCoverageLegend();
 }
 
 function setCoverageVisible(visible) {
@@ -837,6 +845,7 @@ function setCoverageVisible(visible) {
       map.removeLayer(coverageLayer);
     }
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   if (visible) {
@@ -854,6 +863,7 @@ function setCoverageVisible(visible) {
           }
           renderCoverage(result.data);
         } else {
+          updateCoverageLegend();
           reportError('Coverage API returned invalid data format');
         }
       });
@@ -865,6 +875,7 @@ function setCoverageVisible(visible) {
       map.removeLayer(coverageLayer);
     }
     updateCoverageAttribution();
+    updateCoverageLegend();
   }
 }
 
