@@ -1,12 +1,13 @@
 # Versions
 
-## v1.7.8 (03-24-2026)
+## v1.7.8.1 (03-24-2026)
 - Adjusted MeshMapper coverage rendering to match the native MeshMapper look more closely by removing visible square borders and increasing fill density.
 - Legacy coverage rendering is unchanged; the visual change applies only to MeshMapper `grid_squares`.
 - Added a MeshMapper coverage legend in the HUD that appears only while the Coverage layer is active, using the native MeshMapper categories: `BIDIR`, `DISC / TRACE`, `TX`, `RX`, `DEAD`, and `DROP`.
 - Enabled Leaflet canvas rendering for the main map and moved node, history, and coverage drawing onto canvas-backed rendering while keeping animated route/trail lines on SVG so visuals stay unchanged.
 - Added viewport culling for nodes and coverage tiles so off-screen markers and coverage squares are not rendered until they are near the visible map area.
 - Batched realtime websocket updates onto `requestAnimationFrame` so bursts of node/route/history events no longer force repeated synchronous redraws and stats recalculations in a single frame.
+- Fixed the Peers tool `Clear peers` action so it removes both incoming and outgoing lines even when the same peer appears in both directions.
 
 ## v1.7.7 (03-22-2026)
 - Added `PEERS_DEFAULT_LIMIT` so the Peers tool default list size is configurable from env instead of being hardcoded to `8`.

@@ -1995,7 +1995,7 @@ function renderPeerLines(origin, incoming, outgoing) {
     peerLayer.addTo(map);
   }
   const originLatLng = [origin.lat, origin.lon];
-  const drawLine = (peer, color, dash) => {
+  const drawLine = (peer, color, dash, direction) => {
     if (peer.lat == null || peer.lon == null) return;
     const line = L.polyline([originLatLng, [peer.lat, peer.lon]], {
       color,
@@ -2003,10 +2003,11 @@ function renderPeerLines(origin, incoming, outgoing) {
       opacity: 0.85,
       dashArray: dash
     }).addTo(peerLayer);
-    peerLines.set(peer.peer_id, line);
+    const key = `${direction}:${peer.peer_id || `${peer.lat},${peer.lon}`}`;
+    peerLines.set(key, line);
   };
-  incoming.forEach(peer => drawLine(peer, '#38bdf8', '6 8'));
-  outgoing.forEach(peer => drawLine(peer, '#a855f7', '2 6'));
+  incoming.forEach(peer => drawLine(peer, '#38bdf8', '6 8', 'in'));
+  outgoing.forEach(peer => drawLine(peer, '#a855f7', '2 6', 'out'));
   if (peerLayer.bringToFront) {
     peerLayer.bringToFront();
   }
