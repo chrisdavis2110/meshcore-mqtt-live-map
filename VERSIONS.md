@@ -2,6 +2,9 @@
 
 ## v1.7.8.1 (03-24-2026)
 - Fixed issue #38: the Peers tool `Clear peers` action now removes both incoming and outgoing lines even when the same peer appears in both directions.
+- Fixed a follow-on Peers tool bug where clearing peers could leave a stale in-flight lookup active, preventing a new node selection from taking over until the tool was reopened.
+- Made peer lines non-interactive so the Peers tool no longer blocks node clicks while peer links are displayed.
+- Moved peer lines into a dedicated non-interactive pane so repeated node selections keep working while the Peers tool is open.
 
 ## v1.7.8 (03-24-2026)
 - Adjusted MeshMapper coverage rendering to match the native MeshMapper look more closely by removing visible square borders and increasing fill density.

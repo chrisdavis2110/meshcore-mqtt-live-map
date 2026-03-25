@@ -132,6 +132,14 @@ if (weatherWindPane) {
   weatherWindPane.style.zIndex = '330';
   weatherWindPane.style.pointerEvents = 'none';
 }
+if (!map.getPane('peerPane')) {
+  map.createPane('peerPane');
+}
+const peerPane = map.getPane('peerPane');
+if (peerPane) {
+  peerPane.style.zIndex = '340';
+  peerPane.style.pointerEvents = 'none';
+}
 const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors'
@@ -420,6 +428,7 @@ let weatherPanelHidden = false;
 let peersActive = false;
 let peersSelectedId = null;
 let peersData = null;
+let peersRequestToken = 0;
 let historyFilterMode = Number(localStorage.getItem('meshmapHistoryFilter') || '0');
 if (queryHistoryFilter != null) {
   historyFilterMode = queryHistoryFilter;
@@ -1998,10 +2007,12 @@ function renderPeerLines(origin, incoming, outgoing) {
   const drawLine = (peer, color, dash, direction) => {
     if (peer.lat == null || peer.lon == null) return;
     const line = L.polyline([originLatLng, [peer.lat, peer.lon]], {
+      pane: 'peerPane',
       color,
       weight: 3,
       opacity: 0.85,
-      dashArray: dash
+      dashArray: dash,
+      interactive: false
     }).addTo(peerLayer);
     const key = `${direction}:${peer.peer_id || `${peer.lat},${peer.lon}`}`;
     peerLines.set(key, line);
@@ -2042,6 +2053,7 @@ async function selectPeerNode(deviceId) {
   if (!deviceId) return;
   peersSelectedId = deviceId;
   if (!peersActive) return;
+  const requestToken = ++peersRequestToken;
   setPeersStatus('Loading peers…');
   if (peersMeta) peersMeta.textContent = '';
   try {
@@ -2050,6 +2062,7 @@ async function selectPeerNode(deviceId) {
       throw new Error(`peers ${res.status}`);
     }
     const data = await res.json();
+    if (requestToken !== peersRequestToken || !peersActive || peersSelectedId !== deviceId) return;
     peersData = data;
     const name = data.name || (deviceId ? `${deviceId.slice(0, 8)}…` : 'Unknown');
     const inboundTotal = data.incoming_total || 0;
@@ -2066,6 +2079,7 @@ async function selectPeerNode(deviceId) {
       data.outgoing || []
     );
   } catch (err) {
+    if (requestToken !== peersRequestToken) return;
     setPeersStatus('Peer lookup failed.');
     if (peersMeta) peersMeta.textContent = '';
     renderPeerList(peersIn, [], 0, 'incoming');
@@ -2076,6 +2090,7 @@ async function selectPeerNode(deviceId) {
 }
 
 function clearPeers() {
+  peersRequestToken += 1;
   peersSelectedId = null;
   peersData = null;
   setPeersStatus('Select a node to view peers.');
