@@ -262,6 +262,8 @@ const coverageEnabled = Boolean(coverageApiUrl);
 const coverageLayer = L.layerGroup();
 let coverageVisible = false;
 let coverageData = null;
+let meshMapperCoverageRects = [];
+let meshMapperCoverageSource = null;
 let coverageProvider = '';
 let coverageRegion = '';
 let coverageAttributionHtml = '';
@@ -894,6 +896,8 @@ function expandMeshMapperCoverageSquares(data) {
 
 function renderMeshMapperCoverage(data) {
   let rendered = 0;
+  meshMapperCoverageRects = [];
+  meshMapperCoverageSource = data;
   const expandedSquares = expandMeshMapperCoverageSquares(data);
   for (const square of expandedSquares) {
     const bounds = square?.bounds;
@@ -923,14 +927,31 @@ function renderMeshMapperCoverage(data) {
     if (when) details.push(`Updated: ${when}`);
     if (square.__source_grid_id) details.push(`Source grid: ${square.__source_grid_id}`);
     rect.bindPopup(details.join('<br/>'), { maxWidth: 320 });
-    coverageLayer.addLayer(rect);
+    rect.__coverageBounds = { south, west, north, east };
+    rect.__attached = false;
+    meshMapperCoverageRects.push(rect);
+    syncLayerMembership(coverageLayer, rect, boundsIntersectsViewport(south, west, north, east));
     rendered++;
   }
   return rendered;
 }
 
+function syncMeshMapperCoverageViewport() {
+  for (const rect of meshMapperCoverageRects) {
+    const b = rect && rect.__coverageBounds;
+    if (!b) continue;
+    syncLayerMembership(
+      coverageLayer,
+      rect,
+      boundsIntersectsViewport(b.south, b.west, b.north, b.east)
+    );
+  }
+}
+
 function renderCoverage(data) {
   coverageLayer.clearLayers();
+  meshMapperCoverageRects = [];
+  meshMapperCoverageSource = null;
   if (!data || !Array.isArray(data)) {
     updateCoverageAttribution();
     updateCoverageLegend();
@@ -4969,7 +4990,11 @@ function refreshViewportLayers() {
     syncLayerMembership(trailLayer, line, visible);
   }
   if (coverageVisible && coverageData) {
-    renderCoverage(coverageData);
+    if (coverageProvider === 'meshmapper' && meshMapperCoverageSource === coverageData && meshMapperCoverageRects.length) {
+      syncMeshMapperCoverageViewport();
+    } else {
+      renderCoverage(coverageData);
+    }
   }
 }
 
