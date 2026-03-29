@@ -262,6 +262,8 @@ const coverageEnabled = Boolean(coverageApiUrl);
 const coverageLayer = L.layerGroup();
 let coverageVisible = false;
 let coverageData = null;
+let meshMapperCoverageRects = [];
+let meshMapperCoverageSource = null;
 let coverageProvider = '';
 let coverageRegion = '';
 let coverageAttributionHtml = '';
@@ -309,7 +311,9 @@ let weatherRadarLayerEnabled = weatherRadarEnabled;
 let weatherWindLayerEnabled = weatherWindEnabled;
 let losActive = false;
 let losPoints = [];
-let losLine = null;
+let losLines = [];
+let losSegmentMeta = [];
+let losActiveSegmentIndex = null;
 let losSuggestion = null;
 let losPeakMarkers = [];
 let losHoverMarker = null;
@@ -339,9 +343,9 @@ const losProfileSvg = document.getElementById('los-profile-svg');
 const losProfileTooltip = document.getElementById('los-profile-tooltip');
 const losLegendGroup = document.getElementById('legend-los-group');
 const losClearButton = document.getElementById('los-clear');
+const losRemoveLastButton = document.getElementById('los-remove-last');
 const losPanel = document.getElementById('los-panel');
 const losHeightAInput = document.getElementById('los-height-a');
-const losKeepAInput = document.getElementById('los-keep-a');
 const losHeightBInput = document.getElementById('los-height-b');
 const propPanel = document.getElementById('prop-panel');
 const historyPanel = document.getElementById('history-panel');
@@ -371,13 +375,51 @@ let losProfileData = [];
 let losProfileMeta = null;
 let losPointMarkers = [];
 let losSelectedPointIndex = null;
-const storedLosHeightA = parseNumberParam(localStorage.getItem('meshmapLosHeightA'));
-const storedLosHeightB = parseNumberParam(localStorage.getItem('meshmapLosHeightB'));
-let losHeightA = Number.isFinite(storedLosHeightA) ? storedLosHeightA : 0;
-let losHeightB = Number.isFinite(storedLosHeightB) ? storedLosHeightB : 0;
+let losPointHeights = [];
+const loadLosPointHeights = () => {
+  try {
+    const raw = localStorage.getItem('meshmapLosPointHeights');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((value) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    });
+  } catch (_err) {
+    return [];
+  }
+};
+losPointHeights = loadLosPointHeights();
+const persistLosPointHeights = () => {
+  try {
+    localStorage.setItem('meshmapLosPointHeights', JSON.stringify(losPointHeights));
+  } catch (_err) {
+    // ignore storage failures
+  }
+};
+const getLosPointHeight = (index) => {
+  if (!Number.isInteger(index) || index < 0) return 0;
+  const value = Number(losPointHeights[index]);
+  return Number.isFinite(value) ? value : 0;
+};
+const setLosPointHeight = (index, value) => {
+  if (!Number.isInteger(index) || index < 0) return;
+  const next = Number(value);
+  losPointHeights[index] = Number.isFinite(next) ? next : 0;
+  persistLosPointHeights();
+};
 const syncLosHeightInputs = () => {
-  if (losHeightAInput) losHeightAInput.value = String(losHeightA);
-  if (losHeightBInput) losHeightBInput.value = String(losHeightB);
+  const startIdx = Number.isInteger(losActiveSegmentIndex) ? losActiveSegmentIndex : null;
+  const endIdx = Number.isInteger(startIdx) ? startIdx + 1 : null;
+  if (losHeightAInput) {
+    losHeightAInput.value = String(startIdx != null ? getLosPointHeight(startIdx) : 0);
+    losHeightAInput.disabled = startIdx == null;
+  }
+  if (losHeightBInput) {
+    losHeightBInput.value = String(endIdx != null ? getLosPointHeight(endIdx) : 0);
+    losHeightBInput.disabled = endIdx == null;
+  }
 };
 syncLosHeightInputs();
 const deviceData = new Map();
@@ -786,9 +828,78 @@ function coverageTimeLabel(ts) {
   return date.toLocaleString();
 }
 
+function meshMapperCoveragePriority(type) {
+  switch (String(type || '').trim().toUpperCase()) {
+    case 'BIDIR':
+      return 6;
+    case 'DISC':
+    case 'TRACE':
+    case 'DISC/TRACE':
+      return 5;
+    case 'TX':
+      return 4;
+    case 'RX':
+      return 3;
+    case 'DEAD':
+      return 2;
+    case 'DROP':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function expandMeshMapperCoverageSquares(data) {
+  const merged = new Map();
+  for (const square of data) {
+    const bounds = square?.bounds;
+    if (!bounds) continue;
+    const south = Number(bounds.south);
+    const west = Number(bounds.west);
+    const north = Number(bounds.north);
+    const east = Number(bounds.east);
+    if (![south, west, north, east].every(Number.isFinite)) continue;
+    const latStep = north - south;
+    const lonStep = east - west;
+    if (!(latStep > 0) || !(lonStep > 0)) continue;
+    const priority = meshMapperCoveragePriority(square.coverage_type);
+    const timestamp = Number(square.timestamp) || 0;
+    for (let latOffset = -1; latOffset <= 1; latOffset += 1) {
+      for (let lonOffset = -1; lonOffset <= 1; lonOffset += 1) {
+        const nextSouth = south + (latStep * latOffset);
+        const nextWest = west + (lonStep * lonOffset);
+        const nextNorth = nextSouth + latStep;
+        const nextEast = nextWest + lonStep;
+        const key = `${nextSouth.toFixed(7)}:${nextWest.toFixed(7)}`;
+        const current = merged.get(key);
+        const shouldReplace = !current
+          || priority > current.__priority
+          || (priority === current.__priority && timestamp > current.__timestamp);
+        if (!shouldReplace) continue;
+        merged.set(key, {
+          ...square,
+          bounds: {
+            south: nextSouth,
+            west: nextWest,
+            north: nextNorth,
+            east: nextEast
+          },
+          __priority: priority,
+          __timestamp: timestamp,
+          __source_grid_id: square.grid_id || null
+        });
+      }
+    }
+  }
+  return Array.from(merged.values());
+}
+
 function renderMeshMapperCoverage(data) {
   let rendered = 0;
-  for (const square of data) {
+  meshMapperCoverageRects = [];
+  meshMapperCoverageSource = data;
+  const expandedSquares = expandMeshMapperCoverageSquares(data);
+  for (const square of expandedSquares) {
     const bounds = square?.bounds;
     if (!bounds) continue;
     const south = Number(bounds.south);
@@ -800,8 +911,11 @@ function renderMeshMapperCoverage(data) {
     const fillColor = square.fill_color || '#1e7e34';
     const rect = L.rectangle([[south, west], [north, east]], {
       renderer: vectorRenderer,
-      stroke: false,
-      fillOpacity: 0.85,
+      stroke: true,
+      color: square.border_color || fillColor,
+      weight: 0.4,
+      opacity: 0.22,
+      fillOpacity: 0.5,
       fillColor
     });
     const details = [];
@@ -811,16 +925,33 @@ function renderMeshMapperCoverage(data) {
     }
     const when = coverageTimeLabel(square.timestamp);
     if (when) details.push(`Updated: ${when}`);
-    if (square.grid_id) details.push(`Grid: ${square.grid_id}`);
+    if (square.__source_grid_id) details.push(`Source grid: ${square.__source_grid_id}`);
     rect.bindPopup(details.join('<br/>'), { maxWidth: 320 });
-    coverageLayer.addLayer(rect);
+    rect.__coverageBounds = { south, west, north, east };
+    rect.__attached = false;
+    meshMapperCoverageRects.push(rect);
+    syncLayerMembership(coverageLayer, rect, boundsIntersectsViewport(south, west, north, east));
     rendered++;
   }
   return rendered;
 }
 
+function syncMeshMapperCoverageViewport() {
+  for (const rect of meshMapperCoverageRects) {
+    const b = rect && rect.__coverageBounds;
+    if (!b) continue;
+    syncLayerMembership(
+      coverageLayer,
+      rect,
+      boundsIntersectsViewport(b.south, b.west, b.north, b.east)
+    );
+  }
+}
+
 function renderCoverage(data) {
   coverageLayer.clearLayers();
+  meshMapperCoverageRects = [];
+  meshMapperCoverageSource = null;
   if (!data || !Array.isArray(data)) {
     updateCoverageAttribution();
     updateCoverageLegend();
@@ -2333,6 +2464,167 @@ function clearLosHoverMarker() {
     losActivePeak = null;
   }
 }
+
+function getLosSegmentLabel(index) {
+  if (!Number.isInteger(index) || index < 0) return '';
+  return `${index + 1}→${index + 2}`;
+}
+
+function buildCombinedLosProfile() {
+  const combined = [];
+  const segmentRanges = [];
+  let offset = 0;
+  let anyBlocked = false;
+  losSegmentMeta.forEach((meta, index) => {
+    const profile = Array.isArray(meta?.profile) ? meta.profile : null;
+    if (!profile || profile.length < 2) return;
+    const startDistance = offset;
+    profile.forEach((point, pointIndex) => {
+      const distance = Number(point[0]);
+      const terrain = Number(point[1]);
+      const losLineValue = Number(point[2]);
+      if (![distance, terrain, losLineValue].every(Number.isFinite)) return;
+      if (index > 0 && pointIndex === 0) return;
+      combined.push([offset + distance, terrain, losLineValue]);
+    });
+    const segmentDistance = Number(profile[profile.length - 1][0]) || 0;
+    const endDistance = offset + segmentDistance;
+    segmentRanges[index] = { startDistance, endDistance };
+    offset = endDistance;
+    anyBlocked = anyBlocked || !!meta?.blocked;
+  });
+  return { profile: combined, blocked: anyBlocked, segmentRanges };
+}
+
+function resolveLosProfileDistance(distanceMeters) {
+  const ranges = Array.isArray(losProfileMeta?.segmentRanges) ? losProfileMeta.segmentRanges : [];
+  if (!ranges.length) {
+    const endpoints = getActiveLosSegmentEndpoints();
+    if (!endpoints) return null;
+    return { segmentIndex: losActiveSegmentIndex, localDistance: distanceMeters, endpoints };
+  }
+  const clamped = Math.min(Math.max(distanceMeters, 0), losProfileMeta.totalDistance || 0);
+  for (let index = 0; index < ranges.length; index++) {
+    const range = ranges[index];
+    if (!range) continue;
+    const isLast = index === ranges.length - 1;
+    if (clamped < range.endDistance || isLast) {
+      const endpoints = getLosSegmentEndpoints(index);
+      if (!endpoints) return null;
+      return {
+        segmentIndex: index,
+        localDistance: Math.max(0, clamped - range.startDistance),
+        endpoints
+      };
+    }
+  }
+  return null;
+}
+
+function getLosSegmentEndpoints(index) {
+  if (!Number.isInteger(index) || index < 0 || (index + 1) >= losPoints.length) return null;
+  return [losPoints[index], losPoints[index + 1]];
+}
+
+function getActiveLosSegmentEndpoints() {
+  return getLosSegmentEndpoints(losActiveSegmentIndex);
+}
+
+function getActiveLosLine() {
+  if (!Number.isInteger(losActiveSegmentIndex) || losActiveSegmentIndex < 0) return null;
+  return losLines[losActiveSegmentIndex] || null;
+}
+
+function updateLosSegmentStyles() {
+  losLines.forEach((line, index) => {
+    if (!line) return;
+    const meta = losSegmentMeta[index] || null;
+    const active = index === losActiveSegmentIndex;
+    const color = meta ? (meta.blocked ? '#ef4444' : '#22c55e') : '#9ca3af';
+    line.setStyle({
+      color,
+      weight: active ? 5 : 4,
+      opacity: active ? 0.9 : 0.75,
+      dashArray: '6 10'
+    });
+  });
+}
+
+function selectLosSegment(index, options = {}) {
+  if (!Number.isInteger(index) || index < 0 || index >= losLines.length) return;
+  losActiveSegmentIndex = index;
+  syncLosHeightInputs();
+  updateLosSegmentStyles();
+  const meta = losSegmentMeta[index] || null;
+  const combined = buildCombinedLosProfile();
+  if (combined.profile.length >= 2) {
+    renderLosProfile(combined.profile, combined.blocked, combined);
+  }
+  if (meta) {
+    lastLosStatusMeta = meta;
+    setLosStatus(buildLosStatus(meta));
+  } else if (options.silent !== true) {
+    setLosStatus(`LOS: selected segment ${getLosSegmentLabel(index)}`);
+  }
+  if (options.recompute === true) {
+    scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
+  }
+}
+
+function ensureLosSegments() {
+  const needed = Math.max(0, losPoints.length - 1);
+  while (losLines.length > needed) {
+    const line = losLines.pop();
+    if (line) {
+      losLayer.removeLayer(line);
+    }
+  }
+  while (losSegmentMeta.length > needed) {
+    losSegmentMeta.pop();
+  }
+  for (let index = 0; index < needed; index++) {
+    const endpoints = getLosSegmentEndpoints(index);
+    if (!endpoints) continue;
+    const latlngs = [endpoints[0], endpoints[1]];
+    let line = losLines[index];
+    if (!line) {
+      line = L.polyline(latlngs, {
+        color: '#9ca3af',
+        weight: 4,
+        opacity: 0.8,
+        dashArray: '6 10'
+      }).addTo(losLayer);
+      line.__losSegmentIndex = index;
+      line.on('mousemove', (ev) => {
+        if (line.__losSegmentIndex !== losActiveSegmentIndex) return;
+        if (ev && ev.latlng) {
+          updateLosProfileFromMap(ev.latlng);
+        }
+      });
+      line.on('mouseout', clearLosProfileHover);
+      line.on('click', (ev) => {
+        if (ev && ev.originalEvent) {
+          ev.originalEvent.preventDefault();
+          ev.originalEvent.stopPropagation();
+        }
+        if (typeof L !== 'undefined' && L.DomEvent) {
+          L.DomEvent.stop(ev);
+        }
+        selectLosSegment(line.__losSegmentIndex, { recompute: true });
+      });
+      losLines[index] = line;
+    } else {
+      line.__losSegmentIndex = index;
+      line.setLatLngs(latlngs);
+    }
+  }
+  if (needed === 0) {
+    losActiveSegmentIndex = null;
+  } else if (losActiveSegmentIndex == null || losActiveSegmentIndex >= needed) {
+    losActiveSegmentIndex = needed - 1;
+  }
+  updateLosSegmentStyles();
+}
 function setPropStatus(text) {
   const el = document.getElementById('prop-status');
   if (el) {
@@ -2399,12 +2691,12 @@ function layoutSidePanels() {
   });
 }
 function clearLos() {
-  const keepA = losKeepAInput && losKeepAInput.checked;
-  const hasA = losPoints.length > 0;
-  const canKeepA = keepA && losPoints.length > 1 && hasA;
-  const keptPoint = canKeepA ? losPoints[0] : null;
   losPoints = [];
-  losLine = null;
+  losPointHeights = [];
+  persistLosPointHeights();
+  losLines = [];
+  losSegmentMeta = [];
+  losActiveSegmentIndex = null;
   losSuggestion = null;
   losLocked = false;
   lastLosStatusMeta = null;
@@ -2421,12 +2713,7 @@ function clearLos() {
   clearLosHoverMarker();
   losSelectedPointIndex = null;
   losPointMarkers = [];
-  if (keptPoint) {
-    losPoints = [keptPoint];
-    const marker = createLosPointMarker(keptPoint, 0);
-    losPointMarkers.push(marker);
-    setLosStatus('LOS: select second point');
-  }
+  syncLosHeightInputs();
 }
 
 function setLosActive(active) {
@@ -2434,7 +2721,7 @@ function setLosActive(active) {
   const btn = document.getElementById('los-toggle');
   if (btn) {
     btn.classList.toggle('active', active);
-    btn.textContent = active ? 'LOS: click 2 points' : 'LOS tool';
+    btn.textContent = active ? 'LOS: add pins' : 'LOS tool';
   }
   if (losLegendGroup) {
     losLegendGroup.classList.toggle('active', active);
@@ -2451,7 +2738,7 @@ function setLosActive(active) {
   layoutSidePanels();
 }
 
-function renderLosProfile(profile, blocked) {
+function renderLosProfile(profile, blocked, options = {}) {
   if (!losProfile || !losProfileSvg) return;
   if (!Array.isArray(profile) || profile.length < 2) {
     clearLosProfile();
@@ -2513,7 +2800,8 @@ function renderLosProfile(profile, blocked) {
     totalDistance,
     innerWidth,
     innerHeight,
-    blocked
+    blocked,
+    segmentRanges: Array.isArray(options.segmentRanges) ? options.segmentRanges : []
   };
   losProfile.hidden = false;
   layoutSidePanels();
@@ -2556,7 +2844,8 @@ function buildLosStatus(meta) {
   const obstruction = meta.blocked
     ? `Blocked (+${formatObstructionUnits(meta.obstruction_m)})`
     : 'Clear';
-  let status = `LOS: ${distance} • ${obstruction}`;
+  const segmentLabel = meta.segment_label ? `${meta.segment_label} • ` : '';
+  let status = `LOS: ${segmentLabel}${distance} • ${obstruction}`;
   if (meta.suggested) {
     status += meta.suggested_clear
       ? ' • Relay Suggested'
@@ -2667,18 +2956,18 @@ function updateLosPeakHighlight(distanceMeters) {
 }
 
 function updateLosMapHover(distanceMeters) {
-  if (!losProfileMeta || !losPoints || losPoints.length < 2) return;
-  const total = losProfileMeta.totalDistance;
-  const clamped = Math.min(Math.max(distanceMeters, 0), total);
+  const resolved = resolveLosProfileDistance(distanceMeters);
+  if (!losProfileMeta || !resolved) return;
+  const [start, end] = resolved.endpoints;
+  const total = haversineMeters(start.lat, start.lng, end.lat, end.lng);
+  const clamped = Math.min(Math.max(resolved.localDistance, 0), total);
   const t = total > 0 ? (clamped / total) : 0;
-  const start = losPoints[0];
-  const end = losPoints[1];
   const lat = start.lat + (end.lat - start.lat) * t;
   const lon = start.lng + (end.lng - start.lng) * t;
-  const label = updateLosPeakHighlight(clamped);
+  const label = resolved.segmentIndex === losActiveSegmentIndex ? updateLosPeakHighlight(clamped) : null;
   const tooltip = label
     ? `${label} • ${formatDistanceMeters(clamped)}`
-    : `LOS point • ${formatDistanceMeters(clamped)}`;
+    : `LOS ${getLosSegmentLabel(resolved.segmentIndex)} • ${formatDistanceMeters(clamped)}`;
   if (!losHoverMarker) {
     losHoverMarker = L.circleMarker([lat, lon], {
       radius: 5,
@@ -2718,11 +3007,11 @@ function losProfileDistanceFromEvent(ev) {
 }
 
 function copyLosCoords(distanceMeters) {
-  if (!losPoints || losPoints.length < 2 || distanceMeters == null || !losProfileMeta) return;
-  const total = losProfileMeta.totalDistance || 0;
-  const t = total > 0 ? Math.min(Math.max(distanceMeters / total, 0), 1) : 0;
-  const start = losPoints[0];
-  const end = losPoints[1];
+  const resolved = resolveLosProfileDistance(distanceMeters);
+  if (!resolved || distanceMeters == null || !losProfileMeta) return;
+  const [start, end] = resolved.endpoints;
+  const total = haversineMeters(start.lat, start.lng, end.lat, end.lng);
+  const t = total > 0 ? Math.min(Math.max(resolved.localDistance / total, 0), 1) : 0;
   const lat = start.lat + (end.lat - start.lat) * t;
   const lon = start.lng + (end.lng - start.lng) * t;
   const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
@@ -2760,10 +3049,10 @@ function clearLosProfileHover() {
 }
 
 function updateLosProfileFromMap(latlng) {
-  if (!latlng || losPoints.length < 2) return;
+  const endpoints = getActiveLosSegmentEndpoints();
+  if (!latlng || !endpoints) return;
   if (!losProfileMeta || !losProfileData || losProfileData.length < 2) return;
-  const start = losPoints[0];
-  const end = losPoints[1];
+  const [start, end] = endpoints;
   const dLat = end.lat - start.lat;
   const dLon = end.lng - start.lng;
   const denom = (dLat * dLat) + (dLon * dLon);
@@ -2771,7 +3060,9 @@ function updateLosProfileFromMap(latlng) {
   let t = ((latlng.lat - start.lat) * dLat + (latlng.lng - start.lng) * dLon) / denom;
   t = Math.min(Math.max(t, 0), 1);
   const totalDistance = haversineMeters(start.lat, start.lng, end.lat, end.lng);
-  updateLosProfileAtDistance(totalDistance * t);
+  const ranges = Array.isArray(losProfileMeta.segmentRanges) ? losProfileMeta.segmentRanges : [];
+  const startOffset = ranges[losActiveSegmentIndex]?.startDistance || 0;
+  updateLosProfileAtDistance(startOffset + (totalDistance * t));
 }
 
 function renderLosPeaks(peaks) {
@@ -2824,6 +3115,8 @@ function renderLosPeaks(peaks) {
 
 function applyLosResult(data) {
   if (!data || !data.ok) return false;
+  const activeIndex = losActiveSegmentIndex;
+  const activeLine = getActiveLosLine();
   if (Array.isArray(data.profile) && data.profile.length > 1) {
     const terrain = data.profile.map(item => Number(item[1]));
     if (terrain.every(val => Number.isFinite(val))) {
@@ -2833,12 +3126,15 @@ function applyLosResult(data) {
   }
   const blocked = data.blocked;
   const meters = data.distance_m != null ? Number(data.distance_m) : null;
-  lastLosStatusMeta = {
+  const segmentMeta = {
+    segment_index: activeIndex,
+    segment_label: getLosSegmentLabel(activeIndex),
     distance_m: Number.isFinite(meters) ? meters : null,
     blocked,
     obstruction_m: data.max_obstruction_m,
     suggested: false,
-    suggested_clear: false
+    suggested_clear: false,
+    profile: Array.isArray(data.profile) ? data.profile : []
   };
   if (losSuggestion) {
     losLayer.removeLayer(losSuggestion);
@@ -2861,26 +3157,29 @@ function applyLosResult(data) {
       weight: 2
     }).addTo(losLayer);
     losSuggestion.bindTooltip(`${label}<br/>${s.lat}, ${s.lon}`, { direction: 'top' });
-    lastLosStatusMeta.suggested = true;
-    lastLosStatusMeta.suggested_clear = !!s.clear;
+    segmentMeta.suggested = true;
+    segmentMeta.suggested_clear = !!s.clear;
   }
-  setLosStatus(buildLosStatus(lastLosStatusMeta));
-  renderLosProfile(data.profile, blocked);
-  if (losLine) {
-    losLine.setStyle({
-      color: blocked ? '#ef4444' : '#22c55e',
-      weight: 5,
-      opacity: 0.9,
-      dashArray: blocked ? '4 10' : null
-    });
+  if (Number.isInteger(activeIndex) && activeIndex >= 0) {
+    losSegmentMeta[activeIndex] = { ...segmentMeta };
+  }
+  lastLosStatusMeta = segmentMeta;
+  setLosStatus(buildLosStatus(segmentMeta));
+  const combined = buildCombinedLosProfile();
+  renderLosProfile(combined.profile, combined.blocked, combined);
+  updateLosSegmentStyles();
+  if (activeLine) {
+    activeLine.bringToFront();
   }
   clearLosProfileHover();
   return true;
 }
 
 async function runLosCheckClient(a, b, options = {}) {
-  const heightA = Number.isFinite(losHeightA) ? losHeightA : 0;
-  const heightB = Number.isFinite(losHeightB) ? losHeightB : 0;
+  const startIndex = Number.isInteger(losActiveSegmentIndex) ? losActiveSegmentIndex : 0;
+  const endIndex = startIndex + 1;
+  const heightA = getLosPointHeight(startIndex);
+  const heightB = getLosPointHeight(endIndex);
   const distanceMeters = haversineMeters(a.lat, a.lng, b.lat, b.lng);
   if (distanceMeters <= 0) {
     return { ok: false, error: 'invalid_distance' };
@@ -2933,8 +3232,10 @@ async function runLosCheckClient(a, b, options = {}) {
 }
 
 async function fetchLosServerResult(a, b) {
-  const heightA = Number.isFinite(losHeightA) ? losHeightA : 0;
-  const heightB = Number.isFinite(losHeightB) ? losHeightB : 0;
+  const startIndex = Number.isInteger(losActiveSegmentIndex) ? losActiveSegmentIndex : 0;
+  const endIndex = startIndex + 1;
+  const heightA = getLosPointHeight(startIndex);
+  const heightB = getLosPointHeight(endIndex);
   const params = new URLSearchParams({
     lat1: a.lat.toFixed(6),
     lon1: a.lng.toFixed(6),
@@ -4689,7 +4990,11 @@ function refreshViewportLayers() {
     syncLayerMembership(trailLayer, line, visible);
   }
   if (coverageVisible && coverageData) {
-    renderCoverage(coverageData);
+    if (coverageProvider === 'meshmapper' && meshMapperCoverageSource === coverageData && meshMapperCoverageRects.length) {
+      syncMeshMapperCoverageViewport();
+    } else {
+      renderCoverage(coverageData);
+    }
   }
 }
 
@@ -5526,16 +5831,18 @@ function connectWS() {
 }
 
 async function runLosCheck(options = {}) {
-  if (losPoints.length < 2) return;
-  const [a, b] = losPoints;
+  const endpoints = getActiveLosSegmentEndpoints();
+  if (!endpoints) return;
+  const [a, b] = endpoints;
   losComputeLast = Date.now();
   const token = ++losComputeToken;
   const allowNetwork = options.allowNetwork !== false;
   const allowApprox = options.allowApprox === true;
   setLosStatus('LOS: calculating...');
   try {
-    if (losLine) {
-      losLine.setStyle({ color: '#9ca3af', weight: 4, opacity: 0.8, dashArray: '6 10' });
+    const activeLine = getActiveLosLine();
+    if (activeLine) {
+      activeLine.setStyle({ color: '#9ca3af', weight: 5, opacity: 0.9, dashArray: '6 10' });
     }
     const clientResult = await runLosCheckClient(a, b, {
       allowNetwork,
@@ -5568,8 +5875,8 @@ async function runLosCheck(options = {}) {
     }
     lastLosStatusMeta = null;
     setLosStatus(`LOS: ${serverResult.error || clientResult.error || 'error'}`);
-    if (losLine) {
-      losLine.setStyle({ color: '#9ca3af', weight: 4, opacity: 0.8, dashArray: '6 10' });
+    if (activeLine) {
+      activeLine.setStyle({ color: '#9ca3af', weight: 5, opacity: 0.9, dashArray: '6 10' });
     }
     clearLosProfile();
     clearLosPeaks();
@@ -5584,7 +5891,7 @@ async function runLosCheck(options = {}) {
 
 let losPendingOptions = null;
 function scheduleLosCheck(force = false, options = {}) {
-  if (losPoints.length < 2) return;
+  if (!getActiveLosSegmentEndpoints()) return;
   losPendingOptions = options;
   if (force) {
     if (losComputeTimer) {
@@ -5912,15 +6219,13 @@ const parseLosHeightValue = (input) => {
   return Number.isFinite(value) ? value : 0;
 };
 const handleLosHeightChange = () => {
-  losHeightA = parseLosHeightValue(losHeightAInput);
-  losHeightB = parseLosHeightValue(losHeightBInput);
-  try {
-    localStorage.setItem('meshmapLosHeightA', String(losHeightA));
-    localStorage.setItem('meshmapLosHeightB', String(losHeightB));
-  } catch (err) {
-    // ignore storage failures
-  }
-  if (losPoints.length === 2) {
+  if (!Number.isInteger(losActiveSegmentIndex) || losActiveSegmentIndex < 0) return;
+  setLosPointHeight(losActiveSegmentIndex, parseLosHeightValue(losHeightAInput));
+  setLosPointHeight(losActiveSegmentIndex + 1, parseLosHeightValue(losHeightBInput));
+  if (losPoints.length >= 2) {
+    if (losActiveSegmentIndex >= 0 && losActiveSegmentIndex < losSegmentMeta.length) {
+      losSegmentMeta[losActiveSegmentIndex] = null;
+    }
     scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
   }
 };
@@ -5933,19 +6238,82 @@ if (losHeightBInput) {
   losHeightBInput.addEventListener('change', handleLosHeightChange);
 }
 
-function updateLosLineFromPoints() {
-  if (!losLine || losPoints.length < 2) return;
-  losLine.setLatLngs([losPoints[0], losPoints[1]]);
-}
-
 function updateLosPointPosition(index, latlng) {
   if (index == null || !losPoints[index]) return;
   losPoints[index] = latlng;
-  updateLosLineFromPoints();
-  if (losLine && losPoints.length >= 2) {
-    lastLosStatusMeta = null;
-    losLine.setStyle({ color: '#9ca3af', weight: 4, opacity: 0.8, dashArray: '6 10' });
+  ensureLosSegments();
+  const affected = [];
+  if (index > 0) affected.push(index - 1);
+  if (index < losLines.length) affected.push(index);
+  affected.forEach((segIdx) => {
+    if (segIdx >= 0 && segIdx < losSegmentMeta.length) {
+      losSegmentMeta[segIdx] = null;
+    }
+  });
+  if (affected.length) {
+    losActiveSegmentIndex = affected[affected.length - 1];
+  }
+  lastLosStatusMeta = null;
+  updateLosSegmentStyles();
+  if (losPoints.length >= 2) {
     setLosStatus('LOS: calculating...');
+  }
+  return affected;
+}
+
+async function recomputeLosSegments(indices, options = {}) {
+  const valid = Array.from(new Set((indices || []).filter((index) => (
+    Number.isInteger(index) && index >= 0 && index < losLines.length
+  ))));
+  if (!valid.length) return;
+  const finalIndex = Number.isInteger(options.finalIndex) && options.finalIndex >= 0 && options.finalIndex < losLines.length
+    ? options.finalIndex
+    : valid[valid.length - 1];
+  for (const index of valid) {
+    selectLosSegment(index, { silent: true });
+    await runLosCheck({
+      allowNetwork: options.allowNetwork !== false,
+      allowApprox: options.allowApprox === true,
+      forceNetwork: options.forceNetwork === true
+    });
+  }
+  if (Number.isInteger(finalIndex) && finalIndex >= 0 && finalIndex < losLines.length) {
+    selectLosSegment(finalIndex, { silent: true });
+  }
+}
+
+function removeLastLosPoint() {
+  if (!losPoints.length) return;
+  const lastMarker = losPointMarkers.pop();
+  if (lastMarker) {
+    losLayer.removeLayer(lastMarker);
+  }
+  losPoints.pop();
+  losPointHeights.pop();
+  persistLosPointHeights();
+  if (losSelectedPointIndex != null && losSelectedPointIndex >= losPoints.length) {
+    setLosSelectedPoint(null);
+  }
+  ensureLosSegments();
+  if (losPoints.length >= 2) {
+    const nextIndex = Math.max(0, losPoints.length - 2);
+    selectLosSegment(nextIndex, { silent: true });
+    const combined = buildCombinedLosProfile();
+    if (combined.profile.length >= 2) {
+      renderLosProfile(combined.profile, combined.blocked, combined);
+    } else {
+      clearLosProfile();
+    }
+    setLosStatus(`LOS: removed pin ${losPoints.length + 1}`);
+    return;
+  }
+  clearLosProfile();
+  clearLosPeaks();
+  lastLosStatusMeta = null;
+  if (losPoints.length === 1) {
+    setLosStatus('LOS: select next point');
+  } else {
+    setLosStatus('LOS: select first point (Shift+click or long-press nodes)');
   }
 }
 
@@ -5979,7 +6347,11 @@ function createLosPointMarker(latlng, index) {
       L.DomEvent.stop(ev);
     }
     setLosSelectedPoint(index);
-    setLosStatus(`LOS: selected point ${index === 0 ? 'A' : 'B'} (click map to move or drag point)`);
+    if (losLines.length > 0) {
+      const nextSegment = index > 0 ? index - 1 : 0;
+      selectLosSegment(nextSegment, { silent: true });
+    }
+    setLosStatus(`LOS: selected point ${index + 1} (click map to move or drag point)`);
   });
   marker.on('dragstart', () => {
     const el = marker.getElement();
@@ -5993,58 +6365,53 @@ function createLosPointMarker(latlng, index) {
     updateLosPointPosition(index, next);
     scheduleLosCheck(false, { allowNetwork: false, allowApprox: true });
   });
-  marker.on('dragend', () => {
+  marker.on('dragend', async () => {
     const el = marker.getElement();
     if (el) el.classList.remove('dragging');
     const next = marker.getLatLng();
-    updateLosPointPosition(index, next);
+    const affected = updateLosPointPosition(index, next);
     losDragging = false;
-    scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
+    await recomputeLosSegments(affected, {
+      allowNetwork: true,
+      forceNetwork: true,
+      finalIndex: affected && affected.length ? affected[affected.length - 1] : losActiveSegmentIndex
+    });
   });
   marker.on('add', () => setLosSelectedPoint(losSelectedPointIndex));
   return marker;
 }
 
 function handleLosPoint(latlng) {
-  if (losLocked || losPoints.length >= 2) {
-    setLosStatus('LOS: Clear to start a new path');
-    return;
-  }
   losPoints.push(latlng);
+  if (losPointHeights.length < losPoints.length) {
+    losPointHeights.push(0);
+    persistLosPointHeights();
+  }
   const marker = createLosPointMarker(latlng, losPoints.length - 1);
   losPointMarkers.push(marker);
-  setLosSelectedPoint(losPoints.length - 1);
+  setLosSelectedPoint(null);
 
   if (losPoints.length === 1) {
-    setLosStatus('LOS: select second point');
+    setLosStatus('LOS: select next point');
     return;
   }
-  if (losPoints.length === 2) {
-    losLocked = true;
-    losLine = L.polyline([losPoints[0], losPoints[1]], {
-      color: '#9ca3af',
-      weight: 4,
-      opacity: 0.8,
-      dashArray: '6 10'
-    }).addTo(losLayer);
-    losLine.on('mousemove', (ev) => {
-      if (ev && ev.latlng) {
-        updateLosProfileFromMap(ev.latlng);
-      }
-    });
-    losLine.on('mouseout', clearLosProfileHover);
-    scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
-  }
+  losLocked = true;
+  ensureLosSegments();
+  selectLosSegment(losPoints.length - 2, { silent: true });
+  scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
 }
 
 if (losClearButton) {
   losClearButton.addEventListener('click', () => {
     clearLos();
     if (losActive) {
-      if (!losKeepAInput || !losKeepAInput.checked || losPoints.length === 0) {
-        setLosStatus('LOS: select first point (Shift+click or long-press nodes)');
-      }
+      setLosStatus('LOS: select first point (Shift+click or long-press nodes)');
     }
+  });
+}
+if (losRemoveLastButton) {
+  losRemoveLastButton.addEventListener('click', () => {
+    removeLastLosPoint();
   });
 }
 const nodesToggle = document.getElementById('nodes-toggle');
@@ -6550,8 +6917,13 @@ map.on('click', (ev) => {
       if (losPointMarkers[idx]) {
         losPointMarkers[idx].setLatLng(ev.latlng);
       }
-      updateLosPointPosition(idx, ev.latlng);
-      scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
+      const affected = updateLosPointPosition(idx, ev.latlng);
+      setLosSelectedPoint(null);
+      recomputeLosSegments(affected, {
+        allowNetwork: true,
+        forceNetwork: true,
+        finalIndex: affected && affected.length ? affected[affected.length - 1] : losActiveSegmentIndex
+      });
       return;
     }
     handleLosPoint(ev.latlng);

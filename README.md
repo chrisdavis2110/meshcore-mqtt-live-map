@@ -1,8 +1,8 @@
 # Mesh Live Map
 
-Version: `1.7.8.1` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.8.0` (see [VERSIONS.md](VERSIONS.md))
 
-Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and streams updates to the browser via WebSockets.
+Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
 Live example sites:
 https://live.bostonme.sh/ - Greater Boston Mesh Map (reference)
@@ -90,6 +90,10 @@ Debugging:
 
 Storage + server:
 - `STATE_DIR` (persisted state path)
+- `BACKUP_ENABLED` (enable automatic `.tar.gz` backups)
+- `BACKUP_INTERVAL_SECONDS` (seconds between backups; default `43200` / 12 hours)
+- `BACKUP_DIR` (backup archive directory; default `/backup`)
+- `BACKUP_RETENTION_DAYS` (delete backup archives older than N days; `0` disables pruning)
 - `STATE_FILE` (full state file path override)
 - `DEVICE_ROLES_FILE` (optional role override JSON file)
 - `DEVICE_COORDS_FILE` (optional coordinate override JSON file; default `/data/device_coords.json`)
@@ -99,6 +103,11 @@ Storage + server:
 - `WEB_PORT` (host port for the web UI)
 - `PROD_MODE` (true to require a token for API + WS)
 - `PROD_TOKEN` (required token; send via `?token=` or `Authorization: Bearer`)
+
+Backups:
+- when enabled, the server writes timestamped `meshmap-backup-YYYY-MM-DDTHH-MM-SS.tar.gz` archives to `BACKUP_DIR`
+- backup archives are separate from `/data` by default; the compose file mounts `./backup:/backup`
+- with the default backup settings (`12` hours, `7` days retention), expect under `30 MB` of backup storage on a network around `250` nodes
 
 Turnstile protection (prod-only):
 - `TURNSTILE_ENABLED` (requires `PROD_MODE=true`)
@@ -263,7 +272,7 @@ Use it:
 - MQTT connectivity (`MQTT online`) is based on `/status` + `/internal`; `/packets` is treated as feed activity and does not by itself mark a node online.
 - Live route IDs are observer-aware (`message_hash:receiver_id`) so the same
   message seen by multiple MQTT observers does not overwrite active lines.
-- Line-of-sight tool: click **LOS tool** and pick two points, or **Shift+click** two nodes to measure LOS between them. Drag endpoints or select A/B then click the map to move that point.
+- Line-of-sight tool: click **LOS tool** and add pins to build a chained path, or **Shift+click** nodes to place LOS pins from existing nodes. Drag endpoints or click a pin and then click the map to move that specific point. Heights are stored per pin.
 - On mobile, long‑press a node to select it for LOS.
 - LOS elevations are fetched via `/los/elevations` and LOS/relay math runs client-side (with `/los` fallback).
 - History tool always loads off (use the button or `history=on` in the URL).

@@ -35,6 +35,20 @@ CHANNEL_SECRETS_FILE = os.getenv(
   "CHANNEL_SECRETS_FILE",
   os.path.join(STATE_DIR, "channel_secrets.json"),
 )
+BACKUP_ENABLED = os.getenv("BACKUP_ENABLED", "false").lower() == "true"
+try:
+  BACKUP_INTERVAL_SECONDS = int(os.getenv("BACKUP_INTERVAL_SECONDS", "43200"))
+except ValueError:
+  BACKUP_INTERVAL_SECONDS = 43200
+if BACKUP_INTERVAL_SECONDS < 60:
+  BACKUP_INTERVAL_SECONDS = 60
+BACKUP_DIR = os.getenv("BACKUP_DIR", "/backup").strip()
+try:
+  BACKUP_RETENTION_DAYS = int(os.getenv("BACKUP_RETENTION_DAYS", "7"))
+except ValueError:
+  BACKUP_RETENTION_DAYS = 7
+if BACKUP_RETENTION_DAYS < 0:
+  BACKUP_RETENTION_DAYS = 0
 STATE_SAVE_INTERVAL = float(os.getenv("STATE_SAVE_INTERVAL", "5"))
 
 DEVICE_TTL_HOURS = float(os.getenv("DEVICE_TTL_HOURS", "96"))  # 4 days default

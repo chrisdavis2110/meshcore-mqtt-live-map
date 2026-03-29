@@ -8,6 +8,7 @@ backend/static/logo.png
 /data/state.json
 /data/*.json
 /data/*.jsonl
+/backup/
 
 # python bytecode
 __pycache__/

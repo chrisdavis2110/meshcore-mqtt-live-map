@@ -1,20 +1,20 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.7.8.1` (see `VERSIONS.md`).
+Current version: `1.8.0` (see `VERSIONS.md`).
 
 ## Overview
-This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24‑hour route history layer.
+This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.7.8.1`).
+- `VERSION.txt` holds the current version string (`1.8.0`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
 - `backend/app.py`: FastAPI server + MQTT lifecycle and websocket broadcasting.
 - `backend/config.py`: environment/config constants (shared across backend modules).
 - `backend/state.py`: shared runtime state (devices/routes/history) + dataclasses.
-- `backend/decoder.py`: payload parsing, multibyte decoder integration, route helpers.
+- `backend/decoder.py`: payload parsing, official decoder integration, route helpers.
 - `backend/los.py`: LOS math + elevation sampling.
 - `backend/history.py`: route history persistence + pruning.
 - `backend/weather.py`: weather radar country-bounds lookup router.
@@ -58,6 +58,10 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `DEVICE_COORDS_FILE` points to optional coordinate overrides (`/data/device_coords.json` by default).
 - `NEIGHBOR_OVERRIDES_FILE` points at an optional JSON file with neighbor pairs to resolve hash collisions.
 - `CHANNEL_SECRETS_FILE` points at an optional JSON file of channel secrets used to decrypt sender names from compatible MeshCore group-text packets.
+- `BACKUP_ENABLED` enables automatic `.tar.gz` backups of runtime state files.
+- `BACKUP_INTERVAL_SECONDS` controls backup frequency; default `43200` seconds (12 hours).
+- `BACKUP_DIR` controls where backup archives are written; default `/backup`.
+- `BACKUP_RETENTION_DAYS` controls archive pruning; set `0` to disable retention pruning.
 - Weather overlay settings:
   - `WEATHER_RADAR_ENABLED`: master switch for radar layer support.
   - `WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED`: set `true` to clip radar tiles to resolved country bounds.
@@ -79,8 +83,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## MQTT + Decoder
 - MQTT supports **WebSockets + TLS** or plain TCP. Typical deployments use `MQTT_TRANSPORT=websockets`, `MQTT_TLS=true`, and `MQTT_WS_PATH=/` or `/mqtt`.
 - `MQTT_TOPIC` accepts a comma-separated list, so one map can subscribe to multiple topic trees such as `meshcore/BOS/#,meshcore/CON/#`.
-- Decoder uses Node + [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch) installed in the container.
-- The patched package replaces the official decoder so the map can ingest 1-byte, 2-byte, and 3-byte repeater prefixes.
+- Decoder uses Node + the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder) installed in the container.
+- The official package now handles 1-byte, 2-byte, and 3-byte repeater prefixes used by the map.
 - `backend/decoder.py` writes a small Node helper and calls it to decode MeshCore packets.
 - Route path decoding now accepts mixed hop prefixes: 1-byte (`AB`), 2-byte (`ABCD`), and 3-byte (`ABCDEF`) values in the same path during upgrade rollouts.
 - Ambiguous 1-byte prefixes are now handled conservatively: if multiple nodes share the same first byte, the map skips broad closest/time-based guesses and only keeps the hop when there is stronger evidence such as a unique match or neighbor/manual adjacency.
@@ -147,8 +151,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Hovering the profile or the LOS line syncs a cursor tooltip on the profile.
 - Hovering the LOS profile also tracks a cursor on the map and highlights nearby peaks.
 - LOS legend items (clear/blocked/peaks/relay) are hidden unless the LOS tool is active.
-- Shift+click nodes (or long‑press on mobile) or click two points on the map to run LOS. Drag endpoints to update LOS in realtime.
-- After LOS is locked, click a point marker (A/B) to select it, then click the map to reposition that specific endpoint.
+- Shift+click nodes (or long‑press on mobile) or click the map repeatedly to add LOS pins and build a chained path segment-by-segment.
+- Drag endpoints to update LOS in realtime. Click a point marker to select it, then click the map to reposition that specific point. LOS heights are stored per pin, not as one shared A/B pair.
 
 ## Device Names + Roles
 - Names come from advert payloads or status messages when available.

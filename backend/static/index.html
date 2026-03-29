@@ -178,19 +178,16 @@
     <div class="small"><strong>Line of Sight</strong></div>
     <div class="small" id="los-status"></div>
     <label class="los-field">
-      <span>Point A height (m)</span>
+      <span>Start pin height (m)</span>
       <input id="los-height-a" type="number" inputmode="numeric" step="1" value="0" />
     </label>
-    <label class="los-field los-inline">
-      <span>Keep A on Clear</span>
-      <input id="los-keep-a" type="checkbox" />
-    </label>
     <label class="los-field">
-      <span>Point B height (m)</span>
+      <span>End pin height (m)</span>
       <input id="los-height-b" type="number" inputmode="numeric" step="1" value="0" />
     </label>
-    <div class="small">Click the profile to copy coords. Clear keeps A when checked; click again to reset.</div>
-    <button class="map-toggle" id="los-clear" type="button">Clear LOS</button>
+    <div class="small">Add pins to build a route. Select a segment to edit its start and end pin heights. Heights are above ground at that pin. Click the profile to copy coordinates.</div>
+    <button class="map-toggle" id="los-remove-last" type="button">Remove last pin</button>
+    <button class="map-toggle" id="los-clear" type="button">Clear LOS pins</button>
     <div class="los-profile" id="los-profile" hidden>
       <div class="small los-profile-title">Elevation profile</div>
       <svg id="los-profile-svg" viewBox="0 0 300 90" preserveAspectRatio="none"></svg>

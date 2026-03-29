@@ -965,7 +965,7 @@ def _ensure_node_decoder() -> bool:
         "node",
         "--input-type=module",
         "-e",
-        "import('meshcore-decoder-multibyte-patch')",
+        "import('@michaelhart/meshcore-decoder')",
       ],
       check=True,
       stdout=subprocess.DEVNULL,
@@ -974,11 +974,11 @@ def _ensure_node_decoder() -> bool:
     )
   except Exception:
     _node_unavailable_once = True
-    print("[decode] meshcore-decoder-multibyte-patch not available")
+    print("[decode] @michaelhart/meshcore-decoder not available")
     return False
 
   script = """#!/usr/bin/env node
-import { MeshCorePacketDecoder, getDeviceRoleName } from 'meshcore-decoder-multibyte-patch';
+import { MeshCorePacketDecoder, getDeviceRoleName } from '@michaelhart/meshcore-decoder';
 import readline from 'node:readline';
 
 let keyStore = undefined;

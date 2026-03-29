@@ -1,5 +1,26 @@
 # Versions
 
+## v1.8.0 (03-28-2026)
+- Switched the runtime decoder back to the official `@michaelhart/meshcore-decoder` package now that the published decoder supports multibyte path decoding needed by the map.
+- Added issue #41: the LOS tool now supports multiple chained pins so you can build a proposed relay path one segment at a time instead of being limited to a single two-point LOS check.
+- LOS elevation profile now spans the chained path instead of only the active two-point segment.
+- Removed the old `Keep A` LOS workflow and updated the LOS panel copy/labels to match chained pins instead of fixed A/B endpoints.
+- LOS height inputs are now stored per pin instead of as a single shared A/B pair, so changing segment heights no longer overwrites unrelated segments in a chained LOS path.
+- Simplified the LOS helper copy so the selected-segment height controls read more directly.
+- Added `Remove last pin` to the LOS tool so chained paths can be trimmed without clearing the whole route.
+- Fixed chained LOS recomputation when moving an intermediate pin so both adjacent segments are recalculated instead of leaving the earlier segment stale.
+- Added automatic runtime backups as timestamped `.tar.gz` archives.
+- MeshMapper coverage rendering now expands each returned square to match MeshMapper's displayed neighboring coverage fill, so the live map matches the MeshMapper site more closely instead of showing only the center square.
+- Softened the expanded MeshMapper coverage fill so the map keeps the fuller coverage footprint without the grid looking overly harsh.
+- Tuned MeshMapper coverage styling again with slightly brighter fill and subtle grid lines restored for readability.
+- Backups now collect existing live-state files such as `state.json`, `device_roles.json`, `device_coords.json`, `neighbor_overrides.json`, `channel_secrets.json`, `map_boundary.json`, `route_history.jsonl`, and `coverage_cache.json`.
+- Added new backup envs: `BACKUP_ENABLED`, `BACKUP_INTERVAL_SECONDS`, `BACKUP_DIR`, and `BACKUP_RETENTION_DAYS`.
+- Backup archives now default to `/backup` instead of `/data`, so live state and archives stay separate.
+- Backup interval now defaults to `43200` seconds (12 hours).
+- Added retention pruning for old backup archives based on `BACKUP_RETENTION_DAYS`.
+- Added `./backup:/backup` to `docker-compose.yaml` and ignored `/backup/` in git so local backup archives stay out of the repo.
+- Added backup tests covering archive creation and retention pruning.
+
 ## v1.7.8.1 (03-24-2026)
 - Fixed issue #38: the Peers tool `Clear peers` action now removes both incoming and outgoing lines even when the same peer appears in both directions.
 - Fixed a follow-on Peers tool bug where clearing peers could leave a stale in-flight lookup active, preventing a new node selection from taking over until the tool was reopened.

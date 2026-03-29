@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.7.8.1` (see `VERSIONS.md`).
+Current version: `1.8.0` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -153,6 +153,21 @@ CHANNEL_SECRETS_FILE=/data/channel_secrets.json
 ```
 
 Copy `channel_secrets.example.json` to your chosen path and keep only the channels you want to ship.
+
+Optional automatic backups:
+
+```env
+BACKUP_ENABLED=true
+BACKUP_INTERVAL_SECONDS=43200
+BACKUP_DIR=/backup
+BACKUP_RETENTION_DAYS=7
+```
+
+Notes:
+- backups are written as timestamped `.tar.gz` archives like `meshmap-backup-2026-03-28T21-15-00.tar.gz`
+- only files that currently exist are included
+- the default compose setup mounts `./backup:/backup`
+- live state stays under `/data`; backups stay under `/backup`
 
 Optional packet analyzer link base (used for Route Details hashes):
 

@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.7.8.1` (see `VERSIONS.md`).
+Current version: `1.8.0` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -147,7 +147,7 @@ Handles multiple payload formats:
 2. **Text patterns** - `"lat 42.36 lon -71.05"`
 3. **MeshCore packets** - Hex-encoded, decoded via Node.js
 
-The Node.js decoder (`scripts/meshcore_decode.mjs`) uses the [`meshcore-decoder-multibyte-patch`](https://www.npmjs.com/package/meshcore-decoder-multibyte-patch) package instead of the official decoder so multibyte paths can be decoded.
+The Node.js decoder helper uses the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder) package, which now supports multibyte path decoding used by the map.
 Route path handling now supports mixed repeater prefixes (`AB`, `ABCD`, and `ABCDEF`) to prepare for multibyte rollout compatibility.
 
 ### history.py (Route History)
@@ -396,4 +396,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.7.8.1`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.8.0`).

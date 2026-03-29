@@ -12,6 +12,10 @@ services:
       DEVICE_COORDS_FILE: "${DEVICE_COORDS_FILE:-/data/device_coords.json}"
       NEIGHBOR_OVERRIDES_FILE: "${NEIGHBOR_OVERRIDES_FILE:-/data/neighbor_overrides.json}"
       CHANNEL_SECRETS_FILE: "${CHANNEL_SECRETS_FILE:-/data/channel_secrets.json}"
+      BACKUP_ENABLED: "${BACKUP_ENABLED:-false}"
+      BACKUP_INTERVAL_SECONDS: "${BACKUP_INTERVAL_SECONDS:-43200}"
+      BACKUP_DIR: "${BACKUP_DIR:-/backup}"
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-7}"
       STATE_SAVE_INTERVAL: "${STATE_SAVE_INTERVAL:-5}"
       SITE_TITLE: "${SITE_TITLE:-Greater Boston Mesh Live Map}"
       SITE_DESCRIPTION: "${SITE_DESCRIPTION:-Live view of Greater Boston Mesh nodes, message routes, and advert paths.}"
@@ -83,4 +87,5 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/data
+      - ./backup:/backup
       - ./:/repo:ro
