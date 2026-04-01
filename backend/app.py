@@ -61,6 +61,7 @@ from history import (
   _record_route_history,
   _route_history_saver,
 )
+from backup import _backup_loop
 from weather import create_weather_router
 from turnstile import TurnstileVerifier
 from los import (
@@ -89,6 +90,10 @@ from config import (
   DEVICE_ROLES_FILE,
   DEVICE_COORDS_FILE,
   NEIGHBOR_OVERRIDES_FILE,
+  BACKUP_ENABLED,
+  BACKUP_INTERVAL_SECONDS,
+  BACKUP_DIR,
+  BACKUP_RETENTION_DAYS,
   STATE_SAVE_INTERVAL,
   DEVICE_TTL_WINDOW_SECONDS,
   PATH_TTL_SECONDS,
@@ -651,6 +656,10 @@ async def _lifespan(_app: FastAPI):
     _load_coverage_cache_file()
   _ensure_node_decoder()
   _check_git_updates()
+  if BACKUP_ENABLED:
+    print(
+      f"[backup] enabled dir={BACKUP_DIR} interval={BACKUP_INTERVAL_SECONDS}s retention_days={BACKUP_RETENTION_DAYS}"
+    )
 
   loop = asyncio.get_running_loop()
   transport = "websockets" if MQTT_TRANSPORT == "websockets" else "tcp"
@@ -697,6 +706,7 @@ async def _lifespan(_app: FastAPI):
     _route_history_saver(),
     _git_check_loop(),
     _meshmapper_coverage_sync_loop(),
+    _backup_loop(),
   ):
     background_tasks.add(asyncio.create_task(coro))
 

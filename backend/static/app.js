@@ -112,7 +112,9 @@ if (!validLayers.has(baseLayer)) {
   baseLayer = 'light';
 }
 
-const map = L.map('map', { zoomControl: false }).setView([mapStartLat, mapStartLon], mapStartZoom);
+const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([mapStartLat, mapStartLon], mapStartZoom);
+const vectorRenderer = L.canvas({ padding: 0.3 });
+const animatedLineRenderer = L.svg({ padding: 0.3 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 if (!map.getPane('radarPane')) {
   map.createPane('radarPane');
@@ -129,6 +131,14 @@ const weatherWindPane = map.getPane('weatherWindPane');
 if (weatherWindPane) {
   weatherWindPane.style.zIndex = '330';
   weatherWindPane.style.pointerEvents = 'none';
+}
+if (!map.getPane('peerPane')) {
+  map.createPane('peerPane');
+}
+const peerPane = map.getPane('peerPane');
+if (peerPane) {
+  peerPane.style.zIndex = '340';
+  peerPane.style.pointerEvents = 'none';
 }
 const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
@@ -252,6 +262,8 @@ const coverageEnabled = Boolean(coverageApiUrl);
 const coverageLayer = L.layerGroup();
 let coverageVisible = false;
 let coverageData = null;
+let meshMapperCoverageRects = [];
+let meshMapperCoverageSource = null;
 let coverageProvider = '';
 let coverageRegion = '';
 let coverageAttributionHtml = '';
@@ -299,7 +311,9 @@ let weatherRadarLayerEnabled = weatherRadarEnabled;
 let weatherWindLayerEnabled = weatherWindEnabled;
 let losActive = false;
 let losPoints = [];
-let losLine = null;
+let losLines = [];
+let losSegmentMeta = [];
+let losActiveSegmentIndex = null;
 let losSuggestion = null;
 let losPeakMarkers = [];
 let losHoverMarker = null;
@@ -329,13 +343,14 @@ const losProfileSvg = document.getElementById('los-profile-svg');
 const losProfileTooltip = document.getElementById('los-profile-tooltip');
 const losLegendGroup = document.getElementById('legend-los-group');
 const losClearButton = document.getElementById('los-clear');
+const losRemoveLastButton = document.getElementById('los-remove-last');
 const losPanel = document.getElementById('los-panel');
 const losHeightAInput = document.getElementById('los-height-a');
-const losKeepAInput = document.getElementById('los-keep-a');
 const losHeightBInput = document.getElementById('los-height-b');
 const propPanel = document.getElementById('prop-panel');
 const historyPanel = document.getElementById('history-panel');
 const historyLegendGroup = document.getElementById('legend-history-group');
+const coverageLegendGroup = document.getElementById('legend-coverage-group');
 const historyPanelLabel = document.getElementById('history-panel-label');
 const historyHideButton = document.getElementById('history-hide');
 const weatherPanel = document.getElementById('weather-panel');
@@ -360,13 +375,51 @@ let losProfileData = [];
 let losProfileMeta = null;
 let losPointMarkers = [];
 let losSelectedPointIndex = null;
-const storedLosHeightA = parseNumberParam(localStorage.getItem('meshmapLosHeightA'));
-const storedLosHeightB = parseNumberParam(localStorage.getItem('meshmapLosHeightB'));
-let losHeightA = Number.isFinite(storedLosHeightA) ? storedLosHeightA : 0;
-let losHeightB = Number.isFinite(storedLosHeightB) ? storedLosHeightB : 0;
+let losPointHeights = [];
+const loadLosPointHeights = () => {
+  try {
+    const raw = localStorage.getItem('meshmapLosPointHeights');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((value) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    });
+  } catch (_err) {
+    return [];
+  }
+};
+losPointHeights = loadLosPointHeights();
+const persistLosPointHeights = () => {
+  try {
+    localStorage.setItem('meshmapLosPointHeights', JSON.stringify(losPointHeights));
+  } catch (_err) {
+    // ignore storage failures
+  }
+};
+const getLosPointHeight = (index) => {
+  if (!Number.isInteger(index) || index < 0) return 0;
+  const value = Number(losPointHeights[index]);
+  return Number.isFinite(value) ? value : 0;
+};
+const setLosPointHeight = (index, value) => {
+  if (!Number.isInteger(index) || index < 0) return;
+  const next = Number(value);
+  losPointHeights[index] = Number.isFinite(next) ? next : 0;
+  persistLosPointHeights();
+};
 const syncLosHeightInputs = () => {
-  if (losHeightAInput) losHeightAInput.value = String(losHeightA);
-  if (losHeightBInput) losHeightBInput.value = String(losHeightB);
+  const startIdx = Number.isInteger(losActiveSegmentIndex) ? losActiveSegmentIndex : null;
+  const endIdx = Number.isInteger(startIdx) ? startIdx + 1 : null;
+  if (losHeightAInput) {
+    losHeightAInput.value = String(startIdx != null ? getLosPointHeight(startIdx) : 0);
+    losHeightAInput.disabled = startIdx == null;
+  }
+  if (losHeightBInput) {
+    losHeightBInput.value = String(endIdx != null ? getLosPointHeight(endIdx) : 0);
+    losHeightBInput.disabled = endIdx == null;
+  }
 };
 syncLosHeightInputs();
 const deviceData = new Map();
@@ -417,6 +470,7 @@ let weatherPanelHidden = false;
 let peersActive = false;
 let peersSelectedId = null;
 let peersData = null;
+let peersRequestToken = 0;
 let historyFilterMode = Number(localStorage.getItem('meshmapHistoryFilter') || '0');
 if (queryHistoryFilter != null) {
   historyFilterMode = queryHistoryFilter;
@@ -566,6 +620,26 @@ function setStats() {
   document.getElementById('stats').textContent = `${markers.size} active devices • ${onlineTotal} MQTT online • ${routeLines.size} routes • ${historyLines.size} history`;
 }
 
+let statsFramePending = false;
+let deferStats = false;
+
+function scheduleStatsUpdate() {
+  if (statsFramePending) return;
+  statsFramePending = true;
+  window.requestAnimationFrame(() => {
+    statsFramePending = false;
+    setStats();
+  });
+}
+
+function refreshStats() {
+  if (deferStats) {
+    scheduleStatsUpdate();
+    return;
+  }
+  setStats();
+}
+
 function formatOnlineWindow(seconds) {
   if (!seconds || seconds <= 0) return '0 min';
   if (seconds >= 3600) {
@@ -703,6 +777,48 @@ function updateCoverageAttribution() {
   }
 }
 
+function updateCoverageLegend() {
+  if (!coverageLegendGroup) return;
+  const active = coverageVisible && coverageProvider === 'meshmapper' && Array.isArray(coverageData) && coverageData.length > 0;
+  coverageLegendGroup.classList.toggle('active', active);
+}
+
+function getRenderBounds() {
+  if (!map || !map.getBounds) return null;
+  try {
+    return map.getBounds().pad(0.2);
+  } catch (_err) {
+    return null;
+  }
+}
+
+function boundsIntersectsViewport(south, west, north, east) {
+  const viewport = getRenderBounds();
+  if (!viewport) return true;
+  const tileBounds = L.latLngBounds([[south, west], [north, east]]);
+  return viewport.intersects(tileBounds);
+}
+
+function latLngInViewport(lat, lon) {
+  const viewport = getRenderBounds();
+  if (!viewport) return true;
+  return viewport.contains([lat, lon]);
+}
+
+function syncLayerMembership(layer, item, shouldAttach) {
+  if (!layer || !item) return;
+  const attached = item.__attached === true;
+  if (shouldAttach && !attached) {
+    layer.addLayer(item);
+    item.__attached = true;
+    return;
+  }
+  if (!shouldAttach && attached) {
+    layer.removeLayer(item);
+    item.__attached = false;
+  }
+}
+
 function coverageTimeLabel(ts) {
   const raw = typeof ts === 'string' ? Number.parseInt(ts, 10) : ts;
   if (!Number.isFinite(raw) || raw <= 0) return '';
@@ -712,8 +828,29 @@ function coverageTimeLabel(ts) {
   return date.toLocaleString();
 }
 
-function renderMeshMapperCoverage(data) {
-  let rendered = 0;
+function meshMapperCoveragePriority(type) {
+  switch (String(type || '').trim().toUpperCase()) {
+    case 'BIDIR':
+      return 6;
+    case 'DISC':
+    case 'TRACE':
+    case 'DISC/TRACE':
+      return 5;
+    case 'TX':
+      return 4;
+    case 'RX':
+      return 3;
+    case 'DEAD':
+      return 2;
+    case 'DROP':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function expandMeshMapperCoverageSquares(data) {
+  const merged = new Map();
   for (const square of data) {
     const bounds = square?.bounds;
     if (!bounds) continue;
@@ -722,12 +859,63 @@ function renderMeshMapperCoverage(data) {
     const north = Number(bounds.north);
     const east = Number(bounds.east);
     if (![south, west, north, east].every(Number.isFinite)) continue;
+    const latStep = north - south;
+    const lonStep = east - west;
+    if (!(latStep > 0) || !(lonStep > 0)) continue;
+    const priority = meshMapperCoveragePriority(square.coverage_type);
+    const timestamp = Number(square.timestamp) || 0;
+    for (let latOffset = -1; latOffset <= 1; latOffset += 1) {
+      for (let lonOffset = -1; lonOffset <= 1; lonOffset += 1) {
+        const nextSouth = south + (latStep * latOffset);
+        const nextWest = west + (lonStep * lonOffset);
+        const nextNorth = nextSouth + latStep;
+        const nextEast = nextWest + lonStep;
+        const key = `${nextSouth.toFixed(7)}:${nextWest.toFixed(7)}`;
+        const current = merged.get(key);
+        const shouldReplace = !current
+          || priority > current.__priority
+          || (priority === current.__priority && timestamp > current.__timestamp);
+        if (!shouldReplace) continue;
+        merged.set(key, {
+          ...square,
+          bounds: {
+            south: nextSouth,
+            west: nextWest,
+            north: nextNorth,
+            east: nextEast
+          },
+          __priority: priority,
+          __timestamp: timestamp,
+          __source_grid_id: square.grid_id || null
+        });
+      }
+    }
+  }
+  return Array.from(merged.values());
+}
+
+function renderMeshMapperCoverage(data) {
+  let rendered = 0;
+  meshMapperCoverageRects = [];
+  meshMapperCoverageSource = data;
+  const expandedSquares = expandMeshMapperCoverageSquares(data);
+  for (const square of expandedSquares) {
+    const bounds = square?.bounds;
+    if (!bounds) continue;
+    const south = Number(bounds.south);
+    const west = Number(bounds.west);
+    const north = Number(bounds.north);
+    const east = Number(bounds.east);
+    if (![south, west, north, east].every(Number.isFinite)) continue;
+    if (!boundsIntersectsViewport(south, west, north, east)) continue;
     const fillColor = square.fill_color || '#1e7e34';
-    const borderColor = square.border_color || fillColor;
     const rect = L.rectangle([[south, west], [north, east]], {
-      color: borderColor,
-      weight: 1,
-      fillOpacity: 0.55,
+      renderer: vectorRenderer,
+      stroke: true,
+      color: square.border_color || fillColor,
+      weight: 0.4,
+      opacity: 0.22,
+      fillOpacity: 0.5,
       fillColor
     });
     const details = [];
@@ -737,23 +925,42 @@ function renderMeshMapperCoverage(data) {
     }
     const when = coverageTimeLabel(square.timestamp);
     if (when) details.push(`Updated: ${when}`);
-    if (square.grid_id) details.push(`Grid: ${square.grid_id}`);
+    if (square.__source_grid_id) details.push(`Source grid: ${square.__source_grid_id}`);
     rect.bindPopup(details.join('<br/>'), { maxWidth: 320 });
-    coverageLayer.addLayer(rect);
+    rect.__coverageBounds = { south, west, north, east };
+    rect.__attached = false;
+    meshMapperCoverageRects.push(rect);
+    syncLayerMembership(coverageLayer, rect, boundsIntersectsViewport(south, west, north, east));
     rendered++;
   }
   return rendered;
 }
 
+function syncMeshMapperCoverageViewport() {
+  for (const rect of meshMapperCoverageRects) {
+    const b = rect && rect.__coverageBounds;
+    if (!b) continue;
+    syncLayerMembership(
+      coverageLayer,
+      rect,
+      boundsIntersectsViewport(b.south, b.west, b.north, b.east)
+    );
+  }
+}
+
 function renderCoverage(data) {
   coverageLayer.clearLayers();
+  meshMapperCoverageRects = [];
+  meshMapperCoverageSource = null;
   if (!data || !Array.isArray(data)) {
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   if (data.some(sample => sample && typeof sample === 'object' && sample.bounds)) {
     renderMeshMapperCoverage(data);
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   // Aggregate samples by 6-char geohash prefix (coverage tile level)
@@ -792,6 +999,7 @@ function renderCoverage(data) {
   for (const [tileHash, tile] of tileMap.entries()) {
     try {
       const [minLat, minLon, maxLat, maxLon] = geohashDecodeBbox(tileHash);
+      if (!boundsIntersectsViewport(minLat, minLon, maxLat, maxLon)) continue;
       const totalSamples = tile.heard + tile.lost;
       if (totalSamples === 0) continue;
       const heardRatio = totalSamples > 0 ? tile.heard / totalSamples : 0;
@@ -799,6 +1007,7 @@ function renderCoverage(data) {
       const baseOpacity = 0.75 * Math.min(1, totalSamples / 10);
       const opacity = heardRatio > 0 ? baseOpacity * heardRatio : Math.max(baseOpacity, 0.4);
       const rect = L.rectangle([[minLat, minLon], [maxLat, maxLon]], {
+        renderer: vectorRenderer,
         color: color,
         weight: 1,
         fillOpacity: Math.max(opacity, 0.2),
@@ -823,6 +1032,7 @@ function renderCoverage(data) {
     }
   }
   updateCoverageAttribution();
+  updateCoverageLegend();
 }
 
 function setCoverageVisible(visible) {
@@ -837,6 +1047,7 @@ function setCoverageVisible(visible) {
       map.removeLayer(coverageLayer);
     }
     updateCoverageAttribution();
+    updateCoverageLegend();
     return;
   }
   if (visible) {
@@ -854,6 +1065,7 @@ function setCoverageVisible(visible) {
           }
           renderCoverage(result.data);
         } else {
+          updateCoverageLegend();
           reportError('Coverage API returned invalid data format');
         }
       });
@@ -865,6 +1077,7 @@ function setCoverageVisible(visible) {
       map.removeLayer(coverageLayer);
     }
     updateCoverageAttribution();
+    updateCoverageLegend();
   }
 }
 
@@ -1596,6 +1809,7 @@ function setNodesVisible(visible) {
         peersData.outgoing || []
       );
     }
+    refreshViewportLayers();
   } else if (map.hasLayer(markerLayer)) {
     map.removeLayer(markerLayer);
     if (map.hasLayer(trailLayer)) {
@@ -1921,18 +2135,21 @@ function renderPeerLines(origin, incoming, outgoing) {
     peerLayer.addTo(map);
   }
   const originLatLng = [origin.lat, origin.lon];
-  const drawLine = (peer, color, dash) => {
+  const drawLine = (peer, color, dash, direction) => {
     if (peer.lat == null || peer.lon == null) return;
     const line = L.polyline([originLatLng, [peer.lat, peer.lon]], {
+      pane: 'peerPane',
       color,
       weight: 3,
       opacity: 0.85,
-      dashArray: dash
+      dashArray: dash,
+      interactive: false
     }).addTo(peerLayer);
-    peerLines.set(peer.peer_id, line);
+    const key = `${direction}:${peer.peer_id || `${peer.lat},${peer.lon}`}`;
+    peerLines.set(key, line);
   };
-  incoming.forEach(peer => drawLine(peer, '#38bdf8', '6 8'));
-  outgoing.forEach(peer => drawLine(peer, '#a855f7', '2 6'));
+  incoming.forEach(peer => drawLine(peer, '#38bdf8', '6 8', 'in'));
+  outgoing.forEach(peer => drawLine(peer, '#a855f7', '2 6', 'out'));
   if (peerLayer.bringToFront) {
     peerLayer.bringToFront();
   }
@@ -1967,6 +2184,7 @@ async function selectPeerNode(deviceId) {
   if (!deviceId) return;
   peersSelectedId = deviceId;
   if (!peersActive) return;
+  const requestToken = ++peersRequestToken;
   setPeersStatus('Loading peers…');
   if (peersMeta) peersMeta.textContent = '';
   try {
@@ -1975,6 +2193,7 @@ async function selectPeerNode(deviceId) {
       throw new Error(`peers ${res.status}`);
     }
     const data = await res.json();
+    if (requestToken !== peersRequestToken || !peersActive || peersSelectedId !== deviceId) return;
     peersData = data;
     const name = data.name || (deviceId ? `${deviceId.slice(0, 8)}…` : 'Unknown');
     const inboundTotal = data.incoming_total || 0;
@@ -1991,6 +2210,7 @@ async function selectPeerNode(deviceId) {
       data.outgoing || []
     );
   } catch (err) {
+    if (requestToken !== peersRequestToken) return;
     setPeersStatus('Peer lookup failed.');
     if (peersMeta) peersMeta.textContent = '';
     renderPeerList(peersIn, [], 0, 'incoming');
@@ -2001,6 +2221,7 @@ async function selectPeerNode(deviceId) {
 }
 
 function clearPeers() {
+  peersRequestToken += 1;
   peersSelectedId = null;
   peersData = null;
   setPeersStatus('Select a node to view peers.');
@@ -2243,6 +2464,167 @@ function clearLosHoverMarker() {
     losActivePeak = null;
   }
 }
+
+function getLosSegmentLabel(index) {
+  if (!Number.isInteger(index) || index < 0) return '';
+  return `${index + 1}→${index + 2}`;
+}
+
+function buildCombinedLosProfile() {
+  const combined = [];
+  const segmentRanges = [];
+  let offset = 0;
+  let anyBlocked = false;
+  losSegmentMeta.forEach((meta, index) => {
+    const profile = Array.isArray(meta?.profile) ? meta.profile : null;
+    if (!profile || profile.length < 2) return;
+    const startDistance = offset;
+    profile.forEach((point, pointIndex) => {
+      const distance = Number(point[0]);
+      const terrain = Number(point[1]);
+      const losLineValue = Number(point[2]);
+      if (![distance, terrain, losLineValue].every(Number.isFinite)) return;
+      if (index > 0 && pointIndex === 0) return;
+      combined.push([offset + distance, terrain, losLineValue]);
+    });
+    const segmentDistance = Number(profile[profile.length - 1][0]) || 0;
+    const endDistance = offset + segmentDistance;
+    segmentRanges[index] = { startDistance, endDistance };
+    offset = endDistance;
+    anyBlocked = anyBlocked || !!meta?.blocked;
+  });
+  return { profile: combined, blocked: anyBlocked, segmentRanges };
+}
+
+function resolveLosProfileDistance(distanceMeters) {
+  const ranges = Array.isArray(losProfileMeta?.segmentRanges) ? losProfileMeta.segmentRanges : [];
+  if (!ranges.length) {
+    const endpoints = getActiveLosSegmentEndpoints();
+    if (!endpoints) return null;
+    return { segmentIndex: losActiveSegmentIndex, localDistance: distanceMeters, endpoints };
+  }
+  const clamped = Math.min(Math.max(distanceMeters, 0), losProfileMeta.totalDistance || 0);
+  for (let index = 0; index < ranges.length; index++) {
+    const range = ranges[index];
+    if (!range) continue;
+    const isLast = index === ranges.length - 1;
+    if (clamped < range.endDistance || isLast) {
+      const endpoints = getLosSegmentEndpoints(index);
+      if (!endpoints) return null;
+      return {
+        segmentIndex: index,
+        localDistance: Math.max(0, clamped - range.startDistance),
+        endpoints
+      };
+    }
+  }
+  return null;
+}
+
+function getLosSegmentEndpoints(index) {
+  if (!Number.isInteger(index) || index < 0 || (index + 1) >= losPoints.length) return null;
+  return [losPoints[index], losPoints[index + 1]];
+}
+
+function getActiveLosSegmentEndpoints() {
+  return getLosSegmentEndpoints(losActiveSegmentIndex);
+}
+
+function getActiveLosLine() {
+  if (!Number.isInteger(losActiveSegmentIndex) || losActiveSegmentIndex < 0) return null;
+  return losLines[losActiveSegmentIndex] || null;
+}
+
+function updateLosSegmentStyles() {
+  losLines.forEach((line, index) => {
+    if (!line) return;
+    const meta = losSegmentMeta[index] || null;
+    const active = index === losActiveSegmentIndex;
+    const color = meta ? (meta.blocked ? '#ef4444' : '#22c55e') : '#9ca3af';
+    line.setStyle({
+      color,
+      weight: active ? 5 : 4,
+      opacity: active ? 0.9 : 0.75,
+      dashArray: '6 10'
+    });
+  });
+}
+
+function selectLosSegment(index, options = {}) {
+  if (!Number.isInteger(index) || index < 0 || index >= losLines.length) return;
+  losActiveSegmentIndex = index;
+  syncLosHeightInputs();
+  updateLosSegmentStyles();
+  const meta = losSegmentMeta[index] || null;
+  const combined = buildCombinedLosProfile();
+  if (combined.profile.length >= 2) {
+    renderLosProfile(combined.profile, combined.blocked, combined);
+  }
+  if (meta) {
+    lastLosStatusMeta = meta;
+    setLosStatus(buildLosStatus(meta));
+  } else if (options.silent !== true) {
+    setLosStatus(`LOS: selected segment ${getLosSegmentLabel(index)}`);
+  }
+  if (options.recompute === true) {
+    scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
+  }
+}
+
+function ensureLosSegments() {
+  const needed = Math.max(0, losPoints.length - 1);
+  while (losLines.length > needed) {
+    const line = losLines.pop();
+    if (line) {
+      losLayer.removeLayer(line);
+    }
+  }
+  while (losSegmentMeta.length > needed) {
+    losSegmentMeta.pop();
+  }
+  for (let index = 0; index < needed; index++) {
+    const endpoints = getLosSegmentEndpoints(index);
+    if (!endpoints) continue;
+    const latlngs = [endpoints[0], endpoints[1]];
+    let line = losLines[index];
+    if (!line) {
+      line = L.polyline(latlngs, {
+        color: '#9ca3af',
+        weight: 4,
+        opacity: 0.8,
+        dashArray: '6 10'
+      }).addTo(losLayer);
+      line.__losSegmentIndex = index;
+      line.on('mousemove', (ev) => {
+        if (line.__losSegmentIndex !== losActiveSegmentIndex) return;
+        if (ev && ev.latlng) {
+          updateLosProfileFromMap(ev.latlng);
+        }
+      });
+      line.on('mouseout', clearLosProfileHover);
+      line.on('click', (ev) => {
+        if (ev && ev.originalEvent) {
+          ev.originalEvent.preventDefault();
+          ev.originalEvent.stopPropagation();
+        }
+        if (typeof L !== 'undefined' && L.DomEvent) {
+          L.DomEvent.stop(ev);
+        }
+        selectLosSegment(line.__losSegmentIndex, { recompute: true });
+      });
+      losLines[index] = line;
+    } else {
+      line.__losSegmentIndex = index;
+      line.setLatLngs(latlngs);
+    }
+  }
+  if (needed === 0) {
+    losActiveSegmentIndex = null;
+  } else if (losActiveSegmentIndex == null || losActiveSegmentIndex >= needed) {
+    losActiveSegmentIndex = needed - 1;
+  }
+  updateLosSegmentStyles();
+}
 function setPropStatus(text) {
   const el = document.getElementById('prop-status');
   if (el) {
@@ -2309,12 +2691,12 @@ function layoutSidePanels() {
   });
 }
 function clearLos() {
-  const keepA = losKeepAInput && losKeepAInput.checked;
-  const hasA = losPoints.length > 0;
-  const canKeepA = keepA && losPoints.length > 1 && hasA;
-  const keptPoint = canKeepA ? losPoints[0] : null;
   losPoints = [];
-  losLine = null;
+  losPointHeights = [];
+  persistLosPointHeights();
+  losLines = [];
+  losSegmentMeta = [];
+  losActiveSegmentIndex = null;
   losSuggestion = null;
   losLocked = false;
   lastLosStatusMeta = null;
@@ -2331,12 +2713,7 @@ function clearLos() {
   clearLosHoverMarker();
   losSelectedPointIndex = null;
   losPointMarkers = [];
-  if (keptPoint) {
-    losPoints = [keptPoint];
-    const marker = createLosPointMarker(keptPoint, 0);
-    losPointMarkers.push(marker);
-    setLosStatus('LOS: select second point');
-  }
+  syncLosHeightInputs();
 }
 
 function setLosActive(active) {
@@ -2344,7 +2721,7 @@ function setLosActive(active) {
   const btn = document.getElementById('los-toggle');
   if (btn) {
     btn.classList.toggle('active', active);
-    btn.textContent = active ? 'LOS: click 2 points' : 'LOS tool';
+    btn.textContent = active ? 'LOS: add pins' : 'LOS tool';
   }
   if (losLegendGroup) {
     losLegendGroup.classList.toggle('active', active);
@@ -2361,7 +2738,7 @@ function setLosActive(active) {
   layoutSidePanels();
 }
 
-function renderLosProfile(profile, blocked) {
+function renderLosProfile(profile, blocked, options = {}) {
   if (!losProfile || !losProfileSvg) return;
   if (!Array.isArray(profile) || profile.length < 2) {
     clearLosProfile();
@@ -2423,7 +2800,8 @@ function renderLosProfile(profile, blocked) {
     totalDistance,
     innerWidth,
     innerHeight,
-    blocked
+    blocked,
+    segmentRanges: Array.isArray(options.segmentRanges) ? options.segmentRanges : []
   };
   losProfile.hidden = false;
   layoutSidePanels();
@@ -2466,7 +2844,8 @@ function buildLosStatus(meta) {
   const obstruction = meta.blocked
     ? `Blocked (+${formatObstructionUnits(meta.obstruction_m)})`
     : 'Clear';
-  let status = `LOS: ${distance} • ${obstruction}`;
+  const segmentLabel = meta.segment_label ? `${meta.segment_label} • ` : '';
+  let status = `LOS: ${segmentLabel}${distance} • ${obstruction}`;
   if (meta.suggested) {
     status += meta.suggested_clear
       ? ' • Relay Suggested'
@@ -2577,18 +2956,18 @@ function updateLosPeakHighlight(distanceMeters) {
 }
 
 function updateLosMapHover(distanceMeters) {
-  if (!losProfileMeta || !losPoints || losPoints.length < 2) return;
-  const total = losProfileMeta.totalDistance;
-  const clamped = Math.min(Math.max(distanceMeters, 0), total);
+  const resolved = resolveLosProfileDistance(distanceMeters);
+  if (!losProfileMeta || !resolved) return;
+  const [start, end] = resolved.endpoints;
+  const total = haversineMeters(start.lat, start.lng, end.lat, end.lng);
+  const clamped = Math.min(Math.max(resolved.localDistance, 0), total);
   const t = total > 0 ? (clamped / total) : 0;
-  const start = losPoints[0];
-  const end = losPoints[1];
   const lat = start.lat + (end.lat - start.lat) * t;
   const lon = start.lng + (end.lng - start.lng) * t;
-  const label = updateLosPeakHighlight(clamped);
+  const label = resolved.segmentIndex === losActiveSegmentIndex ? updateLosPeakHighlight(clamped) : null;
   const tooltip = label
     ? `${label} • ${formatDistanceMeters(clamped)}`
-    : `LOS point • ${formatDistanceMeters(clamped)}`;
+    : `LOS ${getLosSegmentLabel(resolved.segmentIndex)} • ${formatDistanceMeters(clamped)}`;
   if (!losHoverMarker) {
     losHoverMarker = L.circleMarker([lat, lon], {
       radius: 5,
@@ -2628,11 +3007,11 @@ function losProfileDistanceFromEvent(ev) {
 }
 
 function copyLosCoords(distanceMeters) {
-  if (!losPoints || losPoints.length < 2 || distanceMeters == null || !losProfileMeta) return;
-  const total = losProfileMeta.totalDistance || 0;
-  const t = total > 0 ? Math.min(Math.max(distanceMeters / total, 0), 1) : 0;
-  const start = losPoints[0];
-  const end = losPoints[1];
+  const resolved = resolveLosProfileDistance(distanceMeters);
+  if (!resolved || distanceMeters == null || !losProfileMeta) return;
+  const [start, end] = resolved.endpoints;
+  const total = haversineMeters(start.lat, start.lng, end.lat, end.lng);
+  const t = total > 0 ? Math.min(Math.max(resolved.localDistance / total, 0), 1) : 0;
   const lat = start.lat + (end.lat - start.lat) * t;
   const lon = start.lng + (end.lng - start.lng) * t;
   const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
@@ -2670,10 +3049,10 @@ function clearLosProfileHover() {
 }
 
 function updateLosProfileFromMap(latlng) {
-  if (!latlng || losPoints.length < 2) return;
+  const endpoints = getActiveLosSegmentEndpoints();
+  if (!latlng || !endpoints) return;
   if (!losProfileMeta || !losProfileData || losProfileData.length < 2) return;
-  const start = losPoints[0];
-  const end = losPoints[1];
+  const [start, end] = endpoints;
   const dLat = end.lat - start.lat;
   const dLon = end.lng - start.lng;
   const denom = (dLat * dLat) + (dLon * dLon);
@@ -2681,7 +3060,9 @@ function updateLosProfileFromMap(latlng) {
   let t = ((latlng.lat - start.lat) * dLat + (latlng.lng - start.lng) * dLon) / denom;
   t = Math.min(Math.max(t, 0), 1);
   const totalDistance = haversineMeters(start.lat, start.lng, end.lat, end.lng);
-  updateLosProfileAtDistance(totalDistance * t);
+  const ranges = Array.isArray(losProfileMeta.segmentRanges) ? losProfileMeta.segmentRanges : [];
+  const startOffset = ranges[losActiveSegmentIndex]?.startDistance || 0;
+  updateLosProfileAtDistance(startOffset + (totalDistance * t));
 }
 
 function renderLosPeaks(peaks) {
@@ -2734,6 +3115,8 @@ function renderLosPeaks(peaks) {
 
 function applyLosResult(data) {
   if (!data || !data.ok) return false;
+  const activeIndex = losActiveSegmentIndex;
+  const activeLine = getActiveLosLine();
   if (Array.isArray(data.profile) && data.profile.length > 1) {
     const terrain = data.profile.map(item => Number(item[1]));
     if (terrain.every(val => Number.isFinite(val))) {
@@ -2743,12 +3126,15 @@ function applyLosResult(data) {
   }
   const blocked = data.blocked;
   const meters = data.distance_m != null ? Number(data.distance_m) : null;
-  lastLosStatusMeta = {
+  const segmentMeta = {
+    segment_index: activeIndex,
+    segment_label: getLosSegmentLabel(activeIndex),
     distance_m: Number.isFinite(meters) ? meters : null,
     blocked,
     obstruction_m: data.max_obstruction_m,
     suggested: false,
-    suggested_clear: false
+    suggested_clear: false,
+    profile: Array.isArray(data.profile) ? data.profile : []
   };
   if (losSuggestion) {
     losLayer.removeLayer(losSuggestion);
@@ -2771,26 +3157,29 @@ function applyLosResult(data) {
       weight: 2
     }).addTo(losLayer);
     losSuggestion.bindTooltip(`${label}<br/>${s.lat}, ${s.lon}`, { direction: 'top' });
-    lastLosStatusMeta.suggested = true;
-    lastLosStatusMeta.suggested_clear = !!s.clear;
+    segmentMeta.suggested = true;
+    segmentMeta.suggested_clear = !!s.clear;
   }
-  setLosStatus(buildLosStatus(lastLosStatusMeta));
-  renderLosProfile(data.profile, blocked);
-  if (losLine) {
-    losLine.setStyle({
-      color: blocked ? '#ef4444' : '#22c55e',
-      weight: 5,
-      opacity: 0.9,
-      dashArray: blocked ? '4 10' : null
-    });
+  if (Number.isInteger(activeIndex) && activeIndex >= 0) {
+    losSegmentMeta[activeIndex] = { ...segmentMeta };
+  }
+  lastLosStatusMeta = segmentMeta;
+  setLosStatus(buildLosStatus(segmentMeta));
+  const combined = buildCombinedLosProfile();
+  renderLosProfile(combined.profile, combined.blocked, combined);
+  updateLosSegmentStyles();
+  if (activeLine) {
+    activeLine.bringToFront();
   }
   clearLosProfileHover();
   return true;
 }
 
 async function runLosCheckClient(a, b, options = {}) {
-  const heightA = Number.isFinite(losHeightA) ? losHeightA : 0;
-  const heightB = Number.isFinite(losHeightB) ? losHeightB : 0;
+  const startIndex = Number.isInteger(losActiveSegmentIndex) ? losActiveSegmentIndex : 0;
+  const endIndex = startIndex + 1;
+  const heightA = getLosPointHeight(startIndex);
+  const heightB = getLosPointHeight(endIndex);
   const distanceMeters = haversineMeters(a.lat, a.lng, b.lat, b.lng);
   if (distanceMeters <= 0) {
     return { ok: false, error: 'invalid_distance' };
@@ -2843,8 +3232,10 @@ async function runLosCheckClient(a, b, options = {}) {
 }
 
 async function fetchLosServerResult(a, b) {
-  const heightA = Number.isFinite(losHeightA) ? losHeightA : 0;
-  const heightB = Number.isFinite(losHeightB) ? losHeightB : 0;
+  const startIndex = Number.isInteger(losActiveSegmentIndex) ? losActiveSegmentIndex : 0;
+  const endIndex = startIndex + 1;
+  const heightA = getLosPointHeight(startIndex);
+  const heightB = getLosPointHeight(endIndex);
   const params = new URLSearchParams({
     lat1: a.lat.toFixed(6),
     lon1: a.lng.toFixed(6),
@@ -4364,6 +4755,7 @@ async function copyPopupLocation(ev) {
 function upsertDevice(d, trail) {
   const id = d.device_id;
   const latlng = [d.lat, d.lon];
+  const visibleInViewport = latLngInViewport(d.lat, d.lon);
   const role = resolveRole(d);
   const style = markerStyleForDevice(d);
   deviceData.set(id, d);
@@ -4371,7 +4763,7 @@ function upsertDevice(d, trail) {
 
   // marker
   if (!markers.has(id)) {
-    const m = L.circleMarker(latlng, style).addTo(markerLayer);
+    const m = L.circleMarker(latlng, { ...style, renderer: vectorRenderer });
     m.bindPopup(makePopup(d), {
       maxWidth: 260,
       maxHeight: 320,
@@ -4477,12 +4869,14 @@ function upsertDevice(d, trail) {
     });
     markers.set(id, m);
     updateMarkerLabel(m, d);
+    syncLayerMembership(markerLayer, m, nodesVisible && visibleInViewport);
   } else {
     const m = markers.get(id);
     m.setLatLng(latlng);
     m.setPopupContent(makePopup(d));
     if (m.setStyle) m.setStyle(style);
     updateMarkerLabel(m, d);
+    syncLayerMembership(markerLayer, m, nodesVisible && visibleInViewport);
   }
 
   // trail polyline (skip companions)
@@ -4490,25 +4884,29 @@ function upsertDevice(d, trail) {
     const points = trail.map(p => [p[0], p[1]]);
     if (!polylines.has(id)) {
       const pl = L.polyline(points, {
+        renderer: animatedLineRenderer,
         color: '#38bdf8',
         weight: 3,
         opacity: 0.85,
         className: 'trail-animated'
-      }).addTo(trailLayer);
+      });
       polylines.set(id, pl);
+      syncLayerMembership(trailLayer, pl, nodesVisible && visibleInViewport);
     } else {
       const pl = polylines.get(id);
       pl.setLatLngs(points);
       if (pl.setStyle) {
         pl.setStyle({ color: '#38bdf8', weight: 3, opacity: 0.85 });
       }
+      syncLayerMembership(trailLayer, pl, nodesVisible && visibleInViewport);
     }
   } else if (polylines.has(id)) {
     trailLayer.removeLayer(polylines.get(id));
+    polylines.get(id).__attached = false;
     polylines.delete(id);
   }
 
-  setStats();
+  refreshStats();
   if (propagationActive && propagationOrigins.length) {
     const origin = propagationOrigins.find(item => item.id === id);
     if (origin) {
@@ -4541,7 +4939,7 @@ function removeDevices(ids) {
     }
     deviceMeta.delete(id);
   });
-  setStats();
+  refreshStats();
   refreshOnlineMarkers();
   if (propagationActive && propagationOrigins.length) {
     const removed = propagationOrigins.filter(origin => origin.id && ids.includes(origin.id));
@@ -4576,7 +4974,28 @@ function refreshOnlineMarkers() {
     if (m.setStyle) m.setStyle(style);
     if (m.getPopup()) m.setPopupContent(makePopup(d));
   });
-  setStats();
+  refreshStats();
+}
+
+function refreshViewportLayers() {
+  const shouldShowNodes = nodesVisible;
+  for (const [id, marker] of markers.entries()) {
+    const d = deviceData.get(id);
+    const visible = Boolean(d) && shouldShowNodes && latLngInViewport(d.lat, d.lon);
+    syncLayerMembership(markerLayer, marker, visible);
+  }
+  for (const [id, line] of polylines.entries()) {
+    const d = deviceData.get(id);
+    const visible = Boolean(d) && shouldShowNodes && latLngInViewport(d.lat, d.lon);
+    syncLayerMembership(trailLayer, line, visible);
+  }
+  if (coverageVisible && coverageData) {
+    if (coverageProvider === 'meshmapper' && meshMapperCoverageSource === coverageData && meshMapperCoverageRects.length) {
+      syncMeshMapperCoverageViewport();
+    } else {
+      renderCoverage(coverageData);
+    }
+  }
 }
 
 function removeRoutes(ids) {
@@ -4592,7 +5011,7 @@ function removeRoutes(ids) {
       hopMarkers.delete(id);
     }
   });
-  setStats();
+  refreshStats();
 }
 
 function clearRoutes() {
@@ -4601,7 +5020,7 @@ function clearRoutes() {
     routeLayer.removeLayer(entry.line);
   });
   routeLines.clear();
-  setStats();
+  refreshStats();
 }
 
 function clearHistoryLayer() {
@@ -4611,7 +5030,7 @@ function clearHistoryLayer() {
   });
   historyLines.clear();
   refreshHistoryStyles();
-  setStats();
+  refreshStats();
 }
 
 function removeHistoryEdges(ids) {
@@ -4623,7 +5042,7 @@ function removeHistoryEdges(ids) {
     historyCache.delete(id);
   });
   refreshHistoryStyles();
-  setStats();
+  refreshStats();
 }
 
 function historyWeight(count) {
@@ -4764,7 +5183,7 @@ function renderHistoryEdge(edge) {
   ];
   let entry = historyLines.get(id);
   if (!entry) {
-    const line = L.polyline(points, { color: '#7dd3fc', weight: 2, opacity: 0.6 }).addTo(historyLayer);
+    const line = L.polyline(points, { renderer: vectorRenderer, color: '#7dd3fc', weight: 2, opacity: 0.6 }).addTo(historyLayer);
     entry = { line, count: Number(edge.count) || 1, recent: [], lastTs: null };
     historyLines.set(id, entry);
     line.on('click', (ev) => {
@@ -4788,7 +5207,7 @@ function renderHistoryEdge(edge) {
 function renderHistoryFromCache() {
   historyCache.forEach(edge => renderHistoryEdge(edge));
   updateHistoryRendering();
-  setStats();
+  refreshStats();
 }
 
 function upsertHistoryEdge(edge) {
@@ -4797,7 +5216,7 @@ function upsertHistoryEdge(edge) {
   const edgeData = { ...edge, id };
   historyCache.set(id, edgeData);
   if (!historyVisible || !nodesVisible) {
-    setStats();
+    refreshStats();
     return;
   }
   renderHistoryEdge(edgeData);
@@ -5202,7 +5621,7 @@ function upsertRoute(r, skipHeat = false) {
   const routeMeta = buildRouteLogMeta({ ...r, id, points, hashes: r.hashes });
   let entry = routeLines.get(id);
   if (!entry) {
-    const line = L.polyline(points, style).addTo(routeLayer);
+    const line = L.polyline(points, { ...style, renderer: animatedLineRenderer }).addTo(routeLayer);
     if (!prodMode) {
       line.on('click', (ev) => handleRouteClick(id, ev));
     }
@@ -5233,7 +5652,7 @@ function upsertRoute(r, skipHeat = false) {
   if (hopsVisible) {
     renderHopMarkers(id, entry.meta);
   }
-  setStats();
+  refreshStats();
 }
 
 async function initialSnapshot() {
@@ -5265,9 +5684,98 @@ async function initialSnapshot() {
     if (snap.update) {
       setUpdateBanner(snap.update);
     }
-    setStats();
+    refreshStats();
   } catch (e) {
     console.warn("snapshot failed", e);
+  }
+}
+
+const pendingWsMessages = [];
+let wsFlushScheduled = false;
+
+function flushQueuedWsMessages() {
+  wsFlushScheduled = false;
+  if (!pendingWsMessages.length) return;
+  const batch = pendingWsMessages.splice(0, pendingWsMessages.length);
+  deferStats = true;
+  try {
+    for (const msg of batch) {
+      handleRealtimeMessage(msg);
+    }
+  } finally {
+    deferStats = false;
+  }
+  scheduleStatsUpdate();
+}
+
+function queueRealtimeMessage(msg) {
+  pendingWsMessages.push(msg);
+  if (wsFlushScheduled) return;
+  wsFlushScheduled = true;
+  window.requestAnimationFrame(flushQueuedWsMessages);
+}
+
+function handleRealtimeMessage(msg) {
+  if (msg.type === "update") {
+    upsertDevice(msg.device, msg.trail);
+    return;
+  }
+
+  if (msg.type === "device_seen") {
+    const id = msg.device_id;
+    applyMqttPresenceSummary(msg.mqtt_presence);
+    const d = deviceData.get(id);
+    if (d) {
+      if (msg.last_seen_ts) d.last_seen_ts = msg.last_seen_ts;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_seen_ts')) d.mqtt_seen_ts = msg.mqtt_seen_ts;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_online_source')) d.mqtt_online_source = msg.mqtt_online_source;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_ts')) d.mqtt_status_ts = msg.mqtt_status_ts;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_value')) d.mqtt_status_value = msg.mqtt_status_value;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_internal_ts')) d.mqtt_internal_ts = msg.mqtt_internal_ts;
+      if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_packets_ts')) d.mqtt_packets_ts = msg.mqtt_packets_ts;
+      deviceData.set(id, d);
+      const m = markers.get(id);
+      if (m) {
+        if (m.setStyle) m.setStyle(markerStyleForDevice(d));
+        m.setPopupContent(makePopup(d));
+        updateMarkerLabel(m, d);
+      }
+      refreshStats();
+    }
+    if (!d) refreshStats();
+    return;
+  }
+
+  if (msg.type === "mqtt_presence") {
+    applyMqttPresenceSummary(msg.mqtt_presence);
+    refreshStats();
+    return;
+  }
+
+  if (msg.type === "route") {
+    upsertRoute(msg.route);
+    return;
+  }
+
+  if (msg.type === "route_remove") {
+    removeRoutes(msg.route_ids || []);
+    return;
+  }
+
+  if (msg.type === "history_edges") {
+    const edges = Array.isArray(msg.edges) ? msg.edges : [];
+    edges.forEach(edge => upsertHistoryEdge(edge));
+    refreshStats();
+    return;
+  }
+
+  if (msg.type === "history_edges_remove") {
+    removeHistoryEdges(msg.edge_ids || []);
+    return;
+  }
+
+  if (msg.type === "stale") {
+    removeDevices(msg.device_ids || []);
   }
 }
 
@@ -5288,108 +5796,53 @@ function connectWS() {
     if (msg.type === "snapshot") {
       // same shape as /snapshot
       setServerTimeOffset(msg.server_time);
-      for (const [id, d] of Object.entries(msg.devices || {})) {
-        const trail = msg.trails ? msg.trails[id] : null;
-        upsertDevice(d, trail);
-      }
-      clearRoutes();
-      if (Array.isArray(msg.heat)) {
-        seedHeat(msg.heat);
-      }
-      if (Array.isArray(msg.routes)) {
-        msg.routes.forEach(r => upsertRoute(r, true));
-      }
-      if (Array.isArray(msg.history_edges)) {
-        msg.history_edges.forEach(edge => upsertHistoryEdge(edge));
-      }
-      applyMqttPresenceSummary(msg.mqtt_presence);
-      if (msg.history_window_seconds != null) {
-        historyWindowSeconds = Number(msg.history_window_seconds);
-        updateHistoryWindowLabel(historyWindowSeconds);
-      }
-      if (msg.update) {
-        setUpdateBanner(msg.update);
-      }
-      setStats();
-      return;
-    }
-
-    if (msg.type === "update") {
-      upsertDevice(msg.device, msg.trail);
-      return;
-    }
-
-    if (msg.type === "device_seen") {
-      const id = msg.device_id;
-      applyMqttPresenceSummary(msg.mqtt_presence);
-      const d = deviceData.get(id);
-      if (d) {
-        if (msg.last_seen_ts) d.last_seen_ts = msg.last_seen_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_seen_ts')) d.mqtt_seen_ts = msg.mqtt_seen_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_online_source')) d.mqtt_online_source = msg.mqtt_online_source;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_ts')) d.mqtt_status_ts = msg.mqtt_status_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_status_value')) d.mqtt_status_value = msg.mqtt_status_value;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_internal_ts')) d.mqtt_internal_ts = msg.mqtt_internal_ts;
-        if (Object.prototype.hasOwnProperty.call(msg, 'mqtt_packets_ts')) d.mqtt_packets_ts = msg.mqtt_packets_ts;
-        deviceData.set(id, d);
-        const m = markers.get(id);
-        if (m) {
-          if (m.setStyle) m.setStyle(markerStyleForDevice(d));
-          m.setPopupContent(makePopup(d));
-          updateMarkerLabel(m, d);
+      deferStats = true;
+      try {
+        for (const [id, d] of Object.entries(msg.devices || {})) {
+          const trail = msg.trails ? msg.trails[id] : null;
+          upsertDevice(d, trail);
         }
-        setStats();
+        clearRoutes();
+        if (Array.isArray(msg.heat)) {
+          seedHeat(msg.heat);
+        }
+        if (Array.isArray(msg.routes)) {
+          msg.routes.forEach(r => upsertRoute(r, true));
+        }
+        if (Array.isArray(msg.history_edges)) {
+          msg.history_edges.forEach(edge => upsertHistoryEdge(edge));
+        }
+        applyMqttPresenceSummary(msg.mqtt_presence);
+        if (msg.history_window_seconds != null) {
+          historyWindowSeconds = Number(msg.history_window_seconds);
+          updateHistoryWindowLabel(historyWindowSeconds);
+        }
+        if (msg.update) {
+          setUpdateBanner(msg.update);
+        }
+      } finally {
+        deferStats = false;
       }
-      if (!d) setStats();
-      return;
-    }
-
-    if (msg.type === "mqtt_presence") {
-      applyMqttPresenceSummary(msg.mqtt_presence);
       setStats();
       return;
     }
-
-    if (msg.type === "route") {
-      upsertRoute(msg.route);
-      return;
-    }
-
-    if (msg.type === "route_remove") {
-      removeRoutes(msg.route_ids || []);
-      return;
-    }
-
-    if (msg.type === "history_edges") {
-      const edges = Array.isArray(msg.edges) ? msg.edges : [];
-      edges.forEach(edge => upsertHistoryEdge(edge));
-      setStats();
-      return;
-    }
-
-    if (msg.type === "history_edges_remove") {
-      removeHistoryEdges(msg.edge_ids || []);
-      return;
-    }
-
-    if (msg.type === "stale") {
-      removeDevices(msg.device_ids || []);
-      return;
-    }
+    queueRealtimeMessage(msg);
   };
 }
 
 async function runLosCheck(options = {}) {
-  if (losPoints.length < 2) return;
-  const [a, b] = losPoints;
+  const endpoints = getActiveLosSegmentEndpoints();
+  if (!endpoints) return;
+  const [a, b] = endpoints;
   losComputeLast = Date.now();
   const token = ++losComputeToken;
   const allowNetwork = options.allowNetwork !== false;
   const allowApprox = options.allowApprox === true;
   setLosStatus('LOS: calculating...');
   try {
-    if (losLine) {
-      losLine.setStyle({ color: '#9ca3af', weight: 4, opacity: 0.8, dashArray: '6 10' });
+    const activeLine = getActiveLosLine();
+    if (activeLine) {
+      activeLine.setStyle({ color: '#9ca3af', weight: 5, opacity: 0.9, dashArray: '6 10' });
     }
     const clientResult = await runLosCheckClient(a, b, {
       allowNetwork,
@@ -5422,8 +5875,8 @@ async function runLosCheck(options = {}) {
     }
     lastLosStatusMeta = null;
     setLosStatus(`LOS: ${serverResult.error || clientResult.error || 'error'}`);
-    if (losLine) {
-      losLine.setStyle({ color: '#9ca3af', weight: 4, opacity: 0.8, dashArray: '6 10' });
+    if (activeLine) {
+      activeLine.setStyle({ color: '#9ca3af', weight: 5, opacity: 0.9, dashArray: '6 10' });
     }
     clearLosProfile();
     clearLosPeaks();
@@ -5438,7 +5891,7 @@ async function runLosCheck(options = {}) {
 
 let losPendingOptions = null;
 function scheduleLosCheck(force = false, options = {}) {
-  if (losPoints.length < 2) return;
+  if (!getActiveLosSegmentEndpoints()) return;
   losPendingOptions = options;
   if (force) {
     if (losComputeTimer) {
@@ -5766,15 +6219,13 @@ const parseLosHeightValue = (input) => {
   return Number.isFinite(value) ? value : 0;
 };
 const handleLosHeightChange = () => {
-  losHeightA = parseLosHeightValue(losHeightAInput);
-  losHeightB = parseLosHeightValue(losHeightBInput);
-  try {
-    localStorage.setItem('meshmapLosHeightA', String(losHeightA));
-    localStorage.setItem('meshmapLosHeightB', String(losHeightB));
-  } catch (err) {
-    // ignore storage failures
-  }
-  if (losPoints.length === 2) {
+  if (!Number.isInteger(losActiveSegmentIndex) || losActiveSegmentIndex < 0) return;
+  setLosPointHeight(losActiveSegmentIndex, parseLosHeightValue(losHeightAInput));
+  setLosPointHeight(losActiveSegmentIndex + 1, parseLosHeightValue(losHeightBInput));
+  if (losPoints.length >= 2) {
+    if (losActiveSegmentIndex >= 0 && losActiveSegmentIndex < losSegmentMeta.length) {
+      losSegmentMeta[losActiveSegmentIndex] = null;
+    }
     scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
   }
 };
@@ -5787,19 +6238,82 @@ if (losHeightBInput) {
   losHeightBInput.addEventListener('change', handleLosHeightChange);
 }
 
-function updateLosLineFromPoints() {
-  if (!losLine || losPoints.length < 2) return;
-  losLine.setLatLngs([losPoints[0], losPoints[1]]);
-}
-
 function updateLosPointPosition(index, latlng) {
   if (index == null || !losPoints[index]) return;
   losPoints[index] = latlng;
-  updateLosLineFromPoints();
-  if (losLine && losPoints.length >= 2) {
-    lastLosStatusMeta = null;
-    losLine.setStyle({ color: '#9ca3af', weight: 4, opacity: 0.8, dashArray: '6 10' });
+  ensureLosSegments();
+  const affected = [];
+  if (index > 0) affected.push(index - 1);
+  if (index < losLines.length) affected.push(index);
+  affected.forEach((segIdx) => {
+    if (segIdx >= 0 && segIdx < losSegmentMeta.length) {
+      losSegmentMeta[segIdx] = null;
+    }
+  });
+  if (affected.length) {
+    losActiveSegmentIndex = affected[affected.length - 1];
+  }
+  lastLosStatusMeta = null;
+  updateLosSegmentStyles();
+  if (losPoints.length >= 2) {
     setLosStatus('LOS: calculating...');
+  }
+  return affected;
+}
+
+async function recomputeLosSegments(indices, options = {}) {
+  const valid = Array.from(new Set((indices || []).filter((index) => (
+    Number.isInteger(index) && index >= 0 && index < losLines.length
+  ))));
+  if (!valid.length) return;
+  const finalIndex = Number.isInteger(options.finalIndex) && options.finalIndex >= 0 && options.finalIndex < losLines.length
+    ? options.finalIndex
+    : valid[valid.length - 1];
+  for (const index of valid) {
+    selectLosSegment(index, { silent: true });
+    await runLosCheck({
+      allowNetwork: options.allowNetwork !== false,
+      allowApprox: options.allowApprox === true,
+      forceNetwork: options.forceNetwork === true
+    });
+  }
+  if (Number.isInteger(finalIndex) && finalIndex >= 0 && finalIndex < losLines.length) {
+    selectLosSegment(finalIndex, { silent: true });
+  }
+}
+
+function removeLastLosPoint() {
+  if (!losPoints.length) return;
+  const lastMarker = losPointMarkers.pop();
+  if (lastMarker) {
+    losLayer.removeLayer(lastMarker);
+  }
+  losPoints.pop();
+  losPointHeights.pop();
+  persistLosPointHeights();
+  if (losSelectedPointIndex != null && losSelectedPointIndex >= losPoints.length) {
+    setLosSelectedPoint(null);
+  }
+  ensureLosSegments();
+  if (losPoints.length >= 2) {
+    const nextIndex = Math.max(0, losPoints.length - 2);
+    selectLosSegment(nextIndex, { silent: true });
+    const combined = buildCombinedLosProfile();
+    if (combined.profile.length >= 2) {
+      renderLosProfile(combined.profile, combined.blocked, combined);
+    } else {
+      clearLosProfile();
+    }
+    setLosStatus(`LOS: removed pin ${losPoints.length + 1}`);
+    return;
+  }
+  clearLosProfile();
+  clearLosPeaks();
+  lastLosStatusMeta = null;
+  if (losPoints.length === 1) {
+    setLosStatus('LOS: select next point');
+  } else {
+    setLosStatus('LOS: select first point (Shift+click or long-press nodes)');
   }
 }
 
@@ -5833,7 +6347,11 @@ function createLosPointMarker(latlng, index) {
       L.DomEvent.stop(ev);
     }
     setLosSelectedPoint(index);
-    setLosStatus(`LOS: selected point ${index === 0 ? 'A' : 'B'} (click map to move or drag point)`);
+    if (losLines.length > 0) {
+      const nextSegment = index > 0 ? index - 1 : 0;
+      selectLosSegment(nextSegment, { silent: true });
+    }
+    setLosStatus(`LOS: selected point ${index + 1} (click map to move or drag point)`);
   });
   marker.on('dragstart', () => {
     const el = marker.getElement();
@@ -5847,58 +6365,53 @@ function createLosPointMarker(latlng, index) {
     updateLosPointPosition(index, next);
     scheduleLosCheck(false, { allowNetwork: false, allowApprox: true });
   });
-  marker.on('dragend', () => {
+  marker.on('dragend', async () => {
     const el = marker.getElement();
     if (el) el.classList.remove('dragging');
     const next = marker.getLatLng();
-    updateLosPointPosition(index, next);
+    const affected = updateLosPointPosition(index, next);
     losDragging = false;
-    scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
+    await recomputeLosSegments(affected, {
+      allowNetwork: true,
+      forceNetwork: true,
+      finalIndex: affected && affected.length ? affected[affected.length - 1] : losActiveSegmentIndex
+    });
   });
   marker.on('add', () => setLosSelectedPoint(losSelectedPointIndex));
   return marker;
 }
 
 function handleLosPoint(latlng) {
-  if (losLocked || losPoints.length >= 2) {
-    setLosStatus('LOS: Clear to start a new path');
-    return;
-  }
   losPoints.push(latlng);
+  if (losPointHeights.length < losPoints.length) {
+    losPointHeights.push(0);
+    persistLosPointHeights();
+  }
   const marker = createLosPointMarker(latlng, losPoints.length - 1);
   losPointMarkers.push(marker);
-  setLosSelectedPoint(losPoints.length - 1);
+  setLosSelectedPoint(null);
 
   if (losPoints.length === 1) {
-    setLosStatus('LOS: select second point');
+    setLosStatus('LOS: select next point');
     return;
   }
-  if (losPoints.length === 2) {
-    losLocked = true;
-    losLine = L.polyline([losPoints[0], losPoints[1]], {
-      color: '#9ca3af',
-      weight: 4,
-      opacity: 0.8,
-      dashArray: '6 10'
-    }).addTo(losLayer);
-    losLine.on('mousemove', (ev) => {
-      if (ev && ev.latlng) {
-        updateLosProfileFromMap(ev.latlng);
-      }
-    });
-    losLine.on('mouseout', clearLosProfileHover);
-    scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
-  }
+  losLocked = true;
+  ensureLosSegments();
+  selectLosSegment(losPoints.length - 2, { silent: true });
+  scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
 }
 
 if (losClearButton) {
   losClearButton.addEventListener('click', () => {
     clearLos();
     if (losActive) {
-      if (!losKeepAInput || !losKeepAInput.checked || losPoints.length === 0) {
-        setLosStatus('LOS: select first point (Shift+click or long-press nodes)');
-      }
+      setLosStatus('LOS: select first point (Shift+click or long-press nodes)');
     }
+  });
+}
+if (losRemoveLastButton) {
+  losRemoveLastButton.addEventListener('click', () => {
+    removeLastLosPoint();
   });
 }
 const nodesToggle = document.getElementById('nodes-toggle');
@@ -6385,9 +6898,11 @@ if (propToggle) {
 }
 
 map.on('moveend', () => {
+  refreshViewportLayers();
   scheduleWeatherWindRefresh();
 });
 map.on('zoomend', () => {
+  refreshViewportLayers();
   scheduleWeatherWindRefresh();
 });
 
@@ -6402,8 +6917,13 @@ map.on('click', (ev) => {
       if (losPointMarkers[idx]) {
         losPointMarkers[idx].setLatLng(ev.latlng);
       }
-      updateLosPointPosition(idx, ev.latlng);
-      scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
+      const affected = updateLosPointPosition(idx, ev.latlng);
+      setLosSelectedPoint(null);
+      recomputeLosSegments(affected, {
+        allowNetwork: true,
+        forceNetwork: true,
+        finalIndex: affected && affected.length ? affected[affected.length - 1] : losActiveSegmentIndex
+      });
       return;
     }
     handleLosPoint(ev.latlng);

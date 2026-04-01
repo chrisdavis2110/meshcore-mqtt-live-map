@@ -260,6 +260,14 @@
       display: block;
     }
 
+    .legend-coverage-group {
+      display: none;
+    }
+
+    .legend-coverage-group.active {
+      display: block;
+    }
+
     .legend-los-group {
       display: none;
     }
@@ -318,6 +326,39 @@
       background: linear-gradient(90deg, #fbbf24, #f97316, #ef4444, #b91c1c);
       border: 1px solid rgba(255, 255, 255, .25);
       display: inline-block;
+    }
+
+    .legend-coverage {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, .2);
+      display: inline-block;
+      flex: 0 0 16px;
+    }
+
+    .legend-coverage-bidir {
+      background: #2e9c44;
+    }
+
+    .legend-coverage-disc-trace {
+      background: #1fa3c5;
+    }
+
+    .legend-coverage-tx {
+      background: #ff9f1c;
+    }
+
+    .legend-coverage-rx {
+      background: #6f42c1;
+    }
+
+    .legend-coverage-dead {
+      background: #81858c;
+    }
+
+    .legend-coverage-drop {
+      background: #c51f36;
     }
 
     .legend-toggle {
