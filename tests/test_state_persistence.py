@@ -153,6 +153,87 @@ def test_load_state_ignores_corrupt_json_file(tmp_path, monkeypatch):
   assert "KEEP1111" in state.devices
 
 
+def test_load_state_dedupes_same_name_same_location_entries(
+  tmp_path, monkeypatch
+):
+  now = time.time()
+  state_file = tmp_path / "state.json"
+  state_file.write_text(
+    json.dumps(
+      {
+        "devices": {
+          "REAL1111": {
+            "device_id": "REAL1111",
+            "lat": 42.36,
+            "lon": -71.05,
+            "ts": now,
+            "name": "Node A",
+            "role": "repeater",
+            "heading": None,
+            "speed": None,
+            "rssi": None,
+            "snr": None,
+            "raw_topic": None,
+          },
+          "GHOST111": {
+            "device_id": "GHOST111",
+            "lat": 42.36,
+            "lon": -71.05,
+            "ts": now - 300,
+            "name": "Node A",
+            "role": "repeater",
+            "heading": None,
+            "speed": None,
+            "rssi": None,
+            "snr": None,
+            "raw_topic": None,
+          },
+        },
+        "seen_devices": {
+          "REAL1111": now,
+          "GHOST111": now - 300,
+        },
+        "first_seen_devices": {
+          "REAL1111": now - 7200,
+          "GHOST111": now - 600,
+        },
+        "device_names": {
+          "REAL1111": "Node A",
+          "GHOST111": "Node A",
+        },
+        "device_roles": {
+          "REAL1111": "repeater",
+          "GHOST111": "repeater",
+        },
+        "device_role_sources": {
+          "REAL1111": "explicit",
+          "GHOST111": "explicit",
+        },
+      }
+    ),
+    encoding="utf-8",
+  )
+
+  state.devices.clear()
+  state.trails.clear()
+  state.seen_devices.clear()
+  state.device_names.clear()
+  state.device_roles.clear()
+  state.device_role_sources.clear()
+  state.first_seen_devices.clear()
+
+  monkeypatch.setattr(app, "STATE_FILE", str(state_file))
+  monkeypatch.setattr(app, "DEVICE_ROLES_FILE", "")
+  monkeypatch.setattr(app, "DEVICE_COORDS_FILE", "")
+
+  app._load_state()
+
+  assert "REAL1111" in state.devices
+  assert "GHOST111" not in state.devices
+  assert "GHOST111" not in state.seen_devices
+  assert "GHOST111" not in state.device_names
+
+
 def test_route_history_load_skips_bad_lines_and_marks_compact(
   tmp_path, monkeypatch
 ):

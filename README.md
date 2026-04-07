@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.8.0` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.8.1` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -23,6 +23,7 @@ Other community maps (versions may differ):
 - Live node markers with roles (Repeater, Companion, Room Server, Unknown)
 - MQTT online indicator (green outline + popup status) based on MQTT `status`/`internal` topics, with conservative role detection from explicit MQTT role fields only
 - Animated route/trace lines
+- Hidden arcade Pacman route visualization mode for live route direction
 - Dev route inspection: click a route line in dev (`PROD_MODE=false`) to log hop-by-hop details in the browser console, including resolved `point_id` / `point_label` data (PR #14, credit: https://github.com/sefator)
 - Heat map for the last 10 minutes of message activity (includes adverts)
 - Persistent device state and optional trails (disable with `TRAIL_LEN=0`)
@@ -127,7 +128,7 @@ Site metadata (page title + embeds):
 - `SITE_FEED_NOTE`
 - `CUSTOM_LINK_URL` (optional extra HUD link; hidden when blank)
 - `PACKET_ANALYZER_URL` (optional analyzer base URL for Route Details hashes; e.g. `https://analyzer.letsmesh.net/packets?packet_hash=`)
-- `PEERS_DEFAULT_LIMIT` (optional default number of incoming/outgoing peers returned by `/peers/{device_id}`; default `8`, max `50`)
+- `PEERS_DEFAULT_LIMIT` (optional default number of incoming/outgoing peers returned by `/peers/{device_id}`; default `8`)
 - `MAP_BOUNDARY_MODE` (`radius` or `polygon`; default `radius`)
 - `MAP_BOUNDARY_FILE` (JSON file used when `MAP_BOUNDARY_MODE=polygon`; default `/data/map_boundary.json`)
 - `MAP_BOUNDARY_SHOW` (draw the active radius/polygon boundary overlay on the map)

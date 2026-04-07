@@ -1,5 +1,12 @@
 # Versions
 
+## v1.8.1 (04-06-2026)
+- Fixed issue #43: location updates now key devices from the advert owner pubkey only, avoiding bogus ghost nodes created from unrelated decoded `publicKey` fields.
+- Added a startup/state cleanup pass that removes exact same-name/same-location duplicate device entries so already-persisted ghost markers disappear after restart instead of lingering until TTL expiry.
+- Fixed issue #45: MeshMapper coverage now rebuilds the visible square set from cached source data on zoom and pan, so tiles no longer change incorrectly when the viewport scale changes.
+- Fixed issue #46: peer-list limits no longer use a hardcoded maximum, so `/peers/{device_id}?limit=` can request any positive count.
+- Added issue #44: upstream-style hidden arcade Pacman mode that animates a flow marker along live route direction and can be enabled with the Konami sequence or `/waka` in search.
+
 ## v1.8.0 (03-28-2026)
 - Switched the runtime decoder back to the official `@michaelhart/meshcore-decoder` package now that the published decoder supports multibyte path decoding needed by the map.
 - Added issue #41: the LOS tool now supports multiple chained pins so you can build a proposed relay path one segment at a time instead of being limited to a single two-point LOS check.

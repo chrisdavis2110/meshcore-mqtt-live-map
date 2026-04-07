@@ -1068,6 +1068,73 @@ def _iso_from_ts(ts: Optional[float]) -> Optional[str]:
     return None
 
 
+def _normalize_device_name_for_dedupe(name: Any) -> str:
+  if not isinstance(name, str):
+    return ""
+  return " ".join(name.strip().lower().split())
+
+
+def _drop_device_state(device_id: str) -> None:
+  devices.pop(device_id, None)
+  trails.pop(device_id, None)
+  seen_devices.pop(device_id, None)
+  first_seen_devices.pop(device_id, None)
+  device_names.pop(device_id, None)
+  device_roles.pop(device_id, None)
+  device_role_sources.pop(device_id, None)
+  device_coords.pop(device_id, None)
+  state.last_seen_in_path.pop(device_id, None)
+  last_seen_in_advert.pop(device_id, None)
+  mqtt_seen.pop(device_id, None)
+  mqtt_online_source.pop(device_id, None)
+  mqtt_status_seen.pop(device_id, None)
+  mqtt_status_values.pop(device_id, None)
+  mqtt_internal_seen.pop(device_id, None)
+  mqtt_packets_seen.pop(device_id, None)
+  last_seen_broadcast.pop(device_id, None)
+
+
+def _dedupe_loaded_devices() -> Set[str]:
+  groups: Dict[Tuple[str, int, int], List[str]] = {}
+  for device_id, dev_state in devices.items():
+    name = _normalize_device_name_for_dedupe(
+      dev_state.name or device_names.get(device_id)
+    )
+    if (not name or _coords_are_zero(dev_state.lat, dev_state.lon)):
+      continue
+    key = (
+      name,
+      int(round(float(dev_state.lat) * 100000)),
+      int(round(float(dev_state.lon) * 100000)),
+    )
+    groups.setdefault(key, []).append(device_id)
+
+  dropped_ids: Set[str] = set()
+  for duplicate_ids in groups.values():
+    if len(duplicate_ids) < 2:
+      continue
+
+    def _score(device_id: str) -> Tuple[float, float, str]:
+      last_seen = float(seen_devices.get(device_id) or devices[device_id].ts or 0.0)
+      first_seen = float(first_seen_devices.get(device_id) or last_seen or 0.0)
+      return (last_seen, -first_seen, device_id)
+
+    keep_id = max(duplicate_ids, key=_score)
+    for device_id in duplicate_ids:
+      if device_id == keep_id:
+        continue
+      _drop_device_state(device_id)
+      dropped_ids.add(device_id)
+
+  if dropped_ids:
+    state.state_dirty = True
+    print(
+      f"[state] Dropped {len(dropped_ids)} duplicate device entries: "
+      f"{', '.join(sorted(dropped_ids))}"
+    )
+  return dropped_ids
+
+
 def _parse_meshcore_topic(
   topic: str
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -1612,7 +1679,6 @@ def _load_state() -> None:
       device_coords.pop(device_id, None)
       first_seen_devices.pop(device_id, None)
       last_seen_in_advert.pop(device_id, None)
-  _rebuild_node_hash_map()
 
   for device_id, dev_state in devices.items():
     if not dev_state.name and device_id in device_names:
@@ -1624,6 +1690,9 @@ def _load_state() -> None:
     if coord_override:
       dev_state.lat = coord_override["lat"]
       dev_state.lon = coord_override["lon"]
+
+  dropped_ids.update(_dedupe_loaded_devices())
+  _rebuild_node_hash_map()
 
 
 async def _state_saver() -> None:
@@ -3345,7 +3414,7 @@ def get_peers(device_id: str, request: Request, limit: Optional[int] = Query(Non
   if not device_id:
     raise HTTPException(status_code=400, detail="device_id required")
   raw_limit = PEERS_DEFAULT_LIMIT if limit is None else limit
-  limit_value = max(1, min(int(raw_limit or PEERS_DEFAULT_LIMIT), 50))
+  limit_value = max(1, int(raw_limit or PEERS_DEFAULT_LIMIT))
   payload = _peer_stats_for_device(device_id, limit_value)
   state = devices.get(device_id)
   if state and not _coords_are_zero(state.lat, state.lon):

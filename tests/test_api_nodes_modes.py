@@ -137,4 +137,4 @@ def test_get_peers_limit_query_overrides_and_caps(monkeypatch):
   payload = app.get_peers("AA001111", _request("/peers/AA001111?limit=999"), limit=999)
 
   assert payload["device_id"] == "AA001111"
-  assert captured == {"device_id": "AA001111", "limit": 50}
+  assert captured == {"device_id": "AA001111", "limit": 999}
