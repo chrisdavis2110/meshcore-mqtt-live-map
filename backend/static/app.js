@@ -140,6 +140,14 @@ if (peerPane) {
   peerPane.style.zIndex = '340';
   peerPane.style.pointerEvents = 'none';
 }
+if (!map.getPane('arcadePane')) {
+  map.createPane('arcadePane');
+}
+const arcadePane = map.getPane('arcadePane');
+if (arcadePane) {
+  arcadePane.style.zIndex = '345';
+  arcadePane.style.pointerEvents = 'none';
+}
 const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors'
@@ -214,9 +222,99 @@ const historyLayer = L.layerGroup();
 const peerLayer = L.layerGroup();
 const peerLines = new Map(); // peer_id -> line
 const routeLayer = L.layerGroup().addTo(map);
+const arcadeLayer = L.layerGroup();
 const hopLayer = L.layerGroup();
 const hopMarkers = new Map(); // route_id -> [markers]
 let hopsVisible = false;
+let arcadeModeEnabled = false;
+const FLOW_MIN_DURATION_MS = 2800;
+const FLOW_MAX_DURATION_MS = 9000;
+let arcadeAnimFrame = null;
+
+function routeStyleForDisplay(payloadType, routeMode, arcadeMode = false) {
+  const isFanout = routeMode === 'fanout';
+  const payloadNum = Number(payloadType);
+  const isAdvert = payloadNum === 4;
+  const isTrace = payloadNum === 8 || payloadNum === 9;
+  const isMessage = payloadNum === 2 || payloadNum === 5;
+  const style = {
+    color: isAdvert
+      ? '#2ecc71'
+      : (isTrace ? '#ff7a1a' : (isMessage ? '#2b8cff' : (isFanout ? '#2b8cff' : '#ff7a1a'))),
+    weight: isFanout ? 4 : 5,
+    opacity: isFanout ? 0.85 : 0.9,
+    lineCap: 'butt',
+    lineJoin: 'miter',
+  };
+  if (isAdvert) {
+    style.dashArray = '2 10';
+  } else if (isMessage) {
+    style.dashArray = '6 12';
+  } else if (isTrace) {
+    style.dashArray = '8 14';
+  } else if (!isFanout) {
+    style.dashArray = '8 14';
+  }
+  if (arcadeMode) {
+    style.weight = isFanout ? 3 : 2.5;
+    style.opacity = 0.42;
+    style.lineCap = 'round';
+    style.lineJoin = 'round';
+    if (isAdvert) {
+      style.dashArray = '2 16';
+    } else if (isMessage) {
+      style.dashArray = '2 18';
+    } else if (isTrace) {
+      style.dashArray = '2 22';
+    } else {
+      style.dashArray = '2 20';
+    }
+  }
+  return style;
+}
+
+function setArcadeModeEnabled(enabled, persist = true) {
+  arcadeModeEnabled = Boolean(enabled);
+  if (arcadeModeEnabled && nodesVisible) {
+    if (!map.hasLayer(routeLayer)) {
+      routeLayer.addTo(map);
+    }
+    if (!map.hasLayer(arcadeLayer)) {
+      arcadeLayer.addTo(map);
+    }
+    routeLines.forEach((entry, routeId) => {
+      if (entry && Array.isArray(entry.routePoints)) {
+        syncArcadeForRoute(routeId, entry.routePoints);
+      }
+      if (entry && entry.line) {
+        entry.line.setStyle(
+          routeStyleForDisplay(entry.payloadType, entry.routeMode, true)
+        );
+        const lineEl = entry.line.getElement();
+        if (lineEl) {
+          lineEl.classList.remove('route-animated');
+        }
+      }
+    });
+    startArcadeLoop();
+  } else {
+    routeLines.forEach((_entry, routeId) => removeArcadeMarker(routeId));
+    routeLines.forEach((entry) => {
+      if (!entry || !entry.line) return;
+      entry.line.setStyle(
+        routeStyleForDisplay(entry.payloadType, entry.routeMode, false)
+      );
+      const lineEl = entry.line.getElement();
+      if (lineEl) {
+        lineEl.classList.add('route-animated');
+      }
+    });
+    if (map.hasLayer(arcadeLayer)) {
+      map.removeLayer(arcadeLayer);
+    }
+    stopArcadeLoop();
+  }
+}
 const losElevationUrl = config.losElevationUrl || 'https://api.opentopodata.org/v1/srtm90m';
 const losElevationProxyUrl = (config.losElevationProxyUrl || '/los/elevations').trim();
 const losElevationFetchUrl = (() => {
@@ -264,6 +362,7 @@ let coverageVisible = false;
 let coverageData = null;
 let meshMapperCoverageRects = [];
 let meshMapperCoverageSource = null;
+let meshMapperCoverageExpanded = [];
 let coverageProvider = '';
 let coverageRegion = '';
 let coverageAttributionHtml = '';
@@ -895,11 +994,16 @@ function expandMeshMapperCoverageSquares(data) {
 }
 
 function renderMeshMapperCoverage(data) {
-  let rendered = 0;
-  meshMapperCoverageRects = [];
   meshMapperCoverageSource = data;
-  const expandedSquares = expandMeshMapperCoverageSquares(data);
-  for (const square of expandedSquares) {
+  meshMapperCoverageExpanded = expandMeshMapperCoverageSquares(data);
+  return syncMeshMapperCoverageViewport();
+}
+
+function syncMeshMapperCoverageViewport() {
+  coverageLayer.clearLayers();
+  meshMapperCoverageRects = [];
+  let rendered = 0;
+  for (const square of meshMapperCoverageExpanded) {
     const bounds = square?.bounds;
     if (!bounds) continue;
     const south = Number(bounds.south);
@@ -936,22 +1040,11 @@ function renderMeshMapperCoverage(data) {
   return rendered;
 }
 
-function syncMeshMapperCoverageViewport() {
-  for (const rect of meshMapperCoverageRects) {
-    const b = rect && rect.__coverageBounds;
-    if (!b) continue;
-    syncLayerMembership(
-      coverageLayer,
-      rect,
-      boundsIntersectsViewport(b.south, b.west, b.north, b.east)
-    );
-  }
-}
-
 function renderCoverage(data) {
   coverageLayer.clearLayers();
   meshMapperCoverageRects = [];
   meshMapperCoverageSource = null;
+  meshMapperCoverageExpanded = [];
   if (!data || !Array.isArray(data)) {
     updateCoverageAttribution();
     updateCoverageLegend();
@@ -1777,6 +1870,9 @@ function setNodesVisible(visible) {
     if (!map.hasLayer(routeLayer)) {
       routeLayer.addTo(map);
     }
+    if (arcadeModeEnabled && !map.hasLayer(arcadeLayer)) {
+      arcadeLayer.addTo(map);
+    }
     if (historyVisible && !map.hasLayer(historyLayer)) {
       historyLayer.addTo(map);
       renderHistoryFromCache();
@@ -1810,6 +1906,14 @@ function setNodesVisible(visible) {
       );
     }
     refreshViewportLayers();
+    if (arcadeModeEnabled) {
+      routeLines.forEach((entry, routeId) => {
+        if (entry && Array.isArray(entry.routePoints)) {
+          syncArcadeForRoute(routeId, entry.routePoints);
+        }
+      });
+      startArcadeLoop();
+    }
   } else if (map.hasLayer(markerLayer)) {
     map.removeLayer(markerLayer);
     if (map.hasLayer(trailLayer)) {
@@ -1817,6 +1921,9 @@ function setNodesVisible(visible) {
     }
     if (map.hasLayer(routeLayer)) {
       map.removeLayer(routeLayer);
+    }
+    if (map.hasLayer(arcadeLayer)) {
+      map.removeLayer(arcadeLayer);
     }
     if (map.hasLayer(historyLayer)) {
       map.removeLayer(historyLayer);
@@ -1840,11 +1947,15 @@ function setNodesVisible(visible) {
     if (map.hasLayer(peerLayer)) {
       map.removeLayer(peerLayer);
     }
+    stopArcadeLoop();
   } else if (map.hasLayer(trailLayer)) {
     map.removeLayer(trailLayer);
   } else {
     if (map.hasLayer(routeLayer)) {
       map.removeLayer(routeLayer);
+    }
+    if (map.hasLayer(arcadeLayer)) {
+      map.removeLayer(arcadeLayer);
     }
     if (map.hasLayer(historyLayer)) {
       map.removeLayer(historyLayer);
@@ -1863,6 +1974,7 @@ function setNodesVisible(visible) {
     if (map.hasLayer(peerLayer)) {
       map.removeLayer(peerLayer);
     }
+    stopArcadeLoop();
   }
 }
 
@@ -1937,6 +2049,186 @@ function setHopsVisible(visible) {
     hopMarkers.clear();
   }
 }
+
+function makeArcadeIcon() {
+  return L.divIcon({
+    className: 'flow-marker',
+    html: '<div class="flow-icon"></div>',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
+
+function buildArcadePath(points) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const latLngs = points.map((point) => L.latLng(point[0], point[1]));
+  const segments = [];
+  let total = 0;
+  for (let idx = 0; idx < latLngs.length - 1; idx += 1) {
+    const start = latLngs[idx];
+    const end = latLngs[idx + 1];
+    const length = start.distanceTo(end);
+    if (!(length > 0)) continue;
+    segments.push({
+      start,
+      end,
+      startDistance: total,
+      length,
+    });
+    total += length;
+  }
+  if (!(total > 0) || !segments.length) return null;
+  return { latLngs, segments, total };
+}
+
+function interpolateArcadePosition(path, distance) {
+  if (!path || !Array.isArray(path.segments) || !path.segments.length) return null;
+  const clamped = Math.max(0, Math.min(distance, path.total));
+  for (let idx = 0; idx < path.segments.length; idx += 1) {
+    const segment = path.segments[idx];
+    const segmentEnd = segment.startDistance + segment.length;
+    if (clamped <= segmentEnd || idx === path.segments.length - 1) {
+      const ratio = segment.length > 0
+        ? (clamped - segment.startDistance) / segment.length
+        : 0;
+      const lat = segment.start.lat + ((segment.end.lat - segment.start.lat) * ratio);
+      const lng = segment.start.lng + ((segment.end.lng - segment.start.lng) * ratio);
+      const startPoint = map.latLngToLayerPoint(segment.start);
+      const endPoint = map.latLngToLayerPoint(segment.end);
+      const angle = Math.atan2(
+        endPoint.y - startPoint.y,
+        endPoint.x - startPoint.x
+      ) * (180 / Math.PI);
+      return { latlng: L.latLng(lat, lng), angle };
+    }
+  }
+  return null;
+}
+
+function stopArcadeLoop() {
+  if (arcadeAnimFrame != null) {
+    window.cancelAnimationFrame(arcadeAnimFrame);
+    arcadeAnimFrame = null;
+  }
+}
+
+function updateArcadeMarker(entry, nowMs) {
+  if (!entry || !entry.arcadeMarker || !entry.arcadeMarker.marker || !entry.arcadeMarker.path) return;
+  const elapsed = Math.max(0, nowMs - entry.arcadeMarker.startedAt);
+  const cycle = entry.arcadeMarker.durationMs > 0
+    ? (elapsed % entry.arcadeMarker.durationMs)
+    : 0;
+  const distance = entry.arcadeMarker.path.total * (cycle / entry.arcadeMarker.durationMs);
+  const resolved = interpolateArcadePosition(entry.arcadeMarker.path, distance);
+  if (!resolved) return;
+  entry.arcadeMarker.marker.setLatLng(resolved.latlng);
+  const el = entry.arcadeMarker.marker.getElement();
+  const icon = el ? el.querySelector('.flow-icon') : null;
+  if (icon) {
+    icon.style.transform = `rotate(${resolved.angle}deg)`;
+  }
+}
+
+function animateArcadeMarkers(nowMs) {
+  if (!arcadeModeEnabled || !nodesVisible || !map.hasLayer(arcadeLayer)) {
+    stopArcadeLoop();
+    return;
+  }
+  let activeCount = 0;
+  routeLines.forEach((entry) => {
+    if (!entry || !entry.arcadeMarker || !entry.arcadeMarker.marker || !entry.arcadeMarker.path) return;
+    activeCount += 1;
+    updateArcadeMarker(entry, nowMs);
+  });
+  if (!activeCount) {
+    stopArcadeLoop();
+    return;
+  }
+  arcadeAnimFrame = window.requestAnimationFrame(animateArcadeMarkers);
+}
+
+function startArcadeLoop() {
+  if (arcadeAnimFrame != null || !arcadeModeEnabled || !nodesVisible || !map.hasLayer(arcadeLayer)) {
+    return;
+  }
+  arcadeAnimFrame = window.requestAnimationFrame(animateArcadeMarkers);
+}
+
+function removeArcadeMarker(routeId) {
+  const entry = routeLines.get(routeId);
+  if (!entry || !entry.arcadeMarker || !entry.arcadeMarker.marker) return;
+  arcadeLayer.removeLayer(entry.arcadeMarker.marker);
+  entry.arcadeMarker = null;
+}
+
+function syncArcadeForRoute(id, points) {
+  const entry = routeLines.get(id);
+  if (!entry) return;
+  if (!arcadeModeEnabled || !nodesVisible || !Array.isArray(points) || points.length < 2) {
+    removeArcadeMarker(id);
+    return;
+  }
+  const path = buildArcadePath(points);
+  if (!path) {
+    removeArcadeMarker(id);
+    return;
+  }
+  if (!entry.arcadeMarker || !entry.arcadeMarker.marker) {
+    entry.arcadeMarker = {
+      marker: L.marker(path.latLngs[0], {
+        icon: makeArcadeIcon(),
+        pane: 'arcadePane',
+        interactive: false,
+        keyboard: false,
+      }).addTo(arcadeLayer),
+      startedAt: performance.now(),
+      durationMs: FLOW_MIN_DURATION_MS,
+      path,
+    };
+  }
+  entry.arcadeMarker.path = path;
+  entry.arcadeMarker.durationMs = clampNumber(path.total * 6, FLOW_MIN_DURATION_MS, FLOW_MAX_DURATION_MS);
+  if (!Number.isFinite(entry.arcadeMarker.startedAt)) {
+    entry.arcadeMarker.startedAt = performance.now();
+  }
+  updateArcadeMarker(entry, performance.now());
+  startArcadeLoop();
+}
+
+function toggleArcadeMode() {
+  setArcadeModeEnabled(!arcadeModeEnabled);
+  console.info(`[meshmap] arcade mode ${arcadeModeEnabled ? 'on' : 'off'}`);
+}
+
+const ARCADE_SEQUENCE = [
+  'ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown',
+  'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight',
+  'b', 'a'
+];
+let arcadeSequenceIndex = 0;
+
+function handleArcadeSequenceKey(ev) {
+  const target = ev.target;
+  if (
+    target &&
+    (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+  ) {
+    return;
+  }
+  const key = String(ev.key || '');
+  const expected = ARCADE_SEQUENCE[arcadeSequenceIndex];
+  if (key === expected) {
+    arcadeSequenceIndex += 1;
+    if (arcadeSequenceIndex >= ARCADE_SEQUENCE.length) {
+      arcadeSequenceIndex = 0;
+      toggleArcadeMode();
+    }
+    return;
+  }
+  arcadeSequenceIndex = key === ARCADE_SEQUENCE[0] ? 1 : 0;
+}
+
+document.addEventListener('keydown', handleArcadeSequenceKey);
 
 function stringHashColor(str) {
   let hash = 0;
@@ -5003,6 +5295,7 @@ function removeRoutes(ids) {
     const entry = routeLines.get(id);
     if (!entry) return;
     if (entry.timeout) clearTimeout(entry.timeout);
+    removeArcadeMarker(id);
     routeLayer.removeLayer(entry.line);
     routeLines.delete(id);
     // Cleanup hop markers
@@ -5015,11 +5308,13 @@ function removeRoutes(ids) {
 }
 
 function clearRoutes() {
-  routeLines.forEach(entry => {
+  routeLines.forEach((entry, routeId) => {
     if (entry.timeout) clearTimeout(entry.timeout);
+    removeArcadeMarker(routeId);
     routeLayer.removeLayer(entry.line);
   });
   routeLines.clear();
+  stopArcadeLoop();
   refreshStats();
 }
 
@@ -5594,29 +5889,8 @@ function upsertRoute(r, skipHeat = false) {
   const id = r.id || `route-${Date.now()}-${Math.random()}`;
   const points = r.points.map(p => [p[0], p[1]]);
   const routeMode = r.route_mode || 'path';
-  const isFanout = routeMode === 'fanout';
   const payloadType = Number(r.payload_type);
-  const isAdvert = payloadType === 4;
-  const isTrace = payloadType === 8 || payloadType === 9;
-  const isMessage = payloadType === 2 || payloadType === 5;
-  const style = {
-    color: isAdvert
-      ? '#2ecc71'
-      : (isTrace ? '#ff7a1a' : (isMessage ? '#2b8cff' : (isFanout ? '#2b8cff' : '#ff7a1a'))),
-    weight: isFanout ? 4 : 5,
-    opacity: isFanout ? 0.85 : 0.9,
-    lineCap: 'butt',
-    lineJoin: 'miter'
-  };
-  if (isAdvert) {
-    style.dashArray = '2 10';
-  } else if (isMessage) {
-    style.dashArray = '6 12';
-  } else if (isTrace) {
-    style.dashArray = '8 14';
-  } else if (!isFanout) {
-    style.dashArray = '8 14';
-  }
+  const style = routeStyleForDisplay(payloadType, routeMode, arcadeModeEnabled);
 
   const routeMeta = buildRouteLogMeta({ ...r, id, points, hashes: r.hashes });
   let entry = routeLines.get(id);
@@ -5632,9 +5906,20 @@ function upsertRoute(r, skipHeat = false) {
     entry.line.setStyle(style);
   }
   entry.meta = routeMeta;
+  entry.routePoints = points;
+  entry.payloadType = payloadType;
+  entry.routeMode = routeMode;
   const lineEl = entry.line.getElement();
   if (lineEl) {
-    lineEl.classList.add('route-animated');
+    if (arcadeModeEnabled) {
+      lineEl.classList.remove('route-animated');
+    } else {
+      lineEl.classList.add('route-animated');
+    }
+  }
+  syncArcadeForRoute(id, points);
+  if (entry.line && entry.line.bringToFront) {
+    entry.line.bringToFront();
   }
   if (routeDetailsPanel && !routeDetailsPanel.hidden && activeRouteDetailsId === id) {
     showRouteDetails(entry.meta);
@@ -5946,6 +6231,8 @@ if (hopsToggle) {
   });
 }
 
+setArcadeModeEnabled(arcadeModeEnabled, false);
+
 const legendToggle = document.getElementById('legend-toggle');
 const hud = document.querySelector('.hud');
 const hudToggle = document.getElementById('hud-toggle');
@@ -6180,6 +6467,14 @@ if (searchInput) {
     renderSearchResults(ev.target.value);
   });
   searchInput.addEventListener('keydown', (ev) => {
+    const secret = String(searchInput.value || '').trim().toLowerCase();
+    if (ev.key === 'Enter' && (secret === '/waka' || secret === '/arcade')) {
+      ev.preventDefault();
+      searchInput.value = '';
+      renderSearchResults('');
+      toggleArcadeMode();
+      return;
+    }
     if (ev.key === 'Enter' && searchMatches.length > 0) {
       ev.preventDefault();
       focusDevice(searchMatches[0].id);

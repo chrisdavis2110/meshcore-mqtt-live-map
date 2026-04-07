@@ -984,21 +984,30 @@ import readline from 'node:readline';
 let keyStore = undefined;
 let keySignature = '';
 
-function pickLocation(decodedPacket) {
+function normalizePubkey(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toUpperCase();
+  return /^[0-9A-F]{64}$/.test(normalized) ? normalized : null;
+}
+
+function pickAdvertPayload(decodedPacket) {
   const payloadDecoded = decodedPacket?.payload?.decoded ?? null;
   const payloadRoot = decodedPacket?.payload ?? null;
-  const appData = payloadDecoded?.appData ?? payloadDecoded?.appdata ?? payloadRoot?.appData ?? payloadRoot?.appdata ?? null;
-  const loc = appData?.location ?? payloadDecoded?.location ?? payloadRoot?.location ?? null;
+  if (payloadDecoded?.type === 4) return payloadDecoded;
+  if (payloadRoot?.type === 4) return payloadRoot;
+  return null;
+}
+
+function pickLocation(decodedPacket) {
+  const advert = pickAdvertPayload(decodedPacket);
+  const appData = advert?.appData ?? advert?.appdata ?? null;
+  const loc = appData?.location ?? advert?.location ?? null;
   const lat = loc?.latitude ?? loc?.lat ?? null;
   const lon = loc?.longitude ?? loc?.lon ?? null;
-  const name = appData?.name ?? payloadDecoded?.name ?? payloadRoot?.name ?? null;
+  const name = appData?.name ?? advert?.name ?? null;
   const pubkey =
-    payloadDecoded?.publicKey ??
-    payloadDecoded?.publickey ??
-    payloadRoot?.publicKey ??
-    payloadRoot?.publickey ??
-    decodedPacket?.publicKey ??
-    decodedPacket?.publickey ??
+    normalizePubkey(advert?.publicKey) ??
+    normalizePubkey(advert?.publickey) ??
     null;
   return { lat, lon, name, pubkey };
 }

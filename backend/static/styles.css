@@ -1061,6 +1061,61 @@
       pointer-events: auto;
     }
 
+    .flow-marker {
+      width: 22px;
+      height: 22px;
+      margin-left: -11px;
+      margin-top: -11px;
+      pointer-events: none;
+    }
+
+    @property --flow-mouth {
+      syntax: '<angle>';
+      inherits: false;
+      initial-value: 18deg;
+    }
+
+    .flow-icon {
+      position: relative;
+      width: 22px;
+      height: 22px;
+      --flow-mouth: 18deg;
+      border-radius: 50%;
+      background: conic-gradient(
+        from calc(90deg - (var(--flow-mouth) * 0.5)),
+        transparent 0deg var(--flow-mouth),
+        rgba(250, 204, 21, 0.96) var(--flow-mouth) 360deg
+      );
+      opacity: 0.78;
+      filter: drop-shadow(0 0 2px rgba(15, 23, 42, 0.45));
+      transform-origin: 50% 50%;
+      animation: flow-chomp 0.34s ease-in-out infinite alternate;
+    }
+
+    .flow-icon::before {
+      content: none;
+    }
+
+    .flow-icon::after {
+      content: '';
+      position: absolute;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.9);
+      top: 5px;
+      left: 9px;
+    }
+
+    @keyframes flow-chomp {
+      from {
+        --flow-mouth: 10deg;
+      }
+      to {
+        --flow-mouth: 40deg;
+      }
+    }
+
     @keyframes route-dash {
       to {
         stroke-dashoffset: -200;
