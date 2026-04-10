@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Set, List, Tuple
 
 import httpx
 import paho.mqtt.client as mqtt
+import qrcode
 from fastapi import (
   FastAPI,
   WebSocket,
@@ -143,6 +144,7 @@ from config import (
   SITE_FEED_NOTE,
   CUSTOM_LINK_URL,
   PACKET_ANALYZER_URL,
+  QR_CODE_BUTTON_ENABLED,
   GIT_CHECK_ENABLED,
   GIT_CHECK_FETCH,
   GIT_CHECK_PATH,
@@ -2415,10 +2417,13 @@ async def reaper():
   global mqtt_presence_last_summary
   while True:
     now = time.time()
+    _refresh_mqtt_presence(now)
 
     if DEVICE_TTL_WINDOW_SECONDS > 0 or PATH_TTL_SECONDS > 0:
       stale = []
       for dev_id, st in list(devices.items()):
+        if dev_id in mqtt_seen:
+          continue
         device_stale = (
           DEVICE_TTL_WINDOW_SECONDS > 0 and (now - st.ts > DEVICE_TTL_WINDOW_SECONDS)
         )
@@ -2752,6 +2757,8 @@ def root(request: Request):
       CUSTOM_LINK_URL,
     "PACKET_ANALYZER_URL":
       PACKET_ANALYZER_URL,
+    "QR_CODE_BUTTON_ENABLED":
+      str(QR_CODE_BUTTON_ENABLED).lower(),
     "APP_VERSION":
       APP_VERSION,
     "ASSET_VERSION":
@@ -3187,6 +3194,7 @@ def map_page(request: Request):
     "SITE_FEED_NOTE": SITE_FEED_NOTE,
     "CUSTOM_LINK_URL": CUSTOM_LINK_URL,
     "PACKET_ANALYZER_URL": PACKET_ANALYZER_URL,
+    "QR_CODE_BUTTON_ENABLED": str(QR_CODE_BUTTON_ENABLED).lower(),
     "APP_VERSION": APP_VERSION,
     "ASSET_VERSION": ASSET_VERSION,
     "DISTANCE_UNITS": DISTANCE_UNITS,
@@ -3269,6 +3277,52 @@ def manifest():
       "icons": icons,
     },
     media_type="application/manifest+json",
+  )
+
+
+@app.get("/qr")
+def qr_code(
+  request: Request,
+  text: Optional[str] = Query(None, min_length=1, max_length=1024),
+  name: Optional[str] = Query(None, min_length=1, max_length=128),
+  public_key: Optional[str] = Query(None, min_length=64, max_length=64),
+  device_type: int = Query(1, alias="type", ge=1, le=4),
+  box_size: int = Query(14, ge=1, le=24),
+  border: int = Query(4, ge=0, le=8),
+):
+  _require_prod_token(request)
+  value = ""
+  if public_key is not None:
+    key = str(public_key).strip().lower()
+    if len(key) != 64 or any(ch not in "0123456789abcdef" for ch in key):
+      raise HTTPException(status_code=400, detail="invalid_public_key")
+    contact_name = str(name or "").strip()
+    if not contact_name:
+      contact_name = key[:8].upper()
+    value = "meshcore://contact/add?" + urlencode({
+      "name": contact_name,
+      "public_key": key,
+      "type": str(device_type),
+    })
+  elif text is not None:
+    value = str(text).strip()
+  if not value:
+    raise HTTPException(status_code=400, detail="text_required")
+  qr = qrcode.QRCode(
+    version=None,
+    error_correction=qrcode.constants.ERROR_CORRECT_M,
+    box_size=box_size,
+    border=border,
+  )
+  qr.add_data(value)
+  qr.make(fit=True)
+  image = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+  buffer = BytesIO()
+  image.save(buffer, format="PNG")
+  return Response(
+    content=buffer.getvalue(),
+    media_type="image/png",
+    headers={"Cache-Control": "no-store"},
   )
 
 

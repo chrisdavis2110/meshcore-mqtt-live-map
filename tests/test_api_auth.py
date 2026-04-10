@@ -1,6 +1,7 @@
 from starlette.requests import Request
 
 import pytest
+from fastapi.testclient import TestClient
 
 import app
 
@@ -83,6 +84,74 @@ def test_non_prod_mode_does_not_require_token(monkeypatch):
   assert isinstance(snap, dict)
   assert "data" in nodes
   assert peers["device_id"] == "dummy-device"
+
+
+def test_qr_endpoint_requires_prod_token(monkeypatch):
+  monkeypatch.setattr(app, "PROD_MODE", True)
+  monkeypatch.setattr(app, "PROD_TOKEN", "secret-token")
+
+  client = TestClient(app.app)
+
+  unauthorized = client.get("/qr", params={"text": "mesh://ABC123"})
+  assert unauthorized.status_code == 401
+
+  authorized = client.get(
+    "/qr",
+    params={"text": "mesh://ABC123", "token": "secret-token"},
+  )
+  assert authorized.status_code == 200
+  assert authorized.headers["content-type"].startswith("image/png")
+  assert authorized.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_qr_endpoint_builds_meshcore_contact_uri(monkeypatch):
+  monkeypatch.setattr(app, "PROD_MODE", False)
+  captured = {}
+
+  class _FakeImage:
+    def convert(self, _mode):
+      return self
+
+    def save(self, buffer, format="PNG"):
+      captured["format"] = format
+      buffer.write(b"fake-png")
+
+  class _FakeQRCode:
+    def __init__(self, **kwargs):
+      captured["kwargs"] = kwargs
+
+    def add_data(self, value):
+      captured["value"] = value
+
+    def make(self, fit=True):
+      captured["fit"] = fit
+
+    def make_image(self, fill_color="black", back_color="white"):
+      captured["fill_color"] = fill_color
+      captured["back_color"] = back_color
+      return _FakeImage()
+
+  monkeypatch.setattr(app.qrcode, "QRCode", _FakeQRCode)
+  response = app.qr_code(
+    _request("/qr"),
+    name="Test Node",
+    public_key="A1" * 32,
+    device_type=2,
+    box_size=14,
+    border=4,
+  )
+
+  assert captured["value"] == (
+    "meshcore://contact/add?"
+    "name=Test+Node&public_key="
+    "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    "&type=2"
+  )
+  assert captured["kwargs"]["error_correction"] == app.qrcode.constants.ERROR_CORRECT_M
+  assert captured["kwargs"]["box_size"] == 14
+  assert captured["kwargs"]["border"] == 4
+  assert response.body == b"fake-png"
 
 
 def test_prod_route_payload_keeps_hop_hashes_for_ui(monkeypatch):

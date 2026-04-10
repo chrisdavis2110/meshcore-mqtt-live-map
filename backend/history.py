@@ -220,13 +220,30 @@ def _record_route_history(
   points = route.get("points")
   point_ids = route.get("point_ids"
                        ) if isinstance(route.get("point_ids"), list) else None
-  if not isinstance(points, list) or len(points) < 2:
+  if (
+    (not isinstance(points, list) or len(points) < 2) and
+    (not point_ids or len(point_ids) < 2)
+  ):
     return [], []
 
   ts = route.get("ts") or time.time()
   sample = _history_sample_from_route(route, ts)
   updated_keys: Set[str] = set()
   new_entries: List[Dict[str, Any]] = []
+  peer_recorded = False
+
+  if point_ids and len(point_ids) >= 2:
+    for idx in range(len(point_ids) - 1):
+      if _record_peer_history_segment(
+        point_ids[idx], point_ids[idx + 1], float(ts)
+      ):
+        peer_recorded = True
+
+  if not isinstance(points, list) or len(points) < 2:
+    if peer_recorded:
+      _prune_peer_history(ts)
+      state.state_dirty = True
+    return [], []
 
   for idx in range(len(points) - 1):
     a = _normalize_history_point(points[idx])
@@ -267,16 +284,17 @@ def _record_route_history(
     edge["count"] = int(edge.get("count", 0)) + 1
     edge["last_ts"] = max(edge.get("last_ts", float(ts)), float(ts))
     _update_history_edge_recent(edge, sample)
-    if a_id and b_id:
-      _record_peer_history_segment(a_id, b_id, float(ts))
     updated_keys.add(key)
 
   if not new_entries:
+    if peer_recorded:
+      _prune_peer_history(ts)
+      state.state_dirty = True
     return [], []
 
   state.route_history_segments.extend(new_entries)
   _append_route_history_file(new_entries)
-  if new_entries:
+  if new_entries or peer_recorded:
     _prune_peer_history(ts)
     state.state_dirty = True
 
