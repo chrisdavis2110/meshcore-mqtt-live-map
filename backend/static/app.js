@@ -18,6 +18,12 @@ const parseBoolParam = (value) => {
   if (!Number.isNaN(Number(str))) return Number(str) > 0;
   return null;
 };
+const escapeHtmlAttr = (value) => String(value ?? '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;');
 const parseHistoryFilterParam = (value) => {
   if (value == null) return null;
   const str = String(value).trim().toLowerCase();
@@ -199,6 +205,8 @@ if (!validLayers.has(queryLayer) && (storedLayer === 'dark' || storedLayer === '
 
 const prodMode = String(config.prodMode).toLowerCase() === 'true';
 const apiToken = config.prodToken || '';
+const qrCodeButtonEnabled =
+  String(config.qrCodeButtonEnabled).toLowerCase() === 'true';
 const tokenHeaders = () => (prodMode && apiToken ? { 'x-access-token': apiToken } : {});
 const withToken = (path) => {
   if (!prodMode || !apiToken) return path;
@@ -468,6 +476,12 @@ const routeDetailsTitle = document.getElementById('route-details-title');
 const routeDetailsContent = document.getElementById('route-details-content');
 const routeDetailsTotal = document.getElementById('route-details-total');
 const routeDetailsHide = document.getElementById('route-details-hide');
+const qrModal = document.getElementById('qr-modal');
+const qrModalBackdrop = document.getElementById('qr-modal-backdrop');
+const qrModalClose = document.getElementById('qr-modal-close');
+const qrModalTitle = document.getElementById('qr-modal-title');
+const qrModalLabel = document.getElementById('qr-modal-label');
+const qrModalImage = document.getElementById('qr-modal-image');
 let activeRouteDetailsMeta = null;
 let activeRouteDetailsId = null;
 let losProfileData = [];
@@ -678,6 +692,14 @@ function resolveRole(d) {
   if (role.includes('companion')) return 'companion';
   if (role.includes('room')) return 'room';
   return 'unknown';
+}
+
+function meshCoreContactTypeForDevice(d) {
+  const role = String(d?.role || '').toLowerCase();
+  if (role.includes('repeater')) return 2;
+  if (role.includes('room')) return 3;
+  if (role.includes('sensor')) return 4;
+  return 1;
 }
 
 function markerStyleForRole(role) {
@@ -993,49 +1015,63 @@ function expandMeshMapperCoverageSquares(data) {
   return Array.from(merged.values());
 }
 
+function buildMeshMapperCoverageRect(square) {
+  const bounds = square?.bounds;
+  if (!bounds) return null;
+  const south = Number(bounds.south);
+  const west = Number(bounds.west);
+  const north = Number(bounds.north);
+  const east = Number(bounds.east);
+  if (![south, west, north, east].every(Number.isFinite)) return null;
+  const fillColor = square.fill_color || '#1e7e34';
+  const rect = L.rectangle([[south, west], [north, east]], {
+    renderer: vectorRenderer,
+    stroke: true,
+    color: square.border_color || fillColor,
+    weight: 0.4,
+    opacity: 0.22,
+    fillOpacity: 0.5,
+    fillColor
+  });
+  const details = [];
+  if (square.coverage_type) details.push(`Type: ${square.coverage_type}`);
+  if (square.snr !== null && square.snr !== undefined) {
+    details.push(`SNR: ${square.snr} dB`);
+  }
+  const when = coverageTimeLabel(square.timestamp);
+  if (when) details.push(`Updated: ${when}`);
+  if (square.__source_grid_id) details.push(`Source grid: ${square.__source_grid_id}`);
+  rect.bindPopup(details.join('<br/>'), { maxWidth: 320 });
+  rect.__coverageBounds = { south, west, north, east };
+  rect.__attached = false;
+  return rect;
+}
+
 function renderMeshMapperCoverage(data) {
+  coverageLayer.clearLayers();
   meshMapperCoverageSource = data;
   meshMapperCoverageExpanded = expandMeshMapperCoverageSquares(data);
+  meshMapperCoverageRects = [];
+  for (const square of meshMapperCoverageExpanded) {
+    const rect = buildMeshMapperCoverageRect(square);
+    if (rect) meshMapperCoverageRects.push(rect);
+  }
   return syncMeshMapperCoverageViewport();
 }
 
 function syncMeshMapperCoverageViewport() {
-  coverageLayer.clearLayers();
-  meshMapperCoverageRects = [];
   let rendered = 0;
-  for (const square of meshMapperCoverageExpanded) {
-    const bounds = square?.bounds;
+  for (const rect of meshMapperCoverageRects) {
+    const bounds = rect?.__coverageBounds;
     if (!bounds) continue;
-    const south = Number(bounds.south);
-    const west = Number(bounds.west);
-    const north = Number(bounds.north);
-    const east = Number(bounds.east);
-    if (![south, west, north, east].every(Number.isFinite)) continue;
-    if (!boundsIntersectsViewport(south, west, north, east)) continue;
-    const fillColor = square.fill_color || '#1e7e34';
-    const rect = L.rectangle([[south, west], [north, east]], {
-      renderer: vectorRenderer,
-      stroke: true,
-      color: square.border_color || fillColor,
-      weight: 0.4,
-      opacity: 0.22,
-      fillOpacity: 0.5,
-      fillColor
-    });
-    const details = [];
-    if (square.coverage_type) details.push(`Type: ${square.coverage_type}`);
-    if (square.snr !== null && square.snr !== undefined) {
-      details.push(`SNR: ${square.snr} dB`);
-    }
-    const when = coverageTimeLabel(square.timestamp);
-    if (when) details.push(`Updated: ${when}`);
-    if (square.__source_grid_id) details.push(`Source grid: ${square.__source_grid_id}`);
-    rect.bindPopup(details.join('<br/>'), { maxWidth: 320 });
-    rect.__coverageBounds = { south, west, north, east };
-    rect.__attached = false;
-    meshMapperCoverageRects.push(rect);
-    syncLayerMembership(coverageLayer, rect, boundsIntersectsViewport(south, west, north, east));
-    rendered++;
+    const visible = boundsIntersectsViewport(
+      bounds.south,
+      bounds.west,
+      bounds.north,
+      bounds.east
+    );
+    syncLayerMembership(coverageLayer, rect, visible);
+    if (visible) rendered++;
   }
   return rendered;
 }
@@ -4996,22 +5032,53 @@ function findLosPeaks(points, elevations, distanceMeters) {
 function makePopup(d) {
   const lastContact = formatLastContact(getLastSeenTs(d));
   const deviceLabel = deviceShortId(d);
+  const qrTitle = (d.name || '').trim() || deviceLabel;
+  const publicKey = typeof d.device_id === 'string' ? d.device_id : '';
   const latText = Number(d.lat).toFixed(6);
   const lonText = Number(d.lon).toFixed(6);
   const locationText = `Location: ${latText}, ${lonText}`;
+  const publicKeyCopyTitle = 'Copy full public key';
+  const qrParams = new URLSearchParams({
+    name: qrTitle,
+    public_key: publicKey,
+    type: String(meshCoreContactTypeForDevice(d)),
+    box_size: '14',
+    border: '4'
+  });
+  const qrCodeUrl = publicKey ? withToken(`/qr?${qrParams.toString()}`) : '';
+  const popupId = publicKey
+    ? `<button
+        type="button"
+        class="popup-id popup-copy-id popup-copy-trigger"
+        data-copy-text="${publicKey}"
+        title="${publicKeyCopyTitle}"
+      >${deviceLabel}</button>`
+    : `<span class="popup-id">${deviceLabel}</span>`;
   const title = d.name
-    ? `<span class="popup-title">${d.name}</span><span class="popup-id">${deviceLabel}</span>`
-    : `<span class="popup-title popup-id">${deviceLabel}</span>`;
+    ? `<span class="popup-title">${d.name}</span>${popupId}`
+    : `<span class="popup-title">${popupId}</span>`;
   const role = resolveRole(d);
   const roleLabel = role === 'unknown' ? '' : role.charAt(0).toUpperCase() + role.slice(1);
   const mqttOnline = isMqttOnline(d);
+  const popupActions = [];
+  if (qrCodeButtonEnabled && qrCodeUrl) {
+    popupActions.push(`
+      <button
+        type="button"
+        class="popup-action-button"
+        data-qr-url="${qrCodeUrl}"
+        data-qr-title="${escapeHtmlAttr(qrTitle)}"
+        data-qr-key="${escapeHtmlAttr(publicKey)}"
+      >Generate QR Code</button>
+    `);
+  }
   return `
         ${title}
         <span class="small">
           ${roleLabel ? `Role: ${roleLabel}<br/>` : ``}
           <button
             type="button"
-            class="popup-copy-location"
+            class="popup-copy-location popup-copy-trigger"
             data-copy-text="${locationText}"
             title="Copy location"
           >${locationText}</button><br/>
@@ -5019,11 +5086,12 @@ function makePopup(d) {
           ${mqttOnline ? `MQTT: Online<br/>` : ``}
           ${d.rssi != null ? `RSSI: ${d.rssi}<br/>` : ``}
           ${d.snr != null ? `SNR: ${d.snr}<br/>` : ``}
+          ${popupActions.length ? `<div class="popup-actions">${popupActions.join('')}</div>` : ``}
         </span>
       `;
 }
 
-async function copyPopupLocation(ev) {
+async function copyPopupText(ev) {
   const btn = ev?.currentTarget;
   if (!btn) return;
   const text = typeof btn.dataset.copyText === 'string' ? btn.dataset.copyText : '';
@@ -5042,6 +5110,57 @@ async function copyPopupLocation(ev) {
   window.setTimeout(() => {
     btn.textContent = original;
   }, 1200);
+}
+
+function closeQrModal() {
+  if (!qrModal) return;
+  qrModal.hidden = true;
+  if (qrModalImage) {
+    qrModalImage.removeAttribute('src');
+  }
+  if (qrModalTitle) {
+    qrModalTitle.textContent = 'Node';
+  }
+  if (qrModalLabel) {
+    qrModalLabel.textContent = '';
+    qrModalLabel.hidden = true;
+    delete qrModalLabel.dataset.copyText;
+    qrModalLabel.removeAttribute('title');
+  }
+}
+
+function openQrModal(url, title, key) {
+  if (!qrModal || !qrModalImage) return;
+  qrModalImage.src = url;
+  qrModalImage.alt = title ? `QR code for ${title}` : 'QR code';
+  if (qrModalTitle) {
+    qrModalTitle.textContent = title || 'Node';
+  }
+  if (qrModalLabel) {
+    qrModalLabel.textContent = key ? `${key.slice(0, 8)}…` : '';
+    qrModalLabel.hidden = !key;
+    if (key) {
+      qrModalLabel.dataset.copyText = key;
+      qrModalLabel.title = 'Copy full public key';
+    } else {
+      delete qrModalLabel.dataset.copyText;
+      qrModalLabel.removeAttribute('title');
+    }
+  }
+  qrModal.hidden = false;
+}
+
+function handleQrPopupClick(ev) {
+  const btn = ev?.currentTarget;
+  const url = btn?.dataset?.qrUrl;
+  if (!url) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  openQrModal(
+    url,
+    btn.dataset.qrTitle || '',
+    btn.dataset.qrKey || ''
+  );
 }
 
 function upsertDevice(d, trail) {
@@ -5065,10 +5184,16 @@ function upsertDevice(d, trail) {
     m.on('popupopen', (ev) => {
       const root = ev?.popup?.getElement?.();
       if (!root) return;
-      const btn = root.querySelector('.popup-copy-location');
-      if (!btn || btn.dataset.boundClick === 'true') return;
-      btn.dataset.boundClick = 'true';
-      btn.addEventListener('click', copyPopupLocation);
+      root.querySelectorAll('.popup-copy-trigger').forEach((btn) => {
+        if (btn.dataset.boundClick === 'true') return;
+        btn.dataset.boundClick = 'true';
+        btn.addEventListener('click', copyPopupText);
+      });
+      root.querySelectorAll('.popup-action-button[data-qr-url]').forEach((btn) => {
+        if (btn.dataset.boundQr === 'true') return;
+        btn.dataset.boundQr = 'true';
+        btn.addEventListener('click', handleQrPopupClick);
+      });
     });
     m.__suppressClick = false;
     m.__longPressTimer = null;
@@ -6332,6 +6457,20 @@ if (initialUpdateAvailable) {
 }
 
 const shareToggle = document.getElementById('share-toggle');
+if (qrModalClose) {
+  qrModalClose.addEventListener('click', closeQrModal);
+}
+if (qrModalBackdrop) {
+  qrModalBackdrop.addEventListener('click', closeQrModal);
+}
+if (qrModalLabel) {
+  qrModalLabel.addEventListener('click', copyPopupText);
+}
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && qrModal && !qrModal.hidden) {
+    closeQrModal();
+  }
+});
 if (shareToggle) {
   const resetShareButton = () => {
     shareToggle.classList.remove('copied');

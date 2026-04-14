@@ -150,6 +150,9 @@ SITE_ICON = os.getenv("SITE_ICON", "/static/logo.png")
 SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "Feed: Boston MQTT.")
 CUSTOM_LINK_URL = os.getenv("CUSTOM_LINK_URL", "").strip()
 PACKET_ANALYZER_URL = os.getenv("PACKET_ANALYZER_URL", "").strip()
+QR_CODE_BUTTON_ENABLED = (
+  os.getenv("QR_CODE_BUTTON_ENABLED", "false").lower() == "true"
+)
 GIT_CHECK_ENABLED = os.getenv("GIT_CHECK_ENABLED", "false").lower() == "true"
 GIT_CHECK_FETCH = os.getenv("GIT_CHECK_FETCH", "false").lower() == "true"
 GIT_CHECK_PATH = os.getenv("GIT_CHECK_PATH", os.getcwd()).strip()

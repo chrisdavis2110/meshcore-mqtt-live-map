@@ -43,6 +43,7 @@
   data-node-radius="{{NODE_MARKER_RADIUS}}" data-history-link-scale="{{HISTORY_LINK_SCALE}}"
   data-coverage-api-url="{{COVERAGE_API_URL}}" data-custom-link-url="{{CUSTOM_LINK_URL}}"
   data-packet-analyzer-url="{{PACKET_ANALYZER_URL}}"
+  data-qr-code-button-enabled="{{QR_CODE_BUTTON_ENABLED}}"
   data-app-version="{{APP_VERSION}}"
   data-weather-radar-enabled="{{WEATHER_RADAR_ENABLED}}"
   data-weather-radar-country-bounds-enabled="{{WEATHER_RADAR_COUNTRY_BOUNDS_ENABLED}}"
@@ -351,6 +352,18 @@
     <div class="small" id="prop-range"></div>
     <div class="small" id="prop-cost"></div>
     <div class="small" id="prop-status"></div>
+  </div>
+  <div class="qr-modal" id="qr-modal" hidden>
+    <div class="qr-modal-backdrop" id="qr-modal-backdrop"></div>
+    <div class="qr-modal-card" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title">
+      <button class="panel-close qr-modal-close" id="qr-modal-close" type="button"
+        aria-label="Close QR code">×</button>
+      <div class="small"><strong id="qr-modal-title">Node</strong></div>
+      <button class="small qr-modal-key" id="qr-modal-label" type="button" hidden></button>
+      <div class="qr-modal-image-wrap">
+        <img class="qr-modal-image" id="qr-modal-image" alt="QR code" />
+      </div>
+    </div>
   </div>
   <div id="map"></div>
 

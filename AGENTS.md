@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.8.1` (see `VERSIONS.md`).
+Current version: `1.8.2` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -17,7 +17,7 @@ Current version: `1.8.1` (see `VERSIONS.md`).
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.8.1`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.8.2`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -52,6 +52,7 @@ Current version: `1.8.1` (see `VERSIONS.md`).
 - `MAP_RADIUS_SHOW=true` draws a debug circle centered on `MAP_START_LAT/LON`.
 - Set `TRAIL_LEN=0` to disable trails entirely; the HUD trail hint is removed when trails are off.
 - Coverage button only appears when `COVERAGE_API_URL` is set.
+- `QR_CODE_BUTTON_ENABLED=true` adds a `Generate QR Code` button to node popups that opens a theme-aware MeshCore-compatible contact QR modal; default is off.
 - Geographic filtering defaults to radius mode; polygon mode is optional via `MAP_BOUNDARY_MODE=polygon` and `MAP_BOUNDARY_FILE`.
 - Standalone boundary builder: `tools/map-boundary-builder.html` outputs the JSON consumed by `MAP_BOUNDARY_FILE`; hosted copy: [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/).
 - Radar country-bounds controls:
@@ -97,6 +98,7 @@ Current version: `1.8.1` (see `VERSIONS.md`).
 - LOS legend items (clear/blocked/peaks/relay) are hidden until the LOS tool is active.
 - Mobile LOS supports long-press on nodes (Shift+click on desktop); endpoints can be dragged or click-selected and moved via map click.
 - MQTT online status is derived from `/status` + `/internal` TTL windows; `/packets` is tracked as feed activity.
+- Devices that remain MQTT-online keep their last known coordinates on the map until MQTT presence expires, even if fresh location packets stop.
 - `MQTT_ONLINE_FORCE_NAMES` (comma-separated device names) forces selected nodes to always appear MQTT online.
 - Service worker fetches navigations with `no-store` to avoid stale UI/env toggles (e.g., radius debug ring).
 - Node search + labels toggle (persisted in localStorage) and a GitHub link in the HUD.
@@ -113,13 +115,16 @@ Current version: `1.8.1` (see `VERSIONS.md`).
 - Propagation now has an adjustable TX antenna gain (dBi) control, and Rx AGL defaults to 1m.
 - Preview image endpoint renders in-bounds device dots for shared links.
 - Peers tool opens a right-side panel showing incoming/outgoing neighbors (counts + %) based on rolling peer-history buckets; selecting a node draws peer lines on the map.
+- Peer-history buckets are also updated from route `point_ids` when a hop cannot be drawn as a visible segment, so peer counts still reflect real adjacency for non-drawable hops.
 - Peers tool ignores nodes listed in `MQTT_ONLINE_FORCE_NAMES` (used for observer listeners).
 - Units toggle (km/mi) is stored in localStorage and defaults to `DISTANCE_UNITS`.
 - PWA support is enabled via `/manifest.webmanifest` + `/sw.js` so mobile browsers can install the app.
 - Clicking the logo toggles the left HUD panel while LOS/Propagation panels remain open.
 - Node popups do not auto-pan; dragging the map won’t snap back to keep a popup in view.
+- Node popups let users click the short key under the node name to copy the full public key, and can optionally show a MeshCore-compatible contact QR modal for that node with the node name plus a clickable truncated key that still copies the full public key.
 - MQTT disconnect handler tolerates extra Paho args so the loop doesn’t crash; reconnects resume ingest.
 - Share button copies a URL with `lat`, `lon`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `labels`, `nodes`, `legend`, `menu`, `units`, and `history_filter` params.
 - Weather state is not persisted in localStorage; it defaults off unless `weather=on` is in the URL.
 - URL params override localStorage on load (`history=on` is the only way to load History open).
 - Node size slider persists in localStorage (`meshmapNodeRadius`) and can be reset by clearing site data.
+- MeshMapper coverage viewport sync reuses cached rectangles instead of rebuilding all visible squares on every pan/zoom, which keeps the Coverage layer responsive on busy maps.

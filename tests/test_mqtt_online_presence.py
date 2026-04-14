@@ -1,4 +1,8 @@
+import asyncio
+
 import app
+import pytest
+import state
 
 
 def _reset_presence_state():
@@ -89,3 +93,43 @@ def test_mqtt_presence_summary_counts_off_map_online_and_feeding(monkeypatch):
   assert summary["feeding_total"] == 1
   assert summary["feeding_on_map"] == 0
   assert summary["feeding_off_map"] == 1
+
+
+def test_reaper_keeps_mqtt_online_device_with_last_known_location(monkeypatch):
+  _reset_presence_state()
+  app.devices.clear()
+  app.trails.clear()
+  state.last_seen_in_path.clear()
+  app.clients.clear()
+
+  now = 1000.0
+  app.devices["NODE"] = state.DeviceState(
+    device_id="NODE",
+    lat=42.36,
+    lon=-71.05,
+    ts=now - 600,
+    role="repeater",
+  )
+  state.last_seen_in_path["NODE"] = now - 600
+  app.mqtt_status_seen["NODE"] = now - 10
+  app.mqtt_status_values["NODE"] = "online"
+
+  monkeypatch.setattr(app, "DEVICE_TTL_WINDOW_SECONDS", 60)
+  monkeypatch.setattr(app, "PATH_TTL_SECONDS", 60)
+  monkeypatch.setattr(app, "MQTT_ONLINE_STATUS_TTL_SECONDS", 300)
+  monkeypatch.setattr(app, "MQTT_ONLINE_INTERNAL_TTL_SECONDS", 300)
+
+  times = iter([now, now])
+  monkeypatch.setattr(app.time, "time", lambda: next(times))
+
+  async def _cancel_sleep(_seconds):
+    raise asyncio.CancelledError()
+
+  monkeypatch.setattr(app.asyncio, "sleep", _cancel_sleep)
+
+  with pytest.raises(asyncio.CancelledError):
+    asyncio.run(app.reaper())
+
+  assert "NODE" in app.devices
+  assert "NODE" in app.mqtt_seen
+  assert state.last_seen_in_path["NODE"] == now - 600

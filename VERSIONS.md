@@ -1,5 +1,17 @@
 # Versions
 
+## v1.8.2 (04-07-2026)
+- Added issue #48: node popups now let users click the short key under the node name to copy the full public key without adding a duplicate full-key line to the popup body.
+- Added optional MeshCore-compatible contact QR generation for node popups via `QR_CODE_BUTTON_ENABLED=true`.
+- Changed the QR action to open an in-page modal instead of navigating to a separate browser tab, and made the modal follow the active light/dark map theme.
+- Tuned the QR modal and generator for better on-screen scanning by enlarging the modal presentation and reducing QR density to better match the official app export.
+- The QR modal now uses the node name as its title and shows a clickable truncated public key line that still copies the full key.
+- Added a local `/qr` PNG endpoint for popup QR generation and protected it with the existing prod token flow.
+- Fixed `docker-compose.yaml` so `QR_CODE_BUTTON_ENABLED` is passed into the container and the feature can actually be enabled from `.env`.
+- Improved MeshMapper coverage performance by caching the expanded rectangle set and only toggling visible squares on pan/zoom instead of rebuilding every rectangle each viewport change.
+- Fixed peer-history accounting so `/peers/{device_id}` still counts adjacent route hops from `point_ids` even when a route segment cannot be drawn because its coordinates are missing, zeroed, or otherwise filtered out.
+- Fixed stale-node cleanup so nodes that are still MQTT-online keep their last known map position instead of disappearing while `/status` or `/internal` presence is still active.
+
 ## v1.8.1 (04-06-2026)
 - Fixed issue #43: location updates now key devices from the advert owner pubkey only, avoiding bogus ghost nodes created from unrelated decoded `publicKey` fields.
 - Added a startup/state cleanup pass that removes exact same-name/same-location duplicate device entries so already-persisted ghost markers disappear after restart instead of lingering until TTL expiry.

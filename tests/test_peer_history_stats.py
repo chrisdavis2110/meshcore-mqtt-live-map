@@ -78,3 +78,37 @@ def test_state_round_trip_preserves_peer_history_buckets(tmp_path, monkeypatch):
   outbound = app._peer_stats_for_device("AA001111", limit=8)
   assert outbound["outgoing_total"] == 2
   assert outbound["outgoing"][0]["peer_id"] == "BB001111"
+
+
+def test_peer_history_records_route_ids_without_drawn_segments(monkeypatch):
+  _clear_peer_state()
+  now = time.time()
+
+  monkeypatch.setattr(history, "ROUTE_HISTORY_ENABLED", True)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_HOURS", 24)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_MAX_SEGMENTS", 10)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_ALLOWED_MODES_SET", {"path"})
+  monkeypatch.setattr(app, "ROUTE_HISTORY_HOURS", 24)
+
+  history._record_route_history(
+    {
+      "points": [[0.0, 0.0], [0.0, 0.0]],
+      "point_ids": ["AA001111", "BB001111"],
+      "payload_type": 5,
+      "message_hash": "msg-undrawn",
+      "origin_id": "AA001111",
+      "receiver_id": "BB001111",
+      "route_mode": "path",
+      "topic": "meshcore/test",
+      "ts": now,
+    }
+  )
+
+  assert len(state.route_history_segments) == 0
+  outbound = app._peer_stats_for_device("AA001111", limit=8)
+  inbound = app._peer_stats_for_device("BB001111", limit=8)
+
+  assert outbound["outgoing_total"] == 1
+  assert inbound["incoming_total"] == 1
+  assert outbound["outgoing"][0]["peer_id"] == "BB001111"
+  assert inbound["incoming"][0]["peer_id"] == "AA001111"

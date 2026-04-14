@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.8.1` (see `VERSIONS.md`).
+Current version: `1.8.2` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.8.1`).
+- `VERSION.txt` holds the current version string (`1.8.2`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -39,6 +39,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## Env Notes (Recent Additions)
 - `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
 - `PACKET_ANALYZER_URL` adds an external link on Route Details hashes; set it to a base such as `https://analyzer.letsmesh.net/packets?packet_hash=`.
+- `QR_CODE_BUTTON_ENABLED` shows a `Generate QR Code` button in node popups; it opens a theme-aware MeshCore-compatible contact QR modal and defaults to `false`.
 - `PEERS_DEFAULT_LIMIT` controls the default number of peers returned by `/peers/{device_id}` when no `?limit=` is passed; default `8`.
 - `MAP_BOUNDARY_MODE` switches geographic filtering between `radius` and `polygon`; default is `radius`.
 - `MAP_BOUNDARY_FILE` points at the polygon JSON file used when `MAP_BOUNDARY_MODE=polygon`.
@@ -94,6 +95,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Base map toggle: Light/Dark/Topo; persisted to localStorage.
 - Dark map also darkens node popups for readability.
 - Node popups do not auto-pan; dragging the map won’t snap back to keep a popup in view.
+- Node popups now let users click the short key under the node name to copy the full public key, and can optionally expose a MeshCore-compatible contact QR modal that shows the node name plus a clickable truncated key that still copies the full public key.
 - Legend is collapsible and persisted to localStorage.
 - HUD is capped to `90vh` and scrolls to avoid running off-screen.
 - Map start position is configurable with `MAP_START_LAT`, `MAP_START_LON`, `MAP_START_ZOOM`.
@@ -108,6 +110,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - History slider modes: 0 = All, 1 = Blue only, 2 = Yellow only, 3 = Yellow + Red, 4 = Red only.
 - History legend swatch is hidden unless the History tool is active.
 - Peers tool shows incoming/outgoing neighbors for a selected node, with counts and percentages pulled from dedicated rolling peer-history buckets instead of raw route-history segments.
+- Peer-history buckets are also updated from adjacent route `point_ids` when a hop cannot be rendered as a visible map segment, so peer counts do not drop to zero just because a route endpoint lacked usable coordinates.
 - Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
 - Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
 - Coverage tool only appears when `COVERAGE_API_URL` is set; it supports both the legacy `/get-samples` format and MeshMapper `coverage.php` grid-square responses.
@@ -115,6 +118,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Use `map_boundary.example.json` for the file format and either `tools/map-boundary-builder.html` or [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/) to generate a polygon JSON file outside the live app.
 - MeshMapper-only coverage envs are `COVERAGE_API_KEY`, `COVERAGE_MAX_AGE_DAYS`, `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS`, `COVERAGE_CACHE_FILE`, and `COVERAGE_SYNC_INTERVAL_SECONDS`; the legacy coverage map does not use them.
 - MeshMapper coverage is synced server-side into a local cache file and served from that file to users; it also uses a cooldown after HTTP 429 rate-limit responses.
+- MeshMapper viewport refresh now reuses the cached expanded rectangles and only attaches or detaches visible ones, which avoids the old lag from rebuilding the full visible coverage set on every map move.
 - Coverage responses are filtered by `COVERAGE_MAX_AGE_DAYS` before they reach the map; default is `30` days, while MeshMapper can still keep the full downloaded dataset in its local cache file.
 - Weather is a right-side tool panel with per-layer toggles:
   - Radar toggle controls RainViewer tile layer visibility.
@@ -130,6 +134,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Propagation now supports adjustable TX antenna gain (dBi), and defaults Rx AGL to 1m.
 - Heatmap includes all route payload types (adverts are no longer skipped).
 - MQTT online status shows as a green marker outline and popup status; connected state is derived from `/status` and `/internal` timestamps, while `/packets` is feed activity only. Role detection is now conservative and only trusts explicit role fields and numeric role codes.
+- Devices that remain MQTT-online keep their last known map position until MQTT presence expires, even if fresh location packets stop arriving.
 - `MQTT_ONLINE_FORCE_NAMES` can force named nodes to show as MQTT online regardless of last seen.
 - PWA install support is enabled via `/manifest.webmanifest` and a service worker at `/sw.js`.
 - Preview image (`/preview.png`) renders in-bounds device dots for shared links.
