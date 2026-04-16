@@ -57,3 +57,16 @@ def test_root_injects_qr_code_button_flag(monkeypatch):
 
   assert response.status_code == 200
   assert 'data-qr-code-button-enabled="true"' in response.text
+
+
+def test_root_injects_los_curvature_defaults(monkeypatch):
+  monkeypatch.setattr(app, "TURNSTILE_ENABLED", False)
+  monkeypatch.setattr(app, "LOS_CURVATURE_ENABLED", True)
+  monkeypatch.setattr(app, "LOS_CURVATURE_FACTOR", 1.333333)
+
+  client = TestClient(app.app)
+  response = client.get("/")
+
+  assert response.status_code == 200
+  assert 'data-los-curvature-enabled="true"' in response.text
+  assert 'data-los-curvature-factor="1.333333"' in response.text

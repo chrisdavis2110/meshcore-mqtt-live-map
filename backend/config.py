@@ -218,6 +218,15 @@ LOS_SAMPLE_MIN = int(os.getenv("LOS_SAMPLE_MIN", "10"))
 LOS_SAMPLE_MAX = int(os.getenv("LOS_SAMPLE_MAX", "80"))
 LOS_SAMPLE_STEP_METERS = int(os.getenv("LOS_SAMPLE_STEP_METERS", "250"))
 ELEVATION_CACHE_TTL = int(os.getenv("ELEVATION_CACHE_TTL", "21600"))
+LOS_CURVATURE_ENABLED = (
+  os.getenv("LOS_CURVATURE_ENABLED", "true").lower() == "true"
+)
+try:
+  LOS_CURVATURE_FACTOR = float(os.getenv("LOS_CURVATURE_FACTOR", "1.333333"))
+except ValueError:
+  LOS_CURVATURE_FACTOR = 1.333333
+if LOS_CURVATURE_FACTOR <= 0:
+  LOS_CURVATURE_FACTOR = 1.333333
 LOS_PEAKS_MAX = int(os.getenv("LOS_PEAKS_MAX", "4"))
 
 COVERAGE_API_URL = os.getenv("COVERAGE_API_URL", "").strip()

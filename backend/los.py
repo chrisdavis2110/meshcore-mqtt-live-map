@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config import (
   ELEVATION_CACHE_TTL,
+  LOS_CURVATURE_ENABLED,
+  LOS_CURVATURE_FACTOR,
   LOS_ELEVATION_URL,
   LOS_PEAKS_MAX,
   LOS_SAMPLE_MAX,
@@ -103,6 +105,34 @@ def _sample_los_points(lat1: float, lon1: float, lat2: float,
     lon = lon1 + (lon2 - lon1) * t
     points.append((lat, lon, t))
   return points
+
+
+def _los_earth_radius_m() -> float:
+  return 6371000.0 * LOS_CURVATURE_FACTOR
+
+
+def _los_earth_bulge_m(distance_m: float, t: float) -> float:
+  if not LOS_CURVATURE_ENABLED or distance_m <= 0:
+    return 0.0
+  d1 = distance_m * t
+  d2 = distance_m - d1
+  radius_m = _los_earth_radius_m()
+  if radius_m <= 0:
+    return 0.0
+  return (d1 * d2) / (2.0 * radius_m)
+
+
+def _los_effective_elevations(
+  points: List[Tuple[float, float, float]],
+  elevations: List[float],
+  distance_m: float,
+) -> List[float]:
+  adjusted = list(elevations)
+  for idx, point in enumerate(points):
+    adjusted[idx] = float(elevations[idx]) + _los_earth_bulge_m(
+      distance_m, point[2]
+    )
+  return adjusted
 
 
 def _los_max_obstruction(

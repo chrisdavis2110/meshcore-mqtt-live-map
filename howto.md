@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.8.2` (see `VERSIONS.md`).
+Current version: `1.8.3` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -216,7 +216,14 @@ PEERS_DEFAULT_LIMIT=8
 MAP_BOUNDARY_MODE=radius
 MAP_BOUNDARY_FILE=/data/map_boundary.json
 MAP_BOUNDARY_SHOW=false
+LOS_CURVATURE_ENABLED=true
+LOS_CURVATURE_FACTOR=1.333333
 ```
+
+LOS note:
+- The live map LOS tool now includes Earth curvature by default.
+- Leave `LOS_CURVATURE_ENABLED` unset to keep the default `true`.
+- Leave `LOS_CURVATURE_FACTOR` unset to keep the default `1.333333`.
 
 Optional polygon boundary mode:
 ```env
