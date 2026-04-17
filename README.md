@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.8.3` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.8.4` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -47,6 +47,7 @@ Other community maps (versions may differ):
 - Route lines are derived from decoded packet paths only (no MQTT observer/receiver fallback)
 - First-hop collision fix prefers the closest repeater/room to the sender (Issue #11)
 - Mixed hop-prefix support for path decoding (`AB`, `ABCD`, and `ABCDEF`, including mixed networks during rollout)
+- Optional legacy route fallback for colliding 1-byte hop prefixes via `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK=true`
 - Propagation panel lives on the right and keeps the last render until you generate a new one (click an origin marker to remove it)
 - Propagation tool supports adjustable **TX antenna gain (dBi)**, and now defaults **Rx AGL** to **1m**
 - Installable PWA (manifest + service worker) for Add to Home Screen
@@ -163,6 +164,7 @@ Routing accuracy:
 - Ambiguous 1-byte hop prefixes are now handled conservatively on large meshes.
 - If multiple nodes share the same first byte, the map no longer guesses from broad closest/time-based fallbacks.
 - Colliding 1-byte hops only resolve when there is stronger evidence such as a unique candidate or known neighbor/manual adjacency.
+- `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK=true` restores the pre-`v1.7.0` fallback behavior for networks that need the older route rendering.
 
 Weather overlay:
 - `WEATHER_RADAR_ENABLED`:

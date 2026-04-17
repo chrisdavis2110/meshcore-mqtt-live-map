@@ -213,3 +213,23 @@ def test_ambiguous_one_byte_hash_with_neighbor_evidence_is_kept():
   assert points is not None
   assert used_hashes == ["BC", "AB"]
   assert point_ids[1:3] == ["BC001111", "ABEF1111"]
+
+
+def test_ambiguous_one_byte_hash_uses_legacy_fallback_when_enabled(monkeypatch):
+  _add_device("AA001111", 42.0000, -71.0000, role="repeater")
+  _add_device("ABCD1111", 42.0002, -71.0002, role="repeater")
+  _add_device("ABEF1111", 42.5000, -71.5000, role="repeater")
+  _add_device("DD001111", 42.0006, -71.0006, role="repeater")
+  decoder._rebuild_node_hash_map()
+  monkeypatch.setattr(decoder, "ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK", True)
+
+  points, used_hashes, point_ids = decoder._route_points_from_hashes(
+    path_hashes=["AB"],
+    origin_id="AA001111",
+    receiver_id="DD001111",
+    ts=time.time(),
+  )
+
+  assert points is not None
+  assert used_hashes == ["AB"]
+  assert point_ids[1] == "ABCD1111"

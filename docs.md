@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.8.3` (see `VERSIONS.md`).
+Current version: `1.8.4` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.8.3`).
+- `VERSION.txt` holds the current version string (`1.8.4`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -56,6 +56,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `GIT_CHECK_INTERVAL_SECONDS` controls how often the server re-checks for updates.
 - `ROUTE_MAX_HOP_DISTANCE` prunes hops longer than the configured km distance.
 - `ROUTE_INFRA_ONLY` limits route lines to repeaters/rooms (companions excluded from routes).
+- `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK` restores the legacy route fallback for colliding 1-byte prefixes when conservative routing is too strict; default is `false`.
 - `DEVICE_TTL_HOURS` controls advert/device staleness (default `96` hours).
 - `PATH_TTL_SECONDS` controls path staleness (default `172800` seconds / 48h).
 - `DEVICE_COORDS_FILE` points to optional coordinate overrides (`/data/device_coords.json` by default).

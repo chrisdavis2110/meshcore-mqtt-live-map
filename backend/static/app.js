@@ -458,19 +458,22 @@ const losLegendGroup = document.getElementById('legend-los-group');
 const losClearButton = document.getElementById('los-clear');
 const losRemoveLastButton = document.getElementById('los-remove-last');
 const losPanel = document.getElementById('los-panel');
+const losPanelCollapse = document.getElementById('los-panel-collapse');
 const losHeightAInput = document.getElementById('los-height-a');
 const losHeightBInput = document.getElementById('los-height-b');
 const propPanel = document.getElementById('prop-panel');
+const propPanelCollapse = document.getElementById('prop-panel-collapse');
 const historyPanel = document.getElementById('history-panel');
 const historyLegendGroup = document.getElementById('legend-history-group');
 const coverageLegendGroup = document.getElementById('legend-coverage-group');
 const historyPanelLabel = document.getElementById('history-panel-label');
-const historyHideButton = document.getElementById('history-hide');
+const historyPanelCollapse = document.getElementById('history-panel-collapse');
 const weatherPanel = document.getElementById('weather-panel');
 const weatherHideButton = document.getElementById('weather-hide');
 const weatherRadarLayerToggle = document.getElementById('weather-radar-layer-toggle');
 const weatherWindLayerToggle = document.getElementById('weather-wind-layer-toggle');
 const peersPanel = document.getElementById('peers-panel');
+const peersPanelCollapse = document.getElementById('peers-panel-collapse');
 const peersStatus = document.getElementById('peers-status');
 const peersMeta = document.getElementById('peers-meta');
 const peersIn = document.getElementById('peers-in');
@@ -481,7 +484,7 @@ const routeDetailsPanel = document.getElementById('route-details-panel');
 const routeDetailsTitle = document.getElementById('route-details-title');
 const routeDetailsContent = document.getElementById('route-details-content');
 const routeDetailsTotal = document.getElementById('route-details-total');
-const routeDetailsHide = document.getElementById('route-details-hide');
+const routeDetailsCollapse = document.getElementById('route-details-collapse');
 const qrModal = document.getElementById('qr-modal');
 const qrModalBackdrop = document.getElementById('qr-modal-backdrop');
 const qrModalClose = document.getElementById('qr-modal-close');
@@ -667,6 +670,19 @@ let propagationWorker = null;
 let propagationLastConfig = null;
 let propagationGpu = null;
 let propagationGpuInitPromise = null;
+const LOS_PANEL_COLLAPSED_KEY = 'meshmapLosPanelCollapsed';
+const PROP_PANEL_COLLAPSED_KEY = 'meshmapPropPanelCollapsed';
+const HISTORY_PANEL_COLLAPSED_KEY = 'meshmapHistoryPanelCollapsed';
+const PEERS_PANEL_COLLAPSED_KEY = 'meshmapPeersPanelCollapsed';
+const ROUTE_DETAILS_PANEL_COLLAPSED_KEY = 'meshmapRouteDetailsPanelCollapsed';
+let losPanelCollapsed = parseBoolParam(localStorage.getItem(LOS_PANEL_COLLAPSED_KEY)) === true;
+let propPanelCollapsed = parseBoolParam(localStorage.getItem(PROP_PANEL_COLLAPSED_KEY)) === true;
+let historyPanelCollapsed =
+  parseBoolParam(localStorage.getItem(HISTORY_PANEL_COLLAPSED_KEY)) === true;
+let peersPanelCollapsed =
+  parseBoolParam(localStorage.getItem(PEERS_PANEL_COLLAPSED_KEY)) === true;
+let routeDetailsPanelCollapsed =
+  parseBoolParam(localStorage.getItem(ROUTE_DETAILS_PANEL_COLLAPSED_KEY)) === true;
 
 const PROP_DEFAULTS = {
   freqMHz: 910.525,
@@ -2035,6 +2051,9 @@ function updateHistoryPanelVisibility() {
 
 function setHistoryPanelHidden(hidden) {
   historyPanelHidden = Boolean(hidden);
+  if (historyPanelHidden) {
+    setHistoryPanelCollapsed(true);
+  }
   updateHistoryPanelVisibility();
   layoutSidePanels();
 }
@@ -2043,6 +2062,7 @@ function setHistoryVisible(visible) {
   historyVisible = visible;
   if (visible) {
     historyPanelHidden = false;
+    setHistoryPanelCollapsed(false);
   }
   const btn = document.getElementById('history-toggle');
   if (btn) {
@@ -2089,6 +2109,14 @@ function setHopsVisible(visible) {
       markers.forEach(m => hopLayer.removeLayer(m));
     });
     hopMarkers.clear();
+    if (routeDetailsPanel) {
+      routeDetailsPanel.hidden = true;
+      routeDetailsPanel.classList.remove('active');
+      routeDetailsPanel.style.display = 'none';
+    }
+    activeRouteDetailsMeta = null;
+    activeRouteDetailsId = null;
+    layoutSidePanels();
   }
 }
 
@@ -2337,6 +2365,7 @@ function showRouteDetails(meta) {
     routeDetailsPanel.classList.add('active');
     routeDetailsPanel.hidden = false;
     routeDetailsPanel.style.display = 'block';
+    setRouteDetailsPanelCollapsed(false);
   }
 
   if (routeDetailsTitle) {
@@ -2574,6 +2603,7 @@ function setPeersActive(active) {
   if (peersPanel) {
     peersPanel.classList.toggle('active', active);
     if (active) {
+      setPeersPanelCollapsed(false);
       peersPanel.removeAttribute('hidden');
       peersPanel.style.display = 'block';
     } else {
@@ -3024,6 +3054,69 @@ function layoutSidePanels() {
     top += (panel.offsetHeight || 0) + gap;
   });
 }
+
+function setToolPanelCollapsed(panel, button, collapsed, storageKey) {
+  if (!panel || !button) return;
+  panel.classList.toggle('panel-collapsed', collapsed);
+  button.textContent = collapsed ? 'Expand' : 'Minimize';
+  button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  try {
+    localStorage.setItem(storageKey, collapsed ? 'true' : 'false');
+  } catch (_err) {
+    // ignore storage failures
+  }
+  layoutSidePanels();
+}
+
+function setLosPanelCollapsed(collapsed) {
+  losPanelCollapsed = Boolean(collapsed);
+  setToolPanelCollapsed(
+    losPanel,
+    losPanelCollapse,
+    losPanelCollapsed,
+    LOS_PANEL_COLLAPSED_KEY
+  );
+}
+
+function setPropPanelCollapsed(collapsed) {
+  propPanelCollapsed = Boolean(collapsed);
+  setToolPanelCollapsed(
+    propPanel,
+    propPanelCollapse,
+    propPanelCollapsed,
+    PROP_PANEL_COLLAPSED_KEY
+  );
+}
+
+function setHistoryPanelCollapsed(collapsed) {
+  historyPanelCollapsed = Boolean(collapsed);
+  setToolPanelCollapsed(
+    historyPanel,
+    historyPanelCollapse,
+    historyPanelCollapsed,
+    HISTORY_PANEL_COLLAPSED_KEY
+  );
+}
+
+function setPeersPanelCollapsed(collapsed) {
+  peersPanelCollapsed = Boolean(collapsed);
+  setToolPanelCollapsed(
+    peersPanel,
+    peersPanelCollapse,
+    peersPanelCollapsed,
+    PEERS_PANEL_COLLAPSED_KEY
+  );
+}
+
+function setRouteDetailsPanelCollapsed(collapsed) {
+  routeDetailsPanelCollapsed = Boolean(collapsed);
+  setToolPanelCollapsed(
+    routeDetailsPanel,
+    routeDetailsCollapse,
+    routeDetailsPanelCollapsed,
+    ROUTE_DETAILS_PANEL_COLLAPSED_KEY
+  );
+}
 function clearLos() {
   losPoints = [];
   losPointHeights = [];
@@ -3063,6 +3156,7 @@ function setLosActive(active) {
   if (losPanel) {
     losPanel.classList.toggle('active', active);
   }
+  setLosPanelCollapsed(losPanelCollapsed);
   if (!active) {
     clearLos();
   } else {
@@ -3070,6 +3164,47 @@ function setLosActive(active) {
     setLosStatus('LOS: select first point (Shift+click or long-press nodes)');
   }
   layoutSidePanels();
+}
+
+function losFrequencyHz() {
+  return PROP_DEFAULTS.freqMHz * 1e6;
+}
+
+function losFirstFresnelRadiusMeters(distanceMeters, sampleDistanceMeters) {
+  if (!(distanceMeters > 0) || !(sampleDistanceMeters >= 0)) return 0;
+  const d1 = sampleDistanceMeters;
+  const d2 = distanceMeters - d1;
+  if (!(d2 >= 0)) return 0;
+  const frequencyHz = losFrequencyHz();
+  if (!(frequencyHz > 0)) return 0;
+  const wavelengthMeters = 299792458 / frequencyHz;
+  return Math.sqrt((wavelengthMeters * d1 * d2) / distanceMeters);
+}
+
+function losFresnelRadiusAtProfileDistance(distanceMeters, segmentRanges) {
+  const ranges = Array.isArray(segmentRanges) ? segmentRanges : [];
+  if (ranges.length) {
+    for (let index = 0; index < ranges.length; index += 1) {
+      const range = ranges[index];
+      if (!range) continue;
+      const isLast = index === ranges.length - 1;
+      if (distanceMeters < range.endDistance || isLast) {
+        const segmentDistance = Math.max(
+          0,
+          Number(range.endDistance) - Number(range.startDistance)
+        );
+        const localDistance = Math.max(
+          0,
+          distanceMeters - Number(range.startDistance || 0)
+        );
+        return losFirstFresnelRadiusMeters(segmentDistance, localDistance);
+      }
+    }
+  }
+  const totalDistance = ranges.length
+    ? Math.max(0, Number(ranges[ranges.length - 1]?.endDistance || 0))
+    : Math.max(0, Number(distanceMeters));
+  return losFirstFresnelRadiusMeters(totalDistance, distanceMeters);
 }
 
 function renderLosProfile(profile, blocked, options = {}) {
@@ -3083,11 +3218,21 @@ function renderLosProfile(profile, blocked, options = {}) {
   const pad = 6;
   const last = profile[profile.length - 1];
   const totalDistance = Math.max(1, Number(last[0]) || 1);
+  const segmentRanges = Array.isArray(options.segmentRanges)
+    ? options.segmentRanges
+    : [];
   let minElev = Infinity;
   let maxElev = -Infinity;
   profile.forEach(item => {
     const terrain = Number(item[1]);
     const los = Number(item[2]);
+    const distance = Number(item[0]);
+    const fresnelRadius = losFresnelRadiusAtProfileDistance(
+      distance,
+      segmentRanges
+    );
+    const fresnelUpper = los + fresnelRadius;
+    const fresnelLower = los - fresnelRadius;
     if (!Number.isNaN(terrain)) {
       minElev = Math.min(minElev, terrain);
       maxElev = Math.max(maxElev, terrain);
@@ -3095,6 +3240,14 @@ function renderLosProfile(profile, blocked, options = {}) {
     if (!Number.isNaN(los)) {
       minElev = Math.min(minElev, los);
       maxElev = Math.max(maxElev, los);
+    }
+    if (!Number.isNaN(fresnelUpper)) {
+      minElev = Math.min(minElev, fresnelUpper);
+      maxElev = Math.max(maxElev, fresnelUpper);
+    }
+    if (!Number.isNaN(fresnelLower)) {
+      minElev = Math.min(minElev, fresnelLower);
+      maxElev = Math.max(maxElev, fresnelLower);
     }
   });
   if (!Number.isFinite(minElev) || !Number.isFinite(maxElev) || minElev === maxElev) {
@@ -3116,10 +3269,24 @@ function renderLosProfile(profile, blocked, options = {}) {
     const elev = Number(item[2]);
     return `${idx === 0 ? 'M' : 'L'}${toX(d).toFixed(2)} ${toY(elev).toFixed(2)}`;
   }).join(' ');
+  const fresnelUpperPath = profile.map((item, idx) => {
+    const d = Number(item[0]);
+    const los = Number(item[2]);
+    const elev = los + losFresnelRadiusAtProfileDistance(d, segmentRanges);
+    return `${idx === 0 ? 'M' : 'L'}${toX(d).toFixed(2)} ${toY(elev).toFixed(2)}`;
+  }).join(' ');
+  const fresnelLowerPath = profile.map((item, idx) => {
+    const d = Number(item[0]);
+    const los = Number(item[2]);
+    const elev = los - losFresnelRadiusAtProfileDistance(d, segmentRanges);
+    return `${idx === 0 ? 'M' : 'L'}${toX(d).toFixed(2)} ${toY(elev).toFixed(2)}`;
+  }).join(' ');
   const losColor = blocked ? '#ef4444' : '#22c55e';
   losProfileSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   losProfileSvg.innerHTML = `
         <path class="los-profile-terrain" d="${terrainPath}"></path>
+        <path class="los-profile-fresnel" d="${fresnelUpperPath}"></path>
+        <path class="los-profile-fresnel" d="${fresnelLowerPath}"></path>
         <path class="los-profile-los" d="${losPath}" stroke="${losColor}"></path>
         <line id="los-profile-cursor" x1="0" y1="0" x2="0" y2="${height}" stroke="rgba(255,255,255,.35)" stroke-width="1" opacity="0" />
         <circle id="los-profile-point" cx="0" cy="0" r="3" fill="${losColor}" opacity="0" />
@@ -3135,7 +3302,7 @@ function renderLosProfile(profile, blocked, options = {}) {
     innerWidth,
     innerHeight,
     blocked,
-    segmentRanges: Array.isArray(options.segmentRanges) ? options.segmentRanges : []
+    segmentRanges
   };
   losProfile.hidden = false;
   layoutSidePanels();
@@ -3215,8 +3382,16 @@ function updateLosProfileCursor(distance, terrain, losLineValue) {
     dot.setAttribute('cy', ySvg.toFixed(2));
     dot.setAttribute('opacity', '1');
   }
+  const fresnelRadius = losFirstFresnelRadiusMeters(
+    losProfileMeta.totalDistance,
+    clampedDistance
+  );
+  const segmentFresnelRadius = losFresnelRadiusAtProfileDistance(
+    clampedDistance,
+    losProfileMeta.segmentRanges
+  );
   losProfileTooltip.hidden = false;
-  losProfileTooltip.textContent = `Distance ${formatDistanceMeters(clampedDistance)} • Terrain ${formatElevationMeters(terrain)} • LOS ${formatElevationMeters(losLineValue)}`;
+  losProfileTooltip.textContent = `Distance ${formatDistanceMeters(clampedDistance)} • Terrain ${formatElevationMeters(terrain)} • LOS ${formatElevationMeters(losLineValue)} • Fresnel ${formatElevationMeters(segmentFresnelRadius || fresnelRadius)}`;
   losProfileTooltip.style.left = `${xSvg}px`;
   losProfileTooltip.style.top = `${ySvg}px`;
 }
@@ -3625,6 +3800,7 @@ function setPropActive(active) {
   if (propPanel) {
     propPanel.classList.toggle('active', active);
   }
+  setPropPanelCollapsed(propPanelCollapsed);
   if (!active) {
     clearPropagation();
   } else {
@@ -6361,19 +6537,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-if (routeDetailsHide) {
-  routeDetailsHide.addEventListener('click', () => {
-    if (routeDetailsPanel) {
-      routeDetailsPanel.hidden = true;
-      routeDetailsPanel.classList.remove('active');
-      routeDetailsPanel.style.display = 'none';
-    }
-    activeRouteDetailsMeta = null;
-    activeRouteDetailsId = null;
-    layoutSidePanels();
-  });
-}
-
 const hopsToggle = document.getElementById('hops-toggle');
 if (hopsToggle) {
   hopsToggle.addEventListener('click', () => {
@@ -6412,6 +6575,37 @@ if (legendToggle && hud) {
     localStorage.setItem('meshmapLegendCollapsed', overrideLegend ? 'true' : 'false');
   }
 }
+
+if (losPanelCollapse) {
+  losPanelCollapse.addEventListener('click', () => {
+    setLosPanelCollapsed(!losPanelCollapsed);
+  });
+}
+if (propPanelCollapse) {
+  propPanelCollapse.addEventListener('click', () => {
+    setPropPanelCollapsed(!propPanelCollapsed);
+  });
+}
+if (historyPanelCollapse) {
+  historyPanelCollapse.addEventListener('click', () => {
+    setHistoryPanelCollapsed(!historyPanelCollapsed);
+  });
+}
+if (peersPanelCollapse) {
+  peersPanelCollapse.addEventListener('click', () => {
+    setPeersPanelCollapsed(!peersPanelCollapsed);
+  });
+}
+if (routeDetailsCollapse) {
+  routeDetailsCollapse.addEventListener('click', () => {
+    setRouteDetailsPanelCollapsed(!routeDetailsPanelCollapsed);
+  });
+}
+setLosPanelCollapsed(losPanelCollapsed);
+setPropPanelCollapsed(propPanelCollapsed);
+setHistoryPanelCollapsed(historyPanelCollapsed);
+setPeersPanelCollapsed(peersPanelCollapsed);
+setRouteDetailsPanelCollapsed(routeDetailsPanelCollapsed);
 
 const customLink = document.getElementById('custom-link');
 const updateBanner = document.getElementById('update-banner');
@@ -6908,18 +7102,6 @@ if (historyToggle) {
     }
     setHistoryVisible(!historyVisible);
   });
-}
-if (historyHideButton) {
-  const hideHistoryPanel = (ev) => {
-    if (ev) {
-      if (ev.preventDefault) ev.preventDefault();
-      if (ev.stopPropagation) ev.stopPropagation();
-      if (typeof L !== 'undefined' && L.DomEvent) L.DomEvent.stop(ev);
-    }
-    setHistoryPanelHidden(true);
-  };
-  historyHideButton.addEventListener('click', hideHistoryPanel);
-  historyHideButton.addEventListener('pointerdown', hideHistoryPanel);
 }
 updateHistoryFilterLabel();
 if (historyFilter) {
