@@ -1,5 +1,16 @@
 # Versions
 
+## v1.8.4 (04-17-2026)
+- Fixed the post-`v1.7.0` route regression where some meshes stopped showing routes that previously rendered in `v1.6.6`.
+- Added `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK` so operators can restore the legacy closest/time-based fallback for colliding 1-byte hop prefixes when conservative prefix handling is too strict for their network.
+- Kept conservative ambiguous 1-byte routing as the default, but made the legacy fallback opt-in for deployments that need the older route rendering behavior.
+- Passed `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK` through `docker-compose.yaml` and documented the new routing toggle in the setup docs.
+- Added issue #55: LOS and Propagation panels can now be minimized on mobile without turning the tool off, making it easier to interact with the map while the tool stays active.
+- Extended the issue #55 minimize/expand control to History, Peers, and Route Details so side panels can be collapsed instead of closed with a separate `×` flow.
+- Added issue #56: the LOS elevation profile now renders upper and lower Fresnel-zone lines similar to the MeshCore app.
+- LOS profile hover now reports Fresnel radius along with terrain and LOS height, and Fresnel rendering stays segment-local for multi-pin LOS routes so chained paths do not get incorrect full-route curves.
+- Fixed the issue #55 panel-regression fallout so History sliders, Peers, Route Details clearing, LOS point selection, and Propagation opening continue to work correctly.
+
 ## v1.8.3 (04-16-2026)
 - Fixed issue #53: the LOS tool now accounts for Earth curvature instead of using a purely straight terrain-vs-line check.
 - Added LOS curvature controls `LOS_CURVATURE_ENABLED` and `LOS_CURVATURE_FACTOR`, both defaulting to enabled curvature with a `1.333333` effective Earth radius factor when unset.

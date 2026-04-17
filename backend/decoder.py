@@ -23,6 +23,7 @@ from config import (
   ROUTE_PATH_MAX_LEN,
   ROUTE_MAX_HOP_DISTANCE,
   ROUTE_INFRA_ONLY,
+  ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK,
   ROUTE_PAYLOAD_TYPES,
 )
 from state import (
@@ -566,7 +567,10 @@ def _route_points_from_hashes(
   for key in normalized:
     device_id = None
     candidates = node_hash_candidates.get(key) or []
-    ambiguous_single_byte = len(key) == 2 and len(candidates) > 1
+    ambiguous_single_byte = (
+      len(key) == 2 and len(candidates) > 1 and
+      not ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK
+    )
 
     if current_id and current_lat is not None and current_lon is not None:
       if len(candidates) > 1:

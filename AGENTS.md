@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.8.3` (see `VERSIONS.md`).
+Current version: `1.8.4` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -17,7 +17,7 @@ Current version: `1.8.3` (see `VERSIONS.md`).
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.8.3`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.8.4`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -78,6 +78,7 @@ Current version: `1.8.3` (see `VERSIONS.md`).
 - `GIT_CHECK_FETCH` controls whether the server fetches before comparing; `GIT_CHECK_INTERVAL_SECONDS` sets the recheck interval.
 - Route history modes default to `path` via `ROUTE_HISTORY_ALLOWED_MODES`.
 - `ROUTE_PATH_MAX_LEN` caps oversized path-hash lists (prevents bogus long routes).
+- `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK=true` restores pre-`v1.7.0` closest/time-based fallback for colliding 1-byte route prefixes; default is conservative `false`.
 - Persisted state in `data/state.json` is loaded on startup; edit with care.
 - After editing `backend/*.py` or `backend/static/*`, rebuild with `docker compose up -d --build`.
 - History tool visibility is not persisted; it always loads off unless `history=on` is in the URL.

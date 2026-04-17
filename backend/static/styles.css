@@ -675,6 +675,38 @@
       display: grid;
     }
 
+    .tool-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 2px;
+    }
+
+    .tool-panel-collapse {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, .2);
+      background: rgba(255, 255, 255, .08);
+      color: #fff;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .tool-panel-collapse:hover {
+      background: rgba(255, 255, 255, .16);
+    }
+
+    .tool-panel.panel-collapsed {
+      overflow: hidden;
+    }
+
+    .tool-panel.panel-collapsed > :not(.tool-panel-header) {
+      display: none !important;
+    }
+
     .prop-field {
       display: flex;
       align-items: center;
@@ -1172,6 +1204,13 @@
     .los-profile-los {
       fill: none;
       stroke-width: 2;
+    }
+
+    .los-profile-fresnel {
+      fill: none;
+      stroke: rgba(244, 114, 182, .9);
+      stroke-width: 1.4;
+      stroke-dasharray: 5 4;
     }
 
     .los-profile-tooltip {

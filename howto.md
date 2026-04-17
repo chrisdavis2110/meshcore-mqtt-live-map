@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.8.3` (see `VERSIONS.md`).
+Current version: `1.8.4` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -218,6 +218,7 @@ MAP_BOUNDARY_FILE=/data/map_boundary.json
 MAP_BOUNDARY_SHOW=false
 LOS_CURVATURE_ENABLED=true
 LOS_CURVATURE_FACTOR=1.333333
+ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK=false
 ```
 
 LOS note:
@@ -252,9 +253,12 @@ COVERAGE_CACHE_FILE=/data/coverage_cache.json
 # MeshMapper only: server-side refresh interval; default hourly
 COVERAGE_SYNC_INTERVAL_SECONDS=3600
 #
-# Routing note: on large meshes, ambiguous 1-byte prefixes are handled conservatively.
-# If multiple nodes share the same first byte, the map now skips broad guesses unless
-# there is stronger evidence such as a unique match or neighbor/manual adjacency.
+# Routing note: on large meshes, ambiguous 1-byte prefixes are handled
+# conservatively by default. If your network lost routes after v1.7.0 and you
+# need the older behavior back, set:
+# ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK=true
+# That restores the legacy closest/time-based fallback for colliding 1-byte
+# prefixes.
 #
 # MeshMapper uses the documented domain:
 # COVERAGE_API_URL=https://meshmapper.net
