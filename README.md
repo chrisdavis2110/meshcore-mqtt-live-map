@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.8.2` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.8.3` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -40,7 +40,7 @@ Other community maps (versions may differ):
 - Node search by name or public key
 - Node popups can copy the full public key from the short key shown under the node name, with an optional MeshCore contact QR modal that shows the node name and a clickable truncated key
 - Adjustable node size slider (defaults from env, saves locally)
-- LOS tool with elevation profile + peak markers, hover sync, and realtime draggable endpoints (Shift+click or long‑press nodes)
+- LOS tool with elevation profile + peak markers, hover sync, realtime draggable endpoints (Shift+click or long‑press nodes), and Earth-curvature-aware blockage checks
 - Embeddable metadata (Open Graph/Twitter tags) driven by env vars
 - Preview image renders in-bounds device dots for shared links
 - Route pruning via neighbor-aware closest-hop selection + max hop distance (configurable)
@@ -141,8 +141,8 @@ Site metadata (page title + embeds):
 MQTT:
 - `MQTT_HOST`
 - `MQTT_PORT`
-- `MQTT_USERNAME`
-- `MQTT_PASSWORD`
+- `MQTT_USERNAME` (for `meshcore-mqtt-broker`, usually a broker-side `SUBSCRIBER_N` username, not `v1_<PUBLIC_KEY>`)
+- `MQTT_PASSWORD` (matching subscriber password from the broker config)
 - `MQTT_TRANSPORT` (`tcp` or `websockets`)
 - `MQTT_WS_PATH` (usually `/` or `/mqtt`)
 - `MQTT_TLS` (`true`)
@@ -227,6 +227,8 @@ Map + LOS:
 - `LOS_ELEVATION_PROXY_URL` (server proxy for client-side LOS elevation fetches)
 - `LOS_SAMPLE_MIN` / `LOS_SAMPLE_MAX` / `LOS_SAMPLE_STEP_METERS`
 - `ELEVATION_CACHE_TTL` (seconds)
+- `LOS_CURVATURE_ENABLED` (default `true`; include Earth curvature in LOS calculations)
+- `LOS_CURVATURE_FACTOR` (default `1.333333`; effective Earth radius multiplier used by the LOS tool)
 - `LOS_PEAKS_MAX` (max peaks shown on LOS profile)
 
 Decoder helpers:
@@ -273,6 +275,14 @@ Use it:
 - To see full paths, the feed must include Path/Trace packets (payload types 8/9).
 - Runtime state is persisted to `data/state.json`.
 - MQTT disconnects are handled; the client will reconnect when the broker returns.
+- When using Michael Hart's `meshcore-mqtt-broker`, the map should usually log
+  in with a broker `SUBSCRIBER_N` account such as
+  `SUBSCRIBER_1=meshmap:change-this-password:2`.
+- The map does not mint MeshCore JWT auth tokens by itself, so node-style
+  publisher auth (`v1_<PUBLIC_KEY>`) is not the normal setup for this app.
+- Subscriber role `2` is the recommended broker role for most maps; role `1`
+  is only needed if you explicitly want `/internal` topics or other admin-only
+  broker visibility.
 - MQTT connectivity (`MQTT online`) is based on `/status` + `/internal`; `/packets` is treated as feed activity and does not by itself mark a node online.
 - If a node is still MQTT-online but has stopped sending fresh location packets, the map keeps its last known position visible until MQTT presence expires.
 - Live route IDs are observer-aware (`message_hash:receiver_id`) so the same
@@ -280,6 +290,7 @@ Use it:
 - Line-of-sight tool: click **LOS tool** and add pins to build a chained path, or **Shift+click** nodes to place LOS pins from existing nodes. Drag endpoints or click a pin and then click the map to move that specific point. Heights are stored per pin.
 - On mobile, long‑press a node to select it for LOS.
 - LOS elevations are fetched via `/los/elevations` and LOS/relay math runs client-side (with `/los` fallback).
+- LOS now includes Earth curvature by default using an effective Earth radius factor of `1.333333`, unless you override the LOS curvature envs.
 - History tool always loads off (use the button or `history=on` in the URL).
 - Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, and forced MQTT listeners are excluded from peer lists.
 - URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.

@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.8.2` (see `VERSIONS.md`).
+Current version: `1.8.3` (see `VERSIONS.md`).
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -38,6 +38,30 @@ Edit `.env` and update the database path (use an absolute path that matches your
 # Abuse Detection - Persistence
 ABUSE_PERSISTENCE_PATH=/home/user/meshcore-mqtt-broker/data/abuse-detection.db
 ```
+
+For the live map, the easiest broker auth setup is a dedicated read-only
+subscriber account. Add at least one `SUBSCRIBER_N` entry to the broker
+`.env`:
+
+```bash
+# Format: SUBSCRIBER_N=username:password:role
+# Role 1 = admin (includes /internal + $SYS)
+# Role 2 = full_access (recommended for most maps)
+# Role 3 = limited (filtered payload fields)
+SUBSCRIBER_1=meshmap:change-this-password:2
+```
+
+Recommended role:
+- Use role `2` for most live maps.
+- Use role `1` only if you explicitly want `/internal` topics or admin-only
+  broker visibility.
+
+Important:
+- The live map does **not** generate MeshCore signed auth tokens on its own.
+- Do **not** put a node-style username like `v1_<PUBLIC_KEY>` in the map
+  unless you are also handling JWT token generation and rotation elsewhere.
+- For normal map deployments against `meshcore-mqtt-broker`, use a
+  `SUBSCRIBER_N` username/password pair instead.
 
 Build and run:
 
@@ -109,8 +133,8 @@ Copy `.env.example` to `.env` and update MQTT settings. The map expects MQTT ove
 ```env
 MQTT_HOST=your-mqtt-host
 MQTT_PORT=443
-MQTT_USERNAME=youruser
-MQTT_PASSWORD=yourpass
+MQTT_USERNAME=meshmap
+MQTT_PASSWORD=change-this-password
 MQTT_TRANSPORT=websockets
 MQTT_WS_PATH=/
 MQTT_TLS=true
@@ -124,6 +148,20 @@ MQTT_ONLINE_INTERNAL_TTL_SECONDS=300
 MQTT_ACTIVITY_PACKETS_TTL_SECONDS=300
 MQTT_STATUS_OFFLINE_VALUES=offline,disconnected
 ```
+
+Those `MQTT_USERNAME` / `MQTT_PASSWORD` values should match the subscriber
+account you created in the broker `.env`, for example:
+
+```env
+SUBSCRIBER_1=meshmap:change-this-password:2
+```
+
+Authentication summary:
+- `meshcore-mqtt-broker` supports signed MeshCore node auth for publishers.
+- This live map is normally a read-only subscriber, so it should use a broker
+  subscriber account instead.
+- If you use subscriber role `3`, some metadata fields are filtered out.
+  Role `2` is the recommended default for maps.
 
 Presence behavior:
 - `/status` + `/internal` determine whether a node is shown as **MQTT online**.
@@ -178,7 +216,14 @@ PEERS_DEFAULT_LIMIT=8
 MAP_BOUNDARY_MODE=radius
 MAP_BOUNDARY_FILE=/data/map_boundary.json
 MAP_BOUNDARY_SHOW=false
+LOS_CURVATURE_ENABLED=true
+LOS_CURVATURE_FACTOR=1.333333
 ```
+
+LOS note:
+- The live map LOS tool now includes Earth curvature by default.
+- Leave `LOS_CURVATURE_ENABLED` unset to keep the default `true`.
+- Leave `LOS_CURVATURE_FACTOR` unset to keep the default `1.333333`.
 
 Optional polygon boundary mode:
 ```env

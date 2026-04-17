@@ -1,5 +1,12 @@
 # Versions
 
+## v1.8.3 (04-16-2026)
+- Fixed issue #53: the LOS tool now accounts for Earth curvature instead of using a purely straight terrain-vs-line check.
+- Added LOS curvature controls `LOS_CURVATURE_ENABLED` and `LOS_CURVATURE_FACTOR`, both defaulting to enabled curvature with a `1.333333` effective Earth radius factor when unset.
+- Applied the same curvature math to both the frontend realtime LOS path and the backend `/los` fallback so live interaction and server responses stay consistent.
+- Updated the LOS profile and blockage calculation to use curvature-adjusted terrain samples, which can correctly mark longer paths as blocked where the old LOS tool showed clear.
+- Clarified MQTT broker authentication docs for `meshcore-mqtt-broker`: the map normally uses a broker `SUBSCRIBER_N` username/password pair instead of node-style signed publisher auth.
+
 ## v1.8.2 (04-07-2026)
 - Added issue #48: node popups now let users click the short key under the node name to copy the full public key without adding a duplicate full-key line to the popup body.
 - Added optional MeshCore-compatible contact QR generation for node popups via `QR_CODE_BUTTON_ENABLED=true`.

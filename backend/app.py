@@ -69,6 +69,7 @@ from los import (
   _fetch_elevations,
   _find_los_peaks,
   _find_los_suggestion,
+  _los_effective_elevations,
   _haversine_m,
   _los_max_obstruction,
   _sample_los_points,
@@ -169,6 +170,8 @@ from config import (
   LOS_SAMPLE_MAX,
   LOS_SAMPLE_STEP_METERS,
   ELEVATION_CACHE_TTL,
+  LOS_CURVATURE_ENABLED,
+  LOS_CURVATURE_FACTOR,
   LOS_PEAKS_MAX,
   COVERAGE_API_URL,
   COVERAGE_API_KEY,
@@ -2803,6 +2806,10 @@ def root(request: Request):
       LOS_SAMPLE_MAX,
     "LOS_SAMPLE_STEP_METERS":
       LOS_SAMPLE_STEP_METERS,
+    "LOS_CURVATURE_ENABLED":
+      str(LOS_CURVATURE_ENABLED).lower(),
+    "LOS_CURVATURE_FACTOR":
+      LOS_CURVATURE_FACTOR,
     "LOS_PEAKS_MAX":
       LOS_PEAKS_MAX,
     "MQTT_ONLINE_SECONDS":
@@ -3217,6 +3224,8 @@ def map_page(request: Request):
     "LOS_SAMPLE_MIN": LOS_SAMPLE_MIN,
     "LOS_SAMPLE_MAX": LOS_SAMPLE_MAX,
     "LOS_SAMPLE_STEP_METERS": LOS_SAMPLE_STEP_METERS,
+    "LOS_CURVATURE_ENABLED": str(LOS_CURVATURE_ENABLED).lower(),
+    "LOS_CURVATURE_FACTOR": LOS_CURVATURE_FACTOR,
     "LOS_PEAKS_MAX": LOS_PEAKS_MAX,
     "MQTT_ONLINE_SECONDS": MQTT_ONLINE_SECONDS,
     "MQTT_ONLINE_STATUS_TTL_SECONDS": MQTT_ONLINE_STATUS_TTL_SECONDS,
@@ -3633,7 +3642,7 @@ def line_of_sight(
   safe_h2 = h2 if math.isfinite(h2) else 0.0
   start_elev = elevations[0] + safe_h1
   end_elev = elevations[-1] + safe_h2
-  adjusted = list(elevations)
+  adjusted = _los_effective_elevations(points, elevations, distance_m)
   adjusted[0] = start_elev
   adjusted[-1] = end_elev
   max_obstruction = _los_max_obstruction(points, adjusted, 0, len(points) - 1)
@@ -3642,12 +3651,12 @@ def line_of_sight(
   suggestion = _find_los_suggestion(points, adjusted) if blocked else None
   profile_samples = []
   if distance_m > 0:
-    for (lat, lon, t), elev in zip(points, elevations):
+    for idx, ((lat, lon, t), elev) in enumerate(zip(points, elevations)):
       line_elev = start_elev + (end_elev - start_elev) * t
       profile_samples.append(
         [
           round(distance_m * t, 2),
-          round(float(elev), 2),
+          round(float(adjusted[idx]), 2),
           round(float(line_elev), 2),
         ]
       )
@@ -3668,7 +3677,11 @@ def line_of_sight(
         "max_terrain": round(max_terrain, 2),
       },
     "provider": LOS_ELEVATION_URL,
-    "note": "Straight-line LOS using SRTM90m. No curvature/refraction.",
+    "note": (
+      "LOS using SRTM90m with Earth curvature "
+      f"({'on' if LOS_CURVATURE_ENABLED else 'off'}; "
+      f"factor={LOS_CURVATURE_FACTOR:.6f}). No Fresnel clearance model."
+    ),
     "suggested": suggestion,
     "profile": profile_samples,
     "peaks": peaks,

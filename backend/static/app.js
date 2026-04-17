@@ -340,6 +340,12 @@ const losElevationFetchUrl = (() => {
 const losSampleMin = Number(config.losSampleMin) || 10;
 const losSampleMax = Number(config.losSampleMax) || 80;
 const losSampleStepMeters = Number(config.losSampleStepMeters) || 250;
+const losCurvatureEnabled = parseBoolParam(config.losCurvatureEnabled) ?? true;
+const losCurvatureFactor = (() => {
+  const parsed = Number(config.losCurvatureFactor);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return 1.333333;
+})();
 const losPeaksMax = Number(config.losPeaksMax) || 4;
 const mqttOnlineSeconds = Number(config.mqttOnlineSeconds) || 300;
 const mqttOnlineStatusTtlSeconds = Number(config.mqttOnlineStatusTtlSeconds) || mqttOnlineSeconds;
@@ -3529,7 +3535,7 @@ async function runLosCheckClient(a, b, options = {}) {
     losLastElevations = elevations.slice();
     losLastElevationCount = elevations.length;
   }
-  const adjusted = elevations.slice();
+  const adjusted = losEffectiveElevations(points, elevations, distanceMeters);
   const startElev = elevations[0] + heightA;
   const endElev = elevations[elevations.length - 1] + heightB;
   adjusted[0] = startElev;
@@ -3542,7 +3548,7 @@ async function runLosCheckClient(a, b, options = {}) {
     const lineElev = startElev + (endElev - startElev) * point.t;
     return [
       round2(distanceMeters * point.t),
-      round2(elevations[idx]),
+      round2(adjusted[idx]),
       round2(lineElev)
     ];
   });
@@ -4962,6 +4968,25 @@ function losMaxObstruction(points, elevations, startIdx, endIdx) {
     if (clearance > maxObstruction) maxObstruction = clearance;
   }
   return maxObstruction;
+}
+
+function losEarthRadiusMeters() {
+  return 6371000 * losCurvatureFactor;
+}
+
+function losEarthBulgeMeters(distanceMeters, t) {
+  if (!losCurvatureEnabled || !(distanceMeters > 0)) return 0;
+  const d1 = distanceMeters * t;
+  const d2 = distanceMeters - d1;
+  const earthRadiusMeters = losEarthRadiusMeters();
+  if (!(earthRadiusMeters > 0)) return 0;
+  return (d1 * d2) / (2 * earthRadiusMeters);
+}
+
+function losEffectiveElevations(points, elevations, distanceMeters) {
+  return elevations.map((elev, idx) =>
+    elev + losEarthBulgeMeters(distanceMeters, points[idx]?.t || 0)
+  );
 }
 
 function findLosSuggestion(points, elevations) {

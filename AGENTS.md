@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.8.2` (see `VERSIONS.md`).
+Current version: `1.8.3` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -17,7 +17,7 @@ Current version: `1.8.2` (see `VERSIONS.md`).
 - `docker-compose.yaml` runs the service as `meshmap-live`.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.8.2`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.8.3`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -64,6 +64,9 @@ Current version: `1.8.2` (see `VERSIONS.md`).
 - Weather wind controls:
   `WEATHER_WIND_ENABLED`, `WEATHER_WIND_API_URL`,
   `WEATHER_WIND_GRID_SIZE`, `WEATHER_WIND_REFRESH_SECONDS`.
+- LOS curvature controls:
+  `LOS_CURVATURE_ENABLED` and `LOS_CURVATURE_FACTOR`.
+  When unset, LOS curvature defaults to `true` with factor `1.333333`.
 - `DEVICE_COORDS_FILE` points to optional coordinate overrides (default `/data/device_coords.json`).
 - `NEIGHBOR_OVERRIDES_FILE` can point at a JSON map/list of neighbor pairs to resolve hash collisions.
 - Auto-neighbor overrides are controlled by:
@@ -94,6 +97,7 @@ Current version: `1.8.2` (see `VERSIONS.md`).
 - `ROUTE_INFRA_ONLY` restricts route lines to repeaters/rooms (companions still show as markers).
 - Heatmap shows recent traffic points (TTL controlled).
 - LOS uses `/los/elevations` for client-side realtime updates (with `/los` fallback).
+- LOS uses Earth-curvature-aware obstruction checks by default in both the frontend realtime path and the backend `/los` fallback.
 - LOS UI includes peak markers, a relay suggestion marker, elevation profile hover, and map-line hover sync.
 - LOS legend items (clear/blocked/peaks/relay) are hidden until the LOS tool is active.
 - Mobile LOS supports long-press on nodes (Shift+click on desktop); endpoints can be dragged or click-selected and moved via map click.

@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.8.2` (see `VERSIONS.md`).
+Current version: `1.8.3` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.8.2`).
+- `VERSION.txt` holds the current version string (`1.8.3`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -50,6 +50,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `MQTT_ACTIVITY_PACKETS_TTL_SECONDS` controls feed/activity TTL from `/packets`.
 - `MQTT_STATUS_OFFLINE_VALUES` forces offline when recent status payloads report those values.
 - `MQTT_ONLINE_TOPIC_SUFFIXES` remains for legacy compatibility; primary connected logic uses status/internal TTLs.
+- `LOS_CURVATURE_ENABLED` controls whether LOS includes Earth curvature; default is `true`.
+- `LOS_CURVATURE_FACTOR` controls the LOS effective Earth radius multiplier; default is `1.333333`.
 - `GIT_CHECK_ENABLED`, `GIT_CHECK_FETCH`, `GIT_CHECK_PATH` enable update checks.
 - `GIT_CHECK_INTERVAL_SECONDS` controls how often the server re-checks for updates.
 - `ROUTE_MAX_HOP_DISTANCE` prunes hops longer than the configured km distance.
@@ -84,6 +86,13 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## MQTT + Decoder
 - MQTT supports **WebSockets + TLS** or plain TCP. Typical deployments use `MQTT_TRANSPORT=websockets`, `MQTT_TLS=true`, and `MQTT_WS_PATH=/` or `/mqtt`.
 - `MQTT_TOPIC` accepts a comma-separated list, so one map can subscribe to multiple topic trees such as `meshcore/BOS/#,meshcore/CON/#`.
+- Against `meshcore-mqtt-broker`, the map should normally use a broker
+  `SUBSCRIBER_N` username/password pair. Recommended role is `2`
+  (`full_access`); role `1` is only needed when you explicitly want
+  `/internal` topics or admin-only broker visibility.
+- The map does not generate or rotate MeshCore JWT auth tokens on its own, so
+  node-style publisher auth (`v1_<PUBLIC_KEY>`) is not the normal credential
+  flow for this app.
 - Decoder uses Node + the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder) installed in the container.
 - The official package now handles 1-byte, 2-byte, and 3-byte repeater prefixes used by the map.
 - `backend/decoder.py` writes a small Node helper and calls it to decode MeshCore packets.
@@ -151,6 +160,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## LOS (Line of Sight) Tool
 - LOS elevations are fetched via `/los/elevations` (proxy for `LOS_ELEVATION_URL`) and the LOS/relay/profile math runs client-side for realtime updates (fallbacks still use `/los`).
 - UI draws an LOS line (green clear / red blocked), renders an elevation profile, and marks peaks.
+- LOS now applies Earth curvature by default in both the frontend realtime path and the backend `/los` fallback, using an effective Earth radius factor of `1.333333` unless overridden by env.
 - When blocked, a relay suggestion marker (amber/green) highlights a potential mid-point.
 - Peak markers show coords + elevation and copy coords on click.
 - Hovering the profile or the LOS line syncs a cursor tooltip on the profile.
