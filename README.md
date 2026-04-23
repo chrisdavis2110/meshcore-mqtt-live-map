@@ -8,10 +8,11 @@ Live example sites:
 https://live.bostonme.sh/ - Greater Boston Mesh Map (reference)
 
 Other community maps (versions may differ):
-- https://meshcore-map.ctmesh.org/ - CTMesh MeshCore Map
-- https://livemap.wcmesh.com/ - West Coast Mesh
+- https://meshcore-map.ctmesh.org/ - CTMesh Map Live Map
+- https://livemap.wcmesh.com/ - West Coast Mesh Live Map
+- https://map.mwmesh.com/ - Utah Mesh Live Map
 - https://map.eastmesh.au/ - Aus Eastern Mesh Live Map
-- https://mapa.meshcore.cz/ - Czech Republic
+- https://mapa.meshcore.cz/ - Czech Republic Live Map
 - https://map.meshcorebayreuth.de/ - Bayreuth Live Map
 
 
