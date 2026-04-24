@@ -14,7 +14,7 @@ Other community maps (versions may differ):
 - https://map.eastmesh.au/ - Aus Eastern Mesh Live Map
 - https://mapa.meshcore.cz/ - Czech Republic Live Map
 - https://map.meshcorebayreuth.de/ - Bayreuth Live Map
-
+- https://mcmap.cheaterenator.trade/ - Southern Poland
 
 ![Live map preview](example.gif)
 ---
