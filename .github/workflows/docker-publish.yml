@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '.env.example'
+      - 'backend/**'
+      - 'docker-compose.yaml'
+      - '.github/workflows/docker-publish.yml'
     tags:
       - "v*"
   workflow_dispatch:
