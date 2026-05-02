@@ -1,7 +1,7 @@
 # Architecture Guide
 
 This document explains how the Mesh Live Map codebase is organized and how the components interact.
-Current version: `1.8.4` (see `VERSIONS.md`).
+Current version: `1.8.5` (see `VERSIONS.md`).
 
 ## High-Level Overview
 
@@ -67,7 +67,11 @@ mesh-live-map-dev/
 │   ├── device_roles.json   # Optional role overrides
 │   ├── neighbor_overrides.json # Optional neighbor overrides
 │   └── neighbor_overrides.auto.json # Auto-managed neighbor overrides
-├── docker-compose.yaml     # Container orchestration
+├── docker-compose.yaml     # Local/dev container orchestration
+├── deploy/                 # Prebuilt-image deployment examples
+│   ├── docker-compose.image.yaml
+│   ├── swarm-stack.yaml
+│   └── kubernetes-meshmap.yaml
 ├── .env.example            # Configuration template
 ├── pyproject.toml          # Python tooling (ruff, pytest)
 ├── .eslintrc.json          # JavaScript linting
@@ -396,4 +400,4 @@ npx eslint backend/static/app.js
 ```
 
 Versioning:
-- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.8.4`).
+- See `VERSIONS.md` for the changelog; `VERSION.txt` mirrors the latest entry (`1.8.5`).

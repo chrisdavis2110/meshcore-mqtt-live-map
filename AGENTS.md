@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.8.4` (see `VERSIONS.md`).
+Current version: `1.8.5` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -15,9 +15,11 @@ Current version: `1.8.4` (see `VERSIONS.md`).
 - `backend/static/sw.js` is the PWA service worker.
 - `backend/requirements.txt` and `backend/Dockerfile` define Python and Node dependencies.
 - `docker-compose.yaml` runs the service as `meshmap-live`.
+- `.github/workflows/docker-publish.yml` publishes the prebuilt DockerHub image.
+- `deploy/` contains image-based examples for compose, Swarm, and Kubernetes.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.8.4`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.8.5`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).

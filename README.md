@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.8.4` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.8.5` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -86,6 +86,39 @@ cp .env.example .env
 docker compose up -d --build
 ```
 5) Open: `http://localhost:8080/` (or your `WEB_PORT`)
+
+## Prebuilt Image
+If you do not want to clone the repo and build locally, use the published image:
+
+```text
+yellowcooln/meshcore-mqtt-live-map:latest
+```
+
+Example with Docker Compose / Portainer stack:
+
+```yaml
+services:
+  meshmap:
+    image: yellowcooln/meshcore-mqtt-live-map:latest
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+      - ./backup:/backup
+```
+
+Repo examples:
+- `deploy/docker-compose.image.yaml`
+- `deploy/swarm-stack.yaml`
+- `deploy/kubernetes-meshmap.yaml`
+
+DockerHub publishing is automated by GitHub Actions from `.github/workflows/docker-publish.yml`.
+Required repository secrets:
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
 
 ## Configuration (.env)
 Debugging:

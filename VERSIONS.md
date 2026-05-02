@@ -1,5 +1,14 @@
 # Versions
 
+## v1.8.5 (04-30-2026)
+- Added a DockerHub publish workflow at `.github/workflows/docker-publish.yml` that builds the app from `backend/Dockerfile` and pushes multi-arch `linux/amd64` and `linux/arm64` images.
+- The publish flow targets `yellowcooln/meshcore-mqtt-live-map` and tags `latest` from `main`, plus branch, tag, and short-SHA image tags.
+- Added image-based deployment examples so users can run the app without cloning and building locally:
+  - `deploy/docker-compose.image.yaml`
+  - `deploy/swarm-stack.yaml`
+  - `deploy/kubernetes-meshmap.yaml`
+- Documented the DockerHub image flow and required GitHub Actions secrets for automatic publishing.
+
 ## v1.8.4 (04-17-2026)
 - Fixed the post-`v1.7.0` route regression where some meshes stopped showing routes that previously rendered in `v1.6.6`.
 - Added `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK` so operators can restore the legacy closest/time-based fallback for colliding 1-byte hop prefixes when conservative prefix handling is too strict for their network.

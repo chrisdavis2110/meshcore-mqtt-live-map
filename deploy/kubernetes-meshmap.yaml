@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: meshmap-config
+data:
+  MQTT_HOST: "mqtt-broker"
+  MQTT_PORT: "1883"
+  MQTT_TRANSPORT: "tcp"
+  MQTT_TOPIC: "meshcore/#"
+  SITE_TITLE: "Mesh Live Map"
+  SITE_DESCRIPTION: "Live MeshCore traffic map"
+  SITE_URL: "https://meshmap.example.com"
+  WEB_PORT: "8080"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: meshmap-secrets
+type: Opaque
+stringData:
+  MQTT_USERNAME: ""
+  MQTT_PASSWORD: ""
+  PROD_TOKEN: ""
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: meshmap-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: meshmap-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meshmap
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meshmap
+  template:
+    metadata:
+      labels:
+        app: meshmap
+    spec:
+      containers:
+        - name: meshmap
+          image: yellowcooln/meshcore-mqtt-live-map:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: meshmap-config
+            - secretRef:
+                name: meshmap-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: backup
+              mountPath: /backup
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: meshmap-data
+        - name: backup
+          persistentVolumeClaim:
+            claimName: meshmap-backup
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: meshmap
+spec:
+  selector:
+    app: meshmap
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP

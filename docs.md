@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.8.4` (see `VERSIONS.md`).
+Current version: `1.8.5` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.8.4`).
+- `VERSION.txt` holds the current version string (`1.8.5`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -23,6 +23,9 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `backend/static/app.js`: Leaflet UI, markers, legends, routes, tools.
 - `backend/static/sw.js`: PWA service worker.
 - `docker-compose.yaml`: runtime configuration.
+- `deploy/docker-compose.image.yaml`: image-based compose example for prebuilt DockerHub use.
+- `deploy/swarm-stack.yaml`: Docker Swarm stack example using the published image.
+- `deploy/kubernetes-meshmap.yaml`: Kubernetes deployment example using the published image.
 - `data/state.json`: persisted device/trail/roles/names (loaded at startup).
 - `data/route_history.jsonl`: rolling 24h route history segments (lines).
 - `data/neighbor_overrides.json`: optional neighbor override pairs for route disambiguation.
@@ -31,6 +34,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## Runtime Commands (Typical Workflow)
 - `docker compose up -d --build` (run after any file changes).
 - `docker compose logs -f meshmap-live` (watch MQTT + decode logs).
+- DockerHub publishing is handled by `.github/workflows/docker-publish.yml`.
 - `curl -s http://localhost:8080/snapshot` (current device map).
 - `curl -s http://localhost:8080/stats` (counters, route types).
 - `curl -s http://localhost:8080/debug/last` (recent MQTT decode/debug entries).
