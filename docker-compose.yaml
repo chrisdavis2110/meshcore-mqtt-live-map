@@ -8,6 +8,7 @@ services:
       DEBUG_PAYLOAD: "${DEBUG_PAYLOAD:-false}"
       DEBUG_PAYLOAD_MAX: "${DEBUG_PAYLOAD_MAX:-400}"
       PAYLOAD_PREVIEW_MAX: "${PAYLOAD_PREVIEW_MAX:-800}"
+      APP_BASE_PATH: "${APP_BASE_PATH:-/}"
       STATE_DIR: "${STATE_DIR:-/data}"
       DEVICE_COORDS_FILE: "${DEVICE_COORDS_FILE:-/data/device_coords.json}"
       NEIGHBOR_OVERRIDES_FILE: "${NEIGHBOR_OVERRIDES_FILE:-/data/neighbor_overrides.json}"
