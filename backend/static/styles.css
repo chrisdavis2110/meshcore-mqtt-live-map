@@ -615,6 +615,41 @@
       opacity: 0.75;
     }
 
+    .route-byte-control {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+      padding: 4px 0 0;
+      border-top: 1px solid rgba(255, 255, 255, .12);
+    }
+
+    .route-byte-label {
+      opacity: 0.78;
+      font-size: 11px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .route-byte-select {
+      min-width: 108px;
+      background: rgba(15, 23, 42, .72);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, .2);
+      border-radius: 8px;
+      padding: 4px 8px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .route-byte-select:focus {
+      outline: 2px solid rgba(56, 189, 248, .45);
+      outline-offset: 1px;
+    }
+
     .node-label {
       background: rgba(15, 23, 42, .8);
       color: #fff;

@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.8.4` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.8.6` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -8,12 +8,13 @@ Live example sites:
 https://live.bostonme.sh/ - Greater Boston Mesh Map (reference)
 
 Other community maps (versions may differ):
-- https://meshcore-map.ctmesh.org/ - CTMesh MeshCore Map
-- https://livemap.wcmesh.com/ - West Coast Mesh
+- https://meshcore-map.ctmesh.org/ - CTMesh Map Live Map
+- https://livemap.wcmesh.com/ - West Coast Mesh Live Map
+- https://map.mwmesh.com/ - Utah Mesh Live Map
 - https://map.eastmesh.au/ - Aus Eastern Mesh Live Map
-- https://mapa.meshcore.cz/ - Czech Republic
+- https://mapa.meshcore.cz/ - Czech Republic Live Map
 - https://map.meshcorebayreuth.de/ - Bayreuth Live Map
-
+- https://mcmap.cheaterenator.trade/ - Southern Poland
 
 ![Live map preview](example.gif)
 ---
@@ -35,6 +36,7 @@ Other community maps (versions may differ):
 - Weather tool panel with independent Radar and Wind toggles
 - Update available banner (git local vs upstream) with dismiss
 - UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle
+- Route path-byte filter for `All`, `1-byte`, `2-byte`, or `3-byte` live route views, with matching hop markers and Route Details
 - Share button that copies a URL with current view + settings
 - URL parameters to open the map at a specific view (center, zoom, toggles)
 - Node search by name or public key
@@ -85,6 +87,34 @@ cp .env.example .env
 docker compose up -d --build
 ```
 5) Open: `http://localhost:8080/` (or your `WEB_PORT`)
+
+## Prebuilt Image
+If you do not want to clone the repo and build locally, use the published image:
+
+```text
+yellowcooln/meshcore-mqtt-live-map:latest
+```
+
+Example with Docker Compose / Portainer stack:
+
+```yaml
+services:
+  meshmap:
+    image: yellowcooln/meshcore-mqtt-live-map:latest
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+      - ./backup:/backup
+```
+
+Repo examples:
+- `deploy/docker-compose.image.yaml`
+- `deploy/swarm-stack.yaml`
+- `deploy/kubernetes-meshmap.yaml`
 
 ## Configuration (.env)
 Debugging:
@@ -137,6 +167,7 @@ Site metadata (page title + embeds):
 - `MAP_BOUNDARY_FILE` (JSON file used when `MAP_BOUNDARY_MODE=polygon`; default `/data/map_boundary.json`)
 - `MAP_BOUNDARY_SHOW` (draw the active radius/polygon boundary overlay on the map)
 - `DISTANCE_UNITS` (`km` or `mi`, default display units)
+- `HEAT_DEFAULT_ON` (`true` or `false`, default first-load heat visibility before browser overrides)
 - `NODE_MARKER_RADIUS` (default node marker size in pixels)
 
 MQTT:
@@ -204,6 +235,7 @@ History overlay:
 - `HISTORY_LINK_SCALE` (default history line weight multiplier)
 
 Heat + online status:
+- `HEAT_DEFAULT_ON` (default Heat toggle state for first load; local browser preference or `?heat=` can still override it)
 - `HEAT_TTL_SECONDS`
 - `MQTT_ONLINE_SECONDS` (legacy/global fallback TTL for MQTT presence)
 - `MQTT_ONLINE_STATUS_TTL_SECONDS` (how long `/status` keeps a node connected)
@@ -295,7 +327,7 @@ Use it:
 - LOS now includes Earth curvature by default using an effective Earth radius factor of `1.333333`, unless you override the LOS curvature envs.
 - History tool always loads off (use the button or `history=on` in the URL).
 - Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, and forced MQTT listeners are excluded from peer lists.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;

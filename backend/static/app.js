@@ -35,6 +35,16 @@ const parseHistoryFilterParam = (value) => {
   if (str === 'red' || str === '4') return 4;
   return null;
 };
+const parseRouteByteFilterParam = (value) => {
+  if (value == null) return null;
+  const str = String(value).trim().toLowerCase();
+  if (!str) return null;
+  if (str === 'all' || str === '0' || str === '*') return 'all';
+  if (str === '1' || str === '1b' || str === '1-byte' || str === '1byte') return '1b';
+  if (str === '2' || str === '2b' || str === '2-byte' || str === '2byte') return '2b';
+  if (str === '3' || str === '3b' || str === '3-byte' || str === '3byte') return '3b';
+  return null;
+};
 const queryLat = parseNumberParam(queryParams.get('lat') ?? queryParams.get('latitude'));
 const queryLon = parseNumberParam(queryParams.get('lon') ?? queryParams.get('lng') ?? queryParams.get('long') ?? queryParams.get('longitude'));
 const queryZoom = parseNumberParam(queryParams.get('zoom'));
@@ -60,6 +70,11 @@ const queryMenuVisible = parseBoolParam(
 const queryUnits = String(queryParams.get('units') || queryParams.get('unit') || '').toLowerCase();
 const queryHistoryFilter = parseHistoryFilterParam(
   queryParams.get('history_filter') || queryParams.get('historyFilter') || queryParams.get('historyfilter')
+);
+const queryRouteByteFilter = parseRouteByteFilterParam(
+  queryParams.get('route_bytes') ||
+  queryParams.get('routeBytes') ||
+  queryParams.get('routebytes')
 );
 const initialUpdateAvailable = parseBoolParam(config.updateAvailable);
 const initialUpdateLocal = (config.updateLocal || '').trim();
@@ -221,6 +236,7 @@ const markerLayer = L.layerGroup().addTo(map);
 const trailLayer = L.layerGroup().addTo(map);
 let nodesVisible = true;
 const routeLines = new Map(); // route_id -> { line, timeout }
+const routeCache = new Map(); // route_id -> raw route payload
 const deviceMeta = new Map(); // device_id -> { lat, lon, name }
 const historyLines = new Map(); // edge_id -> { line, count }
 const historyCache = new Map(); // edge_id -> raw edge data
@@ -304,6 +320,7 @@ function setArcadeModeEnabled(enabled, persist = true) {
         }
       }
     });
+    syncAllRouteDisplays();
     startArcadeLoop();
   } else {
     routeLines.forEach((_entry, routeId) => removeArcadeMarker(routeId));
@@ -346,6 +363,7 @@ const losCurvatureFactor = (() => {
   if (Number.isFinite(parsed) && parsed > 0) return parsed;
   return 1.333333;
 })();
+const heatDefaultOn = parseBoolParam(config.heatDefaultOn) ?? true;
 const losPeaksMax = Number(config.losPeaksMax) || 4;
 const mqttOnlineSeconds = Number(config.mqttOnlineSeconds) || 300;
 const mqttOnlineStatusTtlSeconds = Number(config.mqttOnlineStatusTtlSeconds) || mqttOnlineSeconds;
@@ -583,6 +601,7 @@ const historyFilter = document.getElementById('history-filter');
 const historyFilterLabel = document.getElementById('history-filter-label');
 const historyLinkSizeInput = document.getElementById('history-link-size');
 const historyLinkSizeValue = document.getElementById('history-link-size-value');
+const routeByteFilterSelect = document.getElementById('route-byte-filter');
 let historyWindowSeconds = null;
 const historyToolVersion = '1';
 localStorage.setItem('meshmapHistoryToolVersion', historyToolVersion);
@@ -604,6 +623,14 @@ if (![0, 1, 2, 3, 4].includes(historyFilterMode)) {
 }
 if (historyFilter) {
   historyFilter.value = String(historyFilterMode);
+}
+const ROUTE_BYTE_FILTER_VALUES = new Set(['all', '1b', '2b', '3b']);
+let routeByteFilter = queryRouteByteFilter || 'all';
+if (!ROUTE_BYTE_FILTER_VALUES.has(routeByteFilter)) {
+  routeByteFilter = 'all';
+}
+if (routeByteFilterSelect) {
+  routeByteFilterSelect.value = routeByteFilter;
 }
 const HISTORY_LINK_MIN = 0.1;
 const HISTORY_LINK_MID = 1;
@@ -640,9 +667,9 @@ const updateHistoryLinkSizeUI = () => {
 };
 updateHistoryLinkSizeUI();
 const storedHeat = localStorage.getItem('meshmapShowHeat');
-let heatVisible = storedHeat !== 'false';
+let heatVisible = storedHeat !== null ? storedHeat === 'true' : heatDefaultOn;
 if (storedHeat === null) {
-  localStorage.setItem('meshmapShowHeat', 'true');
+  localStorage.setItem('meshmapShowHeat', heatDefaultOn ? 'true' : 'false');
 }
 const mqttWindowLabel = document.getElementById('mqtt-online-label');
 if (mqttWindowLabel) {
@@ -760,7 +787,12 @@ function applyMqttPresenceSummary(summary) {
 function setStats() {
   const onlineOnMap = Array.from(deviceData.values()).filter(isMqttOnline).length;
   const onlineTotal = mqttPresenceKnown ? mqttConnectedTotal : onlineOnMap;
-  document.getElementById('stats').textContent = `${markers.size} active devices • ${onlineTotal} MQTT online • ${routeLines.size} routes • ${historyLines.size} history`;
+  const totalRoutes = routeLines.size;
+  const visibleRoutes = getVisibleRouteCount();
+  const routeLabel = routeByteFilter === 'all' || visibleRoutes === totalRoutes
+    ? `${visibleRoutes} routes`
+    : `${visibleRoutes}/${totalRoutes} routes`;
+  document.getElementById('stats').textContent = `${markers.size} active devices • ${onlineTotal} MQTT online • ${routeLabel} • ${historyLines.size} history`;
 }
 
 let statsFramePending = false;
@@ -1970,6 +2002,7 @@ function setNodesVisible(visible) {
           syncArcadeForRoute(routeId, entry.routePoints);
         }
       });
+      syncAllRouteDisplays();
       startArcadeLoop();
     }
   } else if (map.hasLayer(markerLayer)) {
@@ -2105,17 +2138,8 @@ function setHopsVisible(visible) {
     if (map.hasLayer(hopLayer)) {
       map.removeLayer(hopLayer);
     }
-    hopMarkers.forEach(markers => {
-      markers.forEach(m => hopLayer.removeLayer(m));
-    });
-    hopMarkers.clear();
-    if (routeDetailsPanel) {
-      routeDetailsPanel.hidden = true;
-      routeDetailsPanel.classList.remove('active');
-      routeDetailsPanel.style.display = 'none';
-    }
-    activeRouteDetailsMeta = null;
-    activeRouteDetailsId = null;
+    clearAllHopMarkers();
+    hideRouteDetailsPanel();
     layoutSidePanels();
   }
 }
@@ -2309,13 +2333,100 @@ function stringHashColor(str) {
   return '#' + '00000'.substring(0, 6 - c.length) + c;
 }
 
-function renderHopMarkers(routeId, meta) {
-  if (!hopsVisible || !meta || !meta.points) return;
+function clearHopMarkersForRoute(routeId) {
+  if (!hopMarkers.has(routeId)) return;
+  hopMarkers.get(routeId).forEach(m => hopLayer.removeLayer(m));
+  hopMarkers.delete(routeId);
+}
 
-  // Clear existing for this route
-  if (hopMarkers.has(routeId)) {
-    hopMarkers.get(routeId).forEach(m => hopLayer.removeLayer(m));
-    hopMarkers.delete(routeId);
+function clearAllHopMarkers() {
+  hopMarkers.forEach((_markers, routeId) => {
+    clearHopMarkersForRoute(routeId);
+  });
+}
+
+function hideRouteDetailsPanel() {
+  if (routeDetailsPanel) {
+    routeDetailsPanel.hidden = true;
+    routeDetailsPanel.classList.remove('active');
+    routeDetailsPanel.style.display = 'none';
+  }
+  activeRouteDetailsMeta = null;
+  activeRouteDetailsId = null;
+}
+
+function routeHashByteWidth(hash) {
+  const normalized = normalizeHopHashPrefix(hash);
+  if (!normalized) return null;
+  return normalized.length / 2;
+}
+
+function routeMatchesByteFilter(meta) {
+  if (!meta || routeByteFilter === 'all') return true;
+  const targetWidth = Number.parseInt(routeByteFilter, 10);
+  if (!Number.isFinite(targetWidth) || targetWidth < 1) return true;
+  const hashes = Array.isArray(meta.hashes) ? meta.hashes : [];
+  if (!hashes.length) return false;
+  return hashes.some((hash) => routeHashByteWidth(hash) === targetWidth);
+}
+
+function getVisibleRouteCount() {
+  let count = 0;
+  routeLines.forEach((entry) => {
+    if (routeMatchesByteFilter(entry && entry.meta)) {
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function syncRouteEntryDisplay(routeId, entry) {
+  if (!entry || !entry.line) return;
+  const visible = nodesVisible && routeMatchesByteFilter(entry.meta);
+  const style = routeStyleForDisplay(
+    entry.payloadType,
+    entry.routeMode,
+    arcadeModeEnabled
+  );
+  entry.line.setStyle({
+    ...style,
+    opacity: visible ? style.opacity : 0,
+    fillOpacity: visible ? style.fillOpacity : 0
+  });
+  if (visible) {
+    if (entry.line.bringToFront) {
+      entry.line.bringToFront();
+    }
+    if (arcadeModeEnabled && Array.isArray(entry.routePoints)) {
+      syncArcadeForRoute(routeId, entry.routePoints);
+    }
+  } else {
+    removeArcadeMarker(routeId);
+  }
+  if (hopsVisible) {
+    renderHopMarkers(routeId, entry.meta);
+  } else {
+    clearHopMarkersForRoute(routeId);
+  }
+  if (!visible && activeRouteDetailsId === routeId) {
+    hideRouteDetailsPanel();
+    layoutSidePanels();
+  }
+}
+
+function syncAllRouteDisplays() {
+  const cachedRoutes = Array.from(routeCache.values());
+  clearRouteDisplay();
+  cachedRoutes.forEach((route) => {
+    upsertRoute(route, true);
+  });
+  refreshStats();
+}
+
+function renderHopMarkers(routeId, meta) {
+  clearHopMarkersForRoute(routeId);
+  if (!hopsVisible || !meta || !meta.points || !routeMatchesByteFilter(meta)) {
+    return;
   }
 
   // Generate color
@@ -2356,7 +2467,10 @@ function renderHopMarkers(routeId, meta) {
 }
 
 function showRouteDetails(meta) {
-  if (!meta) return;
+  if (!meta || !routeMatchesByteFilter(meta)) {
+    hideRouteDetailsPanel();
+    return;
+  }
   activeRouteDetailsMeta = meta;
   activeRouteDetailsId = meta.id || null;
 
@@ -5616,31 +5730,39 @@ function refreshViewportLayers() {
   }
 }
 
-function removeRoutes(ids) {
-  ids.forEach(id => {
-    const entry = routeLines.get(id);
-    if (!entry) return;
-    if (entry.timeout) clearTimeout(entry.timeout);
-    removeArcadeMarker(id);
-    routeLayer.removeLayer(entry.line);
-    routeLines.delete(id);
-    // Cleanup hop markers
-    if (hopMarkers.has(id)) {
-      hopMarkers.get(id).forEach(m => hopLayer.removeLayer(m));
-      hopMarkers.delete(id);
-    }
-  });
-  refreshStats();
-}
-
-function clearRoutes() {
+function clearRouteDisplay() {
   routeLines.forEach((entry, routeId) => {
     if (entry.timeout) clearTimeout(entry.timeout);
     removeArcadeMarker(routeId);
     routeLayer.removeLayer(entry.line);
   });
   routeLines.clear();
+  clearAllHopMarkers();
+  hideRouteDetailsPanel();
   stopArcadeLoop();
+}
+
+function removeRoutes(ids) {
+  ids.forEach(id => {
+    const entry = routeLines.get(id);
+    if (entry) {
+      if (entry.timeout) clearTimeout(entry.timeout);
+      removeArcadeMarker(id);
+      routeLayer.removeLayer(entry.line);
+      routeLines.delete(id);
+    }
+    routeCache.delete(id);
+    clearHopMarkersForRoute(id);
+    if (activeRouteDetailsId === id) {
+      hideRouteDetailsPanel();
+    }
+  });
+  refreshStats();
+}
+
+function clearRoutes() {
+  clearRouteDisplay();
+  routeCache.clear();
   refreshStats();
 }
 
@@ -6206,6 +6328,9 @@ function handleRouteClick(routeId, ev) {
     const latlngs = entry.line.getLatLngs ? entry.line.getLatLngs() : [];
     entry.meta = buildRouteLogMeta({ id: routeId, points: latlngs.map(pt => [pt.lat, pt.lng]) });
   }
+  if (!routeMatchesByteFilter(entry.meta)) {
+    return;
+  }
   logRouteDetails(entry.meta, ev && ev.latlng);
   showRouteDetails(entry.meta);
 }
@@ -6213,6 +6338,14 @@ function handleRouteClick(routeId, ev) {
 function upsertRoute(r, skipHeat = false) {
   if (!r || !Array.isArray(r.points) || r.points.length < 2) return;
   const id = r.id || `route-${Date.now()}-${Math.random()}`;
+  routeCache.set(id, {
+    ...r,
+    id,
+    points: r.points.map((p) => [p[0], p[1]]),
+    hashes: Array.isArray(r.hashes) ? [...r.hashes] : r.hashes,
+    point_ids: Array.isArray(r.point_ids) ? [...r.point_ids] : r.point_ids,
+    snr_values: Array.isArray(r.snr_values) ? [...r.snr_values] : r.snr_values
+  });
   const points = r.points.map(p => [p[0], p[1]]);
   const routeMode = r.route_mode || 'path';
   const payloadType = Number(r.payload_type);
@@ -6221,7 +6354,8 @@ function upsertRoute(r, skipHeat = false) {
   const routeMeta = buildRouteLogMeta({ ...r, id, points, hashes: r.hashes });
   let entry = routeLines.get(id);
   if (!entry) {
-    const line = L.polyline(points, { ...style, renderer: animatedLineRenderer }).addTo(routeLayer);
+    const line = L.polyline(points, { ...style, renderer: animatedLineRenderer })
+      .addTo(routeLayer);
     if (!prodMode) {
       line.on('click', (ev) => handleRouteClick(id, ev));
     }
@@ -6243,10 +6377,7 @@ function upsertRoute(r, skipHeat = false) {
       lineEl.classList.add('route-animated');
     }
   }
-  syncArcadeForRoute(id, points);
-  if (entry.line && entry.line.bringToFront) {
-    entry.line.bringToFront();
-  }
+  syncRouteEntryDisplay(id, entry);
   if (routeDetailsPanel && !routeDetailsPanel.hidden && activeRouteDetailsId === id) {
     showRouteDetails(entry.meta);
   }
@@ -6259,9 +6390,6 @@ function upsertRoute(r, skipHeat = false) {
 
   if (!skipHeat) {
     addHeatPoints(points, r.ts, r.payload_type);
-  }
-  if (hopsVisible) {
-    renderHopMarkers(id, entry.meta);
   }
   refreshStats();
 }
@@ -6715,6 +6843,7 @@ if (shareToggle) {
     url.searchParams.set('menu', hud && hud.classList.contains('panel-hidden') ? 'off' : 'on');
     url.searchParams.set('units', distanceUnits);
     url.searchParams.set('history_filter', String(historyFilterMode));
+    url.searchParams.set('route_bytes', routeByteFilter);
     const shareUrl = url.toString();
     let copied = false;
     try {
@@ -6805,6 +6934,15 @@ if (unitsToggle) {
   unitsToggle.addEventListener('click', () => {
     const next = distanceUnits === 'mi' ? 'km' : 'mi';
     setDistanceUnits(next);
+  });
+}
+
+if (routeByteFilterSelect) {
+  routeByteFilterSelect.addEventListener('change', (ev) => {
+    const next = parseRouteByteFilterParam(ev.target.value) || 'all';
+    routeByteFilter = next;
+    routeByteFilterSelect.value = routeByteFilter;
+    syncAllRouteDisplays();
   });
 }
 
@@ -7130,7 +7268,9 @@ if (peersClear) {
 const heatToggle = document.getElementById('heat-toggle');
 if (heatToggle) {
   const storedHeatVisible = localStorage.getItem('meshmapShowHeat');
-  let initialHeat = storedHeatVisible !== null ? storedHeatVisible === 'true' : true;
+  let initialHeat = storedHeatVisible !== null
+    ? storedHeatVisible === 'true'
+    : heatDefaultOn;
   if (queryHeatVisible !== null) {
     initialHeat = queryHeatVisible;
     localStorage.setItem('meshmapShowHeat', initialHeat ? 'true' : 'false');

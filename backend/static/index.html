@@ -42,6 +42,7 @@
   data-mqtt-online-internal-ttl-seconds="{{MQTT_ONLINE_INTERNAL_TTL_SECONDS}}"
   data-mqtt-activity-packets-ttl-seconds="{{MQTT_ACTIVITY_PACKETS_TTL_SECONDS}}"
   data-distance-units="{{DISTANCE_UNITS}}"
+  data-heat-default-on="{{HEAT_DEFAULT_ON}}"
   data-node-radius="{{NODE_MARKER_RADIUS}}" data-history-link-scale="{{HISTORY_LINK_SCALE}}"
   data-coverage-api-url="{{COVERAGE_API_URL}}" data-custom-link-url="{{CUSTOM_LINK_URL}}"
   data-packet-analyzer-url="{{PACKET_ANALYZER_URL}}"
@@ -143,6 +144,15 @@
       <button class="map-toggle" id="hops-toggle" type="button">Show hops</button>
       <button class="map-toggle" id="los-toggle" type="button">LOS tool</button>
       <button class="map-toggle" id="prop-toggle" type="button">Propagation</button>
+      <div class="route-byte-control">
+        <span class="route-byte-label">Path bytes</span>
+        <select class="route-byte-select" id="route-byte-filter" aria-label="Route path byte filter">
+          <option value="all">All</option>
+          <option value="1b">1-byte</option>
+          <option value="2b">2-byte</option>
+          <option value="3b">3-byte</option>
+        </select>
+      </div>
       <div class="legend">
         <div class="legend-item"><span class="legend-line legend-trace"></span> Trace/path</div>
         <div class="legend-item"><span class="legend-line legend-message"></span> Message</div>

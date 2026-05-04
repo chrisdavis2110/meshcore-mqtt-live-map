@@ -169,6 +169,7 @@ except ValueError:
 DISTANCE_UNITS = os.getenv("DISTANCE_UNITS", "km").strip().lower()
 if DISTANCE_UNITS not in ("km", "mi"):
   DISTANCE_UNITS = "km"
+HEAT_DEFAULT_ON = os.getenv("HEAT_DEFAULT_ON", "true").lower() == "true"
 try:
   NODE_MARKER_RADIUS = float(os.getenv("NODE_MARKER_RADIUS", "8"))
 except ValueError:

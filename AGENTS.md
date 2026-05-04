@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.8.4` (see `VERSIONS.md`).
+Current version: `1.8.6` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -15,9 +15,11 @@ Current version: `1.8.4` (see `VERSIONS.md`).
 - `backend/static/sw.js` is the PWA service worker.
 - `backend/requirements.txt` and `backend/Dockerfile` define Python and Node dependencies.
 - `docker-compose.yaml` runs the service as `meshmap-live`.
+- `.github/workflows/docker-publish.yml` publishes the prebuilt DockerHub image.
+- `deploy/` contains image-based examples for compose, Swarm, and Kubernetes.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.8.4`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.8.6`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -128,7 +130,8 @@ Current version: `1.8.4` (see `VERSIONS.md`).
 - Node popups do not auto-pan; dragging the map won’t snap back to keep a popup in view.
 - Node popups let users click the short key under the node name to copy the full public key, and can optionally show a MeshCore-compatible contact QR modal for that node with the node name plus a clickable truncated key that still copies the full public key.
 - MQTT disconnect handler tolerates extra Paho args so the loop doesn’t crash; reconnects resume ingest.
-- Share button copies a URL with `lat`, `lon`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `labels`, `nodes`, `legend`, `menu`, `units`, and `history_filter` params.
+- Share button copies a URL with `lat`, `lon`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, and `route_bytes` params.
+- Route display can now be filtered from the HUD by path-hash byte width (`All`, `1-byte`, `2-byte`, `3-byte`), and the same filter applies to route lines, hop markers, and Route Details.
 - Weather state is not persisted in localStorage; it defaults off unless `weather=on` is in the URL.
 - URL params override localStorage on load (`history=on` is the only way to load History open).
 - Node size slider persists in localStorage (`meshmapNodeRadius`) and can be reset by clearing site data.

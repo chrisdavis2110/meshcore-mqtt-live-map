@@ -1,0 +1,12 @@
+services:
+  meshmap:
+    image: "${MESHMAP_IMAGE:-yellowcooln/meshcore-mqtt-live-map:latest}"
+    container_name: meshmap-live
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    env_file:
+      - ../.env
+    restart: unless-stopped
+    volumes:
+      - ../data:/data
+      - ../backup:/backup

@@ -1,7 +1,11 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.8.4` (see `VERSIONS.md`).
+Current version: `1.8.6` (see `VERSIONS.md`).
+
+Useful UI defaults in the live map `.env`:
+- `HEAT_DEFAULT_ON=true|false` sets the default Heat toggle state for first load.
+- `NODE_MARKER_RADIUS=<pixels>` sets the default node marker size before browser overrides.
 
 ## 1) MQTT broker (meshcore-mqtt-broker)
 
@@ -317,6 +321,35 @@ docker compose up --build
 ```
 
 Open the UI at `http://localhost:8080`.
+
+## 3b) Use the prebuilt Docker image instead
+
+If you do not want to clone the repo and build it yourself, use:
+
+```text
+yellowcooln/meshcore-mqtt-live-map:latest
+```
+
+Deployment examples in this repo:
+- `deploy/docker-compose.image.yaml`
+- `deploy/swarm-stack.yaml`
+- `deploy/kubernetes-meshmap.yaml`
+
+For Docker Compose / Portainer, the image-based service definition is:
+
+```yaml
+services:
+  meshmap:
+    image: yellowcooln/meshcore-mqtt-live-map:latest
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+      - ./backup:/backup
+```
 
 ## 4) Verify data flow
 

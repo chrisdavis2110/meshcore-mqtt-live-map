@@ -1,0 +1,23 @@
+services:
+  meshmap:
+    image: "${MESHMAP_IMAGE:-yellowcooln/meshcore-mqtt-live-map:latest}"
+    ports:
+      - target: 8080
+        published: ${WEB_PORT:-8080}
+        protocol: tcp
+        mode: ingress
+    environment:
+      STATE_DIR: /data
+    env_file:
+      - ../.env
+    volumes:
+      - meshmap_data:/data
+      - meshmap_backup:/backup
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+volumes:
+  meshmap_data:
+  meshmap_backup:
