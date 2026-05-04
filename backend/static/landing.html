@@ -199,7 +199,7 @@
     }
   </style>
 </head>
-<body>
+<body data-app-base-path="{{APP_BASE_PATH}}">
   <div class="landing-container">
     <div class="landing-card">
       <!-- Hidden site key for turnstile.js to read without displaying it. -->
@@ -250,6 +250,6 @@
     async
     defer
   ></script>
-  <script src="/static/turnstile.js?v={{ASSET_VERSION}}"></script>
+  <script src="{{STATIC_BASE}}/turnstile.js?v={{ASSET_VERSION}}"></script>
 </body>
 </html>

@@ -1,5 +1,10 @@
 const CACHE_NAME = 'meshmap-pwa-v6';
-const CORE_ASSETS = ['/', '/manifest.webmanifest'];
+const MESHMAP_APP_BASE = __MESHMAP_APP_BASE__;
+const meshmapHomePath = MESHMAP_APP_BASE ? `${MESHMAP_APP_BASE}/` : '/';
+const meshmapManifestPath = MESHMAP_APP_BASE
+  ? `${MESHMAP_APP_BASE}/manifest.webmanifest`
+  : '/manifest.webmanifest';
+const CORE_ASSETS = [meshmapHomePath, meshmapManifestPath];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -35,7 +40,7 @@ async function networkFirst(request) {
   } catch (err) {
     const cached = await caches.match(request);
     if (cached) return cached;
-    return caches.match('/');
+    return caches.match(meshmapHomePath);
   }
 }
 
@@ -49,7 +54,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/static/') || url.pathname === '/manifest.webmanifest') {
+  const staticPrefix = MESHMAP_APP_BASE ? `${MESHMAP_APP_BASE}/static/` : '/static/';
+  if (
+    url.pathname.startsWith(staticPrefix) ||
+    url.pathname === meshmapManifestPath
+  ) {
     event.respondWith(cacheFirst(event.request));
   }
 });

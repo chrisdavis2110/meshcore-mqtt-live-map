@@ -9,7 +9,7 @@
   <meta name="description" content="{{SITE_DESCRIPTION}}" />
   <link rel="icon" href="{{SITE_ICON}}" type="image/png" />
   <link rel="apple-touch-icon" href="{{SITE_ICON}}" />
-  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="manifest" href="{{MANIFEST_HREF}}" />
   <meta name="theme-color" content="#0f172a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta property="og:title" content="{{SITE_TITLE}}" />
@@ -23,10 +23,10 @@
   {{TWITTER_IMAGE_TAG}}
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <link rel="stylesheet" href="/static/styles.css?v={{ASSET_VERSION}}" />
+  <link rel="stylesheet" href="{{STATIC_BASE}}/styles.css?v={{ASSET_VERSION}}" />
 </head>
 
-<body data-map-start-lat="{{MAP_START_LAT}}" data-map-start-lon="{{MAP_START_LON}}"
+<body data-app-base-path="{{APP_BASE_PATH}}" data-map-start-lat="{{MAP_START_LAT}}" data-map-start-lon="{{MAP_START_LON}}"
   data-map-start-zoom="{{MAP_START_ZOOM}}" data-map-radius-km="{{MAP_RADIUS_KM}}"
   data-map-radius-show="{{MAP_RADIUS_SHOW}}" data-map-boundary-mode="{{MAP_BOUNDARY_MODE}}"
   data-map-boundary-show="{{MAP_BOUNDARY_SHOW}}" data-map-boundary-name="{{MAP_BOUNDARY_NAME}}"
@@ -401,7 +401,7 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js" crossorigin="anonymous"></script>
 
-  <script src="/static/app.js?v={{ASSET_VERSION}}" defer></script>
+  <script src="{{STATIC_BASE}}/app.js?v={{ASSET_VERSION}}" defer></script>
 </body>
 
 </html>

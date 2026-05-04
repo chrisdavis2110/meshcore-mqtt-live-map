@@ -143,6 +143,29 @@ ROUTE_HISTORY_ALLOWED_MODES_SET = {
   for s in ROUTE_HISTORY_ALLOWED_MODES.split(",") if s.strip()
 }
 
+def _normalize_app_base_path(raw: str) -> str:
+  """Return '' or a path like '/meshmap' (leading slash, no trailing slash)."""
+  s = (raw or "").strip()
+  if not s or s == "/":
+    return ""
+  if not s.startswith("/"):
+    s = "/" + s
+  s = s.rstrip("/")
+  return s
+
+
+APP_BASE_PATH = _normalize_app_base_path(os.getenv("APP_BASE_PATH", ""))
+
+
+def public_app_path(path: str) -> str:
+  """Prefix root-relative paths for HTML, JSON, and clients when using APP_BASE_PATH."""
+  if not path.startswith("/"):
+    path = "/" + path
+  if not APP_BASE_PATH:
+    return path
+  return APP_BASE_PATH + path
+
+
 SITE_TITLE = os.getenv("SITE_TITLE", "Greater Boston Mesh Live Map")
 SITE_DESCRIPTION = os.getenv(
   "SITE_DESCRIPTION",
@@ -310,4 +333,19 @@ for VERSION_FILE in VERSION_FILE_CANDIDATES:
       break
   except Exception:
     continue
+try:
+  PREVIEW_TILE_CONCURRENCY = int(os.getenv("PREVIEW_TILE_CONCURRENCY", "2"))
+except ValueError:
+  PREVIEW_TILE_CONCURRENCY = 2
+if PREVIEW_TILE_CONCURRENCY < 1:
+  PREVIEW_TILE_CONCURRENCY = 1
+if PREVIEW_TILE_CONCURRENCY > 8:
+  PREVIEW_TILE_CONCURRENCY = 8
+try:
+  PREVIEW_HTTP_TIMEOUT = float(os.getenv("PREVIEW_HTTP_TIMEOUT", "8"))
+except ValueError:
+  PREVIEW_HTTP_TIMEOUT = 8.0
+if PREVIEW_HTTP_TIMEOUT < 2.0:
+  PREVIEW_HTTP_TIMEOUT = 2.0
+PREVIEW_USER_AGENT = os.getenv("PREVIEW_USER_AGENT", "").strip()
 NODE_SCRIPT_PATH = os.path.join(APP_DIR, "meshcore_decode.mjs")
