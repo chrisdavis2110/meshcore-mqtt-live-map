@@ -199,6 +199,45 @@ from config import (
   APP_BASE_PATH,
   public_app_path,
 )
+from state import (
+  DeviceState,
+  stats,
+  result_counts,
+  seen_devices,
+  mqtt_seen,
+  mqtt_online_source,
+  mqtt_status_seen,
+  mqtt_status_values,
+  mqtt_internal_seen,
+  mqtt_packets_seen,
+  last_seen_broadcast,
+  topic_counts,
+  debug_last,
+  status_last,
+  devices,
+  trails,
+  routes,
+  heat_events,
+  route_history_segments,
+  route_history_edges,
+  peer_history_pairs,
+  node_hash_to_device,
+  node_hash_collisions,
+  node_hash_candidates,
+  elevation_cache,
+  device_names,
+  message_origins,
+  device_roles,
+  device_role_sources,
+  device_coords,
+  neighbor_edges,
+  first_seen_devices,
+  last_seen_in_advert,
+)
+
+# =========================
+# App / State
+# =========================
 def _public_if_root_relative(url: str) -> str:
   u = (url or "").strip()
   if u.startswith("/") and not u.startswith("//"):
@@ -242,45 +281,6 @@ def _client_weather_radar_lookup_url() -> str:
   return p
 
 
-from state import (
-  DeviceState,
-  stats,
-  result_counts,
-  seen_devices,
-  mqtt_seen,
-  mqtt_online_source,
-  mqtt_status_seen,
-  mqtt_status_values,
-  mqtt_internal_seen,
-  mqtt_packets_seen,
-  last_seen_broadcast,
-  topic_counts,
-  debug_last,
-  status_last,
-  devices,
-  trails,
-  routes,
-  heat_events,
-  route_history_segments,
-  route_history_edges,
-  peer_history_pairs,
-  node_hash_to_device,
-  node_hash_collisions,
-  node_hash_candidates,
-  elevation_cache,
-  device_names,
-  message_origins,
-  device_roles,
-  device_role_sources,
-  device_coords,
-  neighbor_edges,
-  first_seen_devices,
-  last_seen_in_advert,
-)
-
-# =========================
-# App / State
-# =========================
 mqtt_client: Optional[mqtt.Client] = None
 background_tasks: Set[asyncio.Task[Any]] = set()
 clients: Set[WebSocket] = set()
@@ -2688,10 +2688,10 @@ def root(request: Request):
       "SITE_TITLE": SITE_TITLE,
       "SITE_DESCRIPTION": SITE_DESCRIPTION,
       "SITE_ICON": _public_if_root_relative(SITE_ICON),
-      "TURNSTILE_SITE_KEY": TURNSTILE_SITE_KEY,
-      "ASSET_VERSION": ASSET_VERSION,
       "APP_BASE_PATH": APP_BASE_PATH,
       "STATIC_BASE": public_app_path("/static"),
+      "TURNSTILE_SITE_KEY": TURNSTILE_SITE_KEY,
+      "ASSET_VERSION": ASSET_VERSION,
     }
     for key, value in replacements.items():
       safe_value = html.escape(str(value), quote=True)
@@ -2909,55 +2909,6 @@ def root(request: Request):
   return HTMLResponse(content)
 
 
-def _preview_tile_headers() -> Dict[str, str]:
-  if PREVIEW_USER_AGENT:
-    return {"User-Agent": PREVIEW_USER_AGENT}
-  contact = SITE_URL if SITE_URL.startswith("http") else ""
-  extra = f" contact:{contact}" if contact else ""
-  return {
-    "User-Agent": (
-      f"MeshMap/{APP_VERSION} (OG embed preview{extra})"
-    ),
-  }
-
-
-def _preview_simple_marker_png(
-  width: int,
-  height: int,
-  theme_str: str,
-  marker_str: str,
-) -> bytes:
-  bg_color = (18, 18, 18) if theme_str == "dark" else (242, 239, 233)
-  image = Image.new("RGB", (width, height), bg_color)
-  draw = ImageDraw.Draw(image)
-  marker_color_map = {
-    "red": (220, 53, 69),
-    "blue": (0, 123, 255),
-    "green": (40, 167, 69),
-    "yellow": (255, 193, 7),
-    "orange": (255, 152, 0),
-    "purple": (108, 117, 125),
-    "black": (0, 0, 0),
-    "white": (255, 255, 255),
-  }
-  marker_color = marker_color_map.get(marker_str, (0, 123, 255))
-  marker_x = width // 2
-  marker_y = height // 2
-  marker_radius = 12
-  draw.ellipse(
-    [
-      (marker_x - marker_radius, marker_y - marker_radius),
-      (marker_x + marker_radius, marker_y + marker_radius),
-    ],
-    fill=marker_color,
-    outline=(255, 255, 255),
-    width=2,
-  )
-  buf = BytesIO()
-  image.save(buf, format="PNG")
-  return buf.getvalue()
-
-
 @app.get("/preview.png")
 async def preview_image(
   lat: Optional[float] = Query(None, alias="lat"),
@@ -3039,72 +2990,54 @@ async def preview_image(
       )  # Dark or light background
       final_image = Image.new("RGB", (width, height), bg_color)
 
-      # Fetch and composite tiles (parallel; User-Agent required by OSM policy).
+      # Fetch and composite tiles
       tiles_fetched = 0
       tiles_failed = 0
-      tile_headers = _preview_tile_headers()
-      tile_timeout = httpx.Timeout(PREVIEW_HTTP_TIMEOUT)
-      sem = asyncio.Semaphore(PREVIEW_TILE_CONCURRENCY)
-
-      async def fetch_tile(
-        ty: int, tx: int, tile_x: int, tile_y: int, tile_url: str
-      ) -> Tuple[int, int, bool, Optional[bytes]]:
-        async with sem:
-          try:
-            response = await client.get(
-              tile_url, headers=tile_headers, timeout=tile_timeout
-            )
-            if response.status_code == 200:
-              return (ty, tx, True, response.content)
-            print(
-              f"[preview] Tile {tile_x}/{tile_y} returned status "
-              f"{response.status_code}"
-            )
-            return (ty, tx, False, None)
-          except Exception as tile_error:
-            print(
-              f"[preview] Failed to fetch tile {tile_x}/{tile_y} "
-              f"from {tile_url}: {tile_error}"
-            )
-            return (ty, tx, False, None)
-
-      async with httpx.AsyncClient(timeout=tile_timeout, verify=True) as client:
-        tasks = []
+      async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
         for ty in range(tiles_y):
           for tx in range(tiles_x):
             tile_x = start_tile_x + tx
             tile_y = start_tile_y + ty
+
+            # Use theme-appropriate tile server
             if theme_str == "dark":
-              tile_url = (
-                "https://a.basemaps.cartocdn.com/dark_all/"
-                f"{zoom_val}/{tile_x}/{tile_y}.png"
-              )
+              # CartoDB Dark Matter tiles
+              tile_url = f"https://a.basemaps.cartocdn.com/dark_all/{zoom_val}/{tile_x}/{tile_y}.png"
             else:
-              tile_url = (
-                "https://tile.openstreetmap.org/"
-                f"{zoom_val}/{tile_x}/{tile_y}.png"
+              # Standard OSM light tiles
+              tile_url = f"https://tile.openstreetmap.org/{zoom_val}/{tile_x}/{tile_y}.png"
+
+            try:
+              response = await client.get(tile_url)
+              if response.status_code == 200:
+                tile_img = Image.open(BytesIO(response.content))
+                # Calculate position: center the marker at the center of the image
+                # The center tile should place the marker at the center pixel position
+                x_offset = (
+                  (tx - tiles_x // 2) * tile_size + width // 2 -
+                  center_tile_pixel_x
+                )
+                y_offset = (
+                  (ty - tiles_y // 2) * tile_size + height // 2 -
+                  center_tile_pixel_y
+                )
+                final_image.paste(
+                  tile_img,
+                  (x_offset, y_offset),
+                  tile_img if tile_img.mode == "RGBA" else None,
+                )
+                tiles_fetched += 1
+              else:
+                tiles_failed += 1
+                print(
+                  f"[preview] Tile {tile_x}/{tile_y} returned status {response.status_code}"
+                )
+            except Exception as tile_error:
+              tiles_failed += 1
+              print(
+                f"[preview] Failed to fetch tile {tile_x}/{tile_y} from {tile_url}: {tile_error}"
               )
-            tasks.append(fetch_tile(ty, tx, tile_x, tile_y, tile_url))
-        for result in await asyncio.gather(*tasks):
-          ty, tx, ok, body = result
-          if not ok or body is None:
-            tiles_failed += 1
-            continue
-          tile_img = Image.open(BytesIO(body))
-          x_offset = (
-            (tx - tiles_x // 2) * tile_size + width // 2 -
-            center_tile_pixel_x
-          )
-          y_offset = (
-            (ty - tiles_y // 2) * tile_size + height // 2 -
-            center_tile_pixel_y
-          )
-          final_image.paste(
-            tile_img,
-            (x_offset, y_offset),
-            tile_img if tile_img.mode == "RGBA" else None,
-          )
-          tiles_fetched += 1
+              continue
 
       print(f"[preview] Fetched {tiles_fetched} tiles, {tiles_failed} failed")
 
@@ -3200,31 +3133,78 @@ async def preview_image(
       import traceback
 
       traceback.print_exc()
-      png = _preview_simple_marker_png(width, height, theme_str, marker_str)
-      print("[preview] Returning fallback image with marker (generation error)")
-      return Response(
-        content=png,
-        media_type="image/png",
-        headers={"Cache-Control": "public, max-age=300"},
-      )
+
+      # Even if tile fetching fails, try to return a simple map with marker
+      try:
+        bg_color = (18, 18, 18) if theme_str == "dark" else (242, 239, 233)
+        fallback_image = Image.new("RGB", (width, height), bg_color)
+        draw = ImageDraw.Draw(fallback_image)
+
+        # Draw marker
+        marker_color_map = {
+          "red": (220, 53, 69),
+          "blue": (0, 123, 255),
+          "green": (40, 167, 69),
+          "yellow": (255, 193, 7),
+          "orange": (255, 152, 0),
+          "purple": (108, 117, 125),
+          "black": (0, 0, 0),
+          "white": (255, 255, 255),
+        }
+        marker_color = marker_color_map.get(marker_str, (0, 123, 255))
+        marker_x = width // 2
+        marker_y = height // 2
+        marker_radius = 12
+        draw.ellipse(
+          [
+            (marker_x - marker_radius, marker_y - marker_radius),
+            (marker_x + marker_radius, marker_y + marker_radius),
+          ],
+          fill=marker_color,
+          outline=(255, 255, 255),
+          width=2,
+        )
+
+        img_bytes = BytesIO()
+        fallback_image.save(img_bytes, format="PNG")
+        img_bytes.seek(0)
+
+        print(
+          f"[preview] Returning fallback image with marker (tile fetch failed)"
+        )
+        return Response(
+          content=img_bytes.getvalue(),
+          media_type="image/png",
+          headers={"Cache-Control": "public, max-age=300"},
+        )
+      except Exception as fallback_error:
+        print(
+          f"[preview] Fallback image generation also failed: {fallback_error}"
+        )
+        # Only redirect to static image if even fallback fails
+        if SITE_OG_IMAGE and SITE_OG_IMAGE.startswith("http"):
+          from fastapi.responses import RedirectResponse
+
+          print(
+            f"[preview] All image generation failed, redirecting to static OG image: {SITE_OG_IMAGE}"
+          )
+          return RedirectResponse(url=SITE_OG_IMAGE, status_code=302)
+
+        # Return transparent PNG as last resort
+        transparent_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82"
+        return Response(
+          content=transparent_png,
+          media_type="image/png",
+          headers={"Cache-Control": "public, max-age=300"},
+        )
   except Exception as e:
+    # Log error for debugging
     print(f"[preview] Error generating preview image: {e}")
     import traceback
 
     traceback.print_exc()
-    if SITE_OG_IMAGE and SITE_OG_IMAGE.startswith("http"):
-      from fastapi.responses import RedirectResponse
-
-      print(
-        f"[preview] Redirecting to static OG image: {SITE_OG_IMAGE}"
-      )
-      return RedirectResponse(url=SITE_OG_IMAGE, status_code=302)
-    png = _preview_simple_marker_png(1200, 630, "dark", "blue")
-    return Response(
-      content=png,
-      media_type="image/png",
-      headers={"Cache-Control": "public, max-age=300"},
-    )
+    # Return empty image on error
+    return Response(content=b"", status_code=500, media_type="image/png")
 
 
 @app.get("/map")
@@ -3334,17 +3314,17 @@ def map_page(request: Request):
 @app.get("/manifest.webmanifest")
 def manifest():
   icons = []
-  if SITE_ICON:
-    icon_src = _public_if_root_relative(SITE_ICON)
+  icon_href = _public_if_root_relative(SITE_ICON)
+  if icon_href:
     icons = [
       {
-        "src": icon_src,
+        "src": icon_href,
         "sizes": "192x192",
         "type": "image/png",
         "purpose": "any",
       },
       {
-        "src": icon_src,
+        "src": icon_href,
         "sizes": "512x512",
         "type": "image/png",
         "purpose": "any maskable",
@@ -3353,7 +3333,7 @@ def manifest():
   short_name = SITE_TITLE if len(SITE_TITLE) <= 12 else SITE_TITLE[:12]
   start_url = public_app_path("/")
   if not start_url.endswith("/"):
-    start_url = start_url + "/"
+    start_url += "/"
   scope = start_url
   return JSONResponse(
     {
@@ -3441,21 +3421,6 @@ def service_worker():
 def snapshot(request: Request):
   _require_prod_token(request)
   now = time.time()
-  truthy = {"1", "true", "yes", "on"}
-  query = request.query_params
-  include_history_edges = str(
-    query.get("include_history_edges", "1")
-  ).strip().lower() in truthy
-  include_heat = str(query.get("include_heat", "1")
-                    ).strip().lower() in truthy
-  history_edges_payload: List[Dict[str, Any]] = []
-  heat_payload: List[List[float]] = []
-  if include_history_edges:
-    history_edges_payload = [
-      _history_edge_payload(e) for e in route_history_edges.values()
-    ]
-  if include_heat:
-    heat_payload = _serialize_heat_events()
   return {
     "devices": {
       k: _device_payload(k, v)
@@ -3463,9 +3428,10 @@ def snapshot(request: Request):
     },
     "trails": trails,
     "routes": _snapshot_routes(now),
-    "history_edges": history_edges_payload,
+    "history_edges":
+      [_history_edge_payload(e) for e in route_history_edges.values()],
     "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
-    "heat": heat_payload,
+    "heat": _serialize_heat_events(),
     "update": git_update_info,
     "mqtt_presence": _mqtt_presence_summary(now),
     "server_time": now,
