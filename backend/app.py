@@ -22,7 +22,13 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from urllib.parse import urlencode, parse_qsl, urlsplit, urlunsplit
+from urllib.parse import (
+  urlencode,
+  parse_qsl,
+  urlsplit,
+  urlunsplit,
+  urlparse,
+)
 from io import BytesIO
 from PIL import Image, ImageDraw
 import math
@@ -202,6 +208,24 @@ def _public_if_root_relative(url: str) -> str:
 
 def _session_cookie_path() -> str:
   return APP_BASE_PATH if APP_BASE_PATH else "/"
+
+
+def _http_site_origin(request: Request) -> str:
+  """Scheme + host for absolute public URLs (OG previews, embeds)."""
+  su = (SITE_URL or "").strip()
+  if su.startswith("http"):
+    parsed = urlparse(su)
+    if parsed.netloc:
+      return f"{parsed.scheme}://{parsed.netloc}"
+  scheme = request.url.scheme
+  host = request.headers.get("host", request.url.hostname or "localhost")
+  return f"{scheme}://{host}"
+
+
+def _public_preview_png_url(request: Request, query: str) -> str:
+  """Absolute URL for preview.png including APP_BASE_PATH."""
+  path = public_app_path("/preview.png")
+  return f"{_http_site_origin(request)}{path}?{query}"
 
 
 def _client_los_proxy_url() -> str:
@@ -2704,9 +2728,8 @@ def root(request: Request):
       zoom = int(zoom_param) if zoom_param and zoom_param.isdigit() else 13
       zoom = max(1, min(18, zoom))  # Clamp zoom between 1-18
 
-      # Generate preview image URL pointing to our own server
-      # Use absolute URL for better compatibility with Discord and other platforms
-      base_url = str(request.url).split("?")[0].rstrip("/")
+      # Generate preview image URL pointing to our own server (must include
+      # APP_BASE_PATH when the map is not served at the site root).
       preview_params = urlencode(
         {
           "lat": lat,
@@ -2716,17 +2739,7 @@ def root(request: Request):
           "theme": "dark",
         }
       )
-      preview_url = f"{base_url}/preview.png?{preview_params}"
-
-      # Ensure absolute URL (use SITE_URL if available, otherwise construct from request)
-      if SITE_URL and SITE_URL.startswith("http"):
-        site_base = SITE_URL.rstrip("/")
-        preview_url = f"{site_base}/preview.png?{preview_params}"
-      elif not preview_url.startswith("http"):
-        # Fallback: construct from request
-        scheme = request.url.scheme
-        host = request.headers.get("host", request.url.hostname or "localhost")
-        preview_url = f"{scheme}://{host}/preview.png?{preview_params}"
+      preview_url = _public_preview_png_url(request, preview_params)
 
       safe_image = html.escape(preview_url, quote=True)
       # Add image dimensions for better Discord/social media compatibility
@@ -2745,9 +2758,11 @@ def root(request: Request):
         safe_static_image = html.escape(str(SITE_OG_IMAGE), quote=True)
         og_image_tag += f'\n  <meta property="og:image:secure_url" content="{safe_static_image}" />'
 
-      # Update og:url to include query parameters
-      base_url = str(request.url).split("?")[0]
-      og_url = f"{base_url}?lat={lat}&lon={lon}"
+      # Update og:url to include query parameters (same path prefix as map).
+      base_page = (
+        _http_site_origin(request) + public_app_path("/").rstrip("/")
+      )
+      og_url = f"{base_page}?lat={lat}&lon={lon}"
       if zoom_param:
         og_url += f"&zoom={zoom}"
     except (ValueError, TypeError):
