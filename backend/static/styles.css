@@ -1092,14 +1092,18 @@
     }
 
     .peer-item .peer-name {
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
     .peer-item .peer-count {
+      flex: 0 0 auto;
       opacity: 0.8;
+      text-align: right;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
 
     @media (max-width: 900px) {

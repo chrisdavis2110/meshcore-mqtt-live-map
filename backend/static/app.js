@@ -68,6 +68,16 @@ const queryMenuVisible = parseBoolParam(
   queryParams.get('menu') || queryParams.get('hud') || queryParams.get('panel')
 );
 const queryUnits = String(queryParams.get('units') || queryParams.get('unit') || '').toLowerCase();
+const queryLinkedDevice = String(
+  queryParams.get('node') ||
+  queryParams.get('repeater') ||
+  queryParams.get('device') ||
+  queryParams.get('device_id') ||
+  queryParams.get('public_key') ||
+  queryParams.get('pubkey') ||
+  ''
+).trim();
+const linkedDeviceParamNames = ['node', 'repeater', 'device', 'device_id', 'public_key', 'pubkey'];
 const queryHistoryFilter = parseHistoryFilterParam(
   queryParams.get('history_filter') || queryParams.get('historyFilter') || queryParams.get('historyfilter')
 );
@@ -563,11 +573,14 @@ const syncLosHeightInputs = () => {
 };
 syncLosHeightInputs();
 const deviceData = new Map();
+const linkedDeviceTarget = normalizeLinkedDeviceTarget(queryLinkedDevice);
+let linkedDeviceFocusDone = !linkedDeviceTarget;
 const searchInput = document.getElementById('node-search');
 const searchResults = document.getElementById('node-search-results');
 const nodeSizeInput = document.getElementById('node-size');
 const nodeSizeValue = document.getElementById('node-size-value');
 let searchMatches = [];
+let focusDeviceToken = 0;
 const storedLabels = localStorage.getItem('meshmapShowLabels');
 let showLabels = storedLabels === 'true';
 if (storedLabels === null) {
@@ -2632,7 +2645,23 @@ function renderPeerLines(origin, incoming, outgoing) {
   }
 }
 
-function renderPeerList(target, peers, total, label) {
+function getPeerDistanceMeters(origin, peer) {
+  const apiDistance = Number(peer && peer.distance_m);
+  if (Number.isFinite(apiDistance) && apiDistance >= 0) {
+    return apiDistance;
+  }
+  if (!origin || !peer) return null;
+  const originLat = Number(origin.lat);
+  const originLon = Number(origin.lon);
+  const peerLat = Number(peer.lat);
+  const peerLon = Number(peer.lon);
+  if (![originLat, originLon, peerLat, peerLon].every(Number.isFinite)) {
+    return null;
+  }
+  return haversineMeters(originLat, originLon, peerLat, peerLon);
+}
+
+function renderPeerList(target, peers, total, label, origin = null) {
   if (!target) return;
   target.innerHTML = '';
   if (!peers || peers.length === 0) {
@@ -2647,7 +2676,11 @@ function renderPeerList(target, peers, total, label) {
     item.className = 'peer-item';
     const name = peer.name || (peer.peer_id ? `${peer.peer_id.slice(0, 8)}…` : 'Unknown');
     const percent = total > 0 ? `${peer.percent.toFixed(1)}%` : '0%';
-    item.innerHTML = `<span class="peer-name">${name}</span><span class="peer-count">${peer.count} • ${percent}</span>`;
+    const distance = formatPeerDistanceUnits(getPeerDistanceMeters(origin, peer));
+    const meta = distance
+      ? `${distance} • ${peer.count} • ${percent}`
+      : `${peer.count} • ${percent}`;
+    item.innerHTML = `<span class="peer-name">${name}</span><span class="peer-count">${meta}</span>`;
     item.addEventListener('click', () => {
       if (peer.peer_id) {
         focusDevice(peer.peer_id);
@@ -2679,10 +2712,11 @@ async function selectPeerNode(deviceId) {
     if (peersMeta) {
       peersMeta.textContent = `Incoming ${inboundTotal} • Outgoing ${outboundTotal} • ${data.window_hours || 24}h window`;
     }
-    renderPeerList(peersIn, data.incoming || [], inboundTotal, 'incoming');
-    renderPeerList(peersOut, data.outgoing || [], outboundTotal, 'outgoing');
+    const origin = { lat: data.lat, lon: data.lon };
+    renderPeerList(peersIn, data.incoming || [], inboundTotal, 'incoming', origin);
+    renderPeerList(peersOut, data.outgoing || [], outboundTotal, 'outgoing', origin);
     renderPeerLines(
-      { lat: data.lat, lon: data.lon },
+      origin,
       data.incoming || [],
       data.outgoing || []
     );
@@ -2784,6 +2818,56 @@ function deviceDisplayName(d) {
   return d.name || deviceShortId(d) || 'Unknown';
 }
 
+function normalizeLinkedDeviceTarget(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function linkedDeviceSlug(value) {
+  return normalizeLinkedDeviceTarget(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function deviceMatchesLinkedTarget(id, d, target) {
+  if (!target) return false;
+  const normalizedId = normalizeLinkedDeviceTarget(id);
+  if (normalizedId === target) return true;
+  if (target.length >= 6 && normalizedId.startsWith(target)) return true;
+
+  const name = d && d.name ? d.name : '';
+  const normalizedName = normalizeLinkedDeviceTarget(name);
+  if (normalizedName && normalizedName === target) return true;
+  const targetSlug = linkedDeviceSlug(target);
+  return Boolean(targetSlug && linkedDeviceSlug(name) === targetSlug);
+}
+
+function findLinkedDeviceId(target) {
+  if (!target) return null;
+  for (const [id] of deviceData.entries()) {
+    if (normalizeLinkedDeviceTarget(id) === target) return id;
+  }
+  const matches = [];
+  for (const [id, d] of deviceData.entries()) {
+    if (deviceMatchesLinkedTarget(id, d, target)) {
+      matches.push({ id, d });
+    }
+  }
+  const repeater = matches.find(({ d }) => resolveRole(d) === 'repeater');
+  return repeater ? repeater.id : (matches[0] ? matches[0].id : null);
+}
+
+function tryFocusLinkedDevice() {
+  if (linkedDeviceFocusDone || !linkedDeviceTarget) return false;
+  const id = findLinkedDeviceId(linkedDeviceTarget);
+  if (!id) return false;
+  linkedDeviceFocusDone = true;
+  if (!nodesVisible) {
+    setNodesVisible(true);
+  }
+  focusDevice(id, { fromLink: true });
+  return true;
+}
+
 function getLastSeenTs(d) {
   return d.last_seen_ts || d.ts;
 }
@@ -2874,13 +2958,25 @@ function renderSearchResults(query) {
   searchResults.hidden = false;
 }
 
-function focusDevice(id) {
+function focusDevice(id, options = {}) {
   const marker = markers.get(id);
   const d = deviceData.get(id);
   if (!marker || !d) return;
-  const targetZoom = Math.max(map.getZoom(), 13);
-  map.flyTo(marker.getLatLng(), targetZoom, { duration: 0.6 });
-  marker.openPopup();
+  const targetZoom = Math.max(map.getZoom(), Number(options.minZoom) || 13);
+  const openPopup = options.openPopup !== false;
+  const latlng = marker.getLatLng();
+  const token = ++focusDeviceToken;
+  let popupOpened = false;
+  const openAfterMove = () => {
+    if (token !== focusDeviceToken) return;
+    if (popupOpened || !openPopup) return;
+    popupOpened = true;
+    refreshViewportLayers();
+    marker.openPopup();
+  };
+  map.once('moveend', openAfterMove);
+  map.flyTo(latlng, targetZoom, { duration: options.fromLink ? 0.35 : 0.6 });
+  window.setTimeout(openAfterMove, options.fromLink ? 450 : 700);
   if (searchInput) searchInput.value = '';
   if (searchResults) {
     searchResults.hidden = true;
@@ -3436,6 +3532,20 @@ function formatDistanceUnits(meters) {
   }
   if (value >= 1000) return `${(value / 1000).toFixed(2)} km`;
   return `${Math.round(value)} m`;
+}
+
+function formatPeerDistanceUnits(meters) {
+  if (meters == null) return '';
+  const value = Number(meters);
+  if (!Number.isFinite(value) || value < 0) return '';
+  if (distanceUnits === 'mi') {
+    const miles = value / 1609.344;
+    const decimals = miles < 10 ? 1 : 0;
+    return `${miles.toFixed(decimals)} mi`;
+  }
+  const km = value / 1000.0;
+  const decimals = km < 10 ? 1 : 0;
+  return `${km.toFixed(decimals)} km`;
 }
 
 function formatDistanceMeters(meters) {
@@ -5387,6 +5497,16 @@ function makePopup(d) {
       >Generate QR Code</button>
     `);
   }
+  if (publicKey) {
+    const linkLabel = role === 'repeater' ? 'Copy repeater link' : 'Copy node link';
+    popupActions.push(`
+      <button
+        type="button"
+        class="popup-action-button"
+        data-node-link-id="${escapeHtmlAttr(publicKey)}"
+      >${linkLabel}</button>
+    `);
+  }
   return `
         ${title}
         <span class="small">
@@ -5508,6 +5628,11 @@ function upsertDevice(d, trail) {
         if (btn.dataset.boundQr === 'true') return;
         btn.dataset.boundQr = 'true';
         btn.addEventListener('click', handleQrPopupClick);
+      });
+      root.querySelectorAll('.popup-action-button[data-node-link-id]').forEach((btn) => {
+        if (btn.dataset.boundNodeLink === 'true') return;
+        btn.dataset.boundNodeLink = 'true';
+        btn.addEventListener('click', copyNodeLink);
       });
     });
     m.__suppressClick = false;
@@ -6404,6 +6529,7 @@ async function initialSnapshot() {
         const trail = snap.trails ? snap.trails[id] : null;
         upsertDevice(d, trail);
       }
+      tryFocusLinkedDevice();
     }
     if (Array.isArray(snap.heat)) {
       seedHeat(snap.heat);
@@ -6457,6 +6583,7 @@ function queueRealtimeMessage(msg) {
 function handleRealtimeMessage(msg) {
   if (msg.type === "update") {
     upsertDevice(msg.device, msg.trail);
+    tryFocusLinkedDevice();
     return;
   }
 
@@ -6541,6 +6668,7 @@ function connectWS() {
           const trail = msg.trails ? msg.trails[id] : null;
           upsertDevice(d, trail);
         }
+        tryFocusLinkedDevice();
         clearRoutes();
         if (Array.isArray(msg.heat)) {
           seedHeat(msg.heat);
@@ -6803,6 +6931,91 @@ if (initialUpdateAvailable) {
   });
 }
 
+function clearLinkedDeviceParams(url) {
+  linkedDeviceParamNames.forEach((name) => url.searchParams.delete(name));
+}
+
+function buildMapShareUrl(options = {}) {
+  const center = options.center || map.getCenter();
+  const lat = Number(center.lat);
+  const lon = Number(center.lng ?? center.lon);
+  const zoom = options.zoom == null ? map.getZoom() : options.zoom;
+  const url = new URL(window.location.href);
+  clearLinkedDeviceParams(url);
+  if (Number.isFinite(lat)) url.searchParams.set('lat', lat.toFixed(5));
+  if (Number.isFinite(lon)) url.searchParams.set('lon', lon.toFixed(5));
+  url.searchParams.set('zoom', String(zoom));
+  url.searchParams.set('layer', baseLayer);
+  url.searchParams.set('history', historyVisible ? 'on' : 'off');
+  url.searchParams.set('heat', heatVisible ? 'on' : 'off');
+  url.searchParams.set('coverage', coverageVisible ? 'on' : 'off');
+  url.searchParams.set('weather', radarVisible ? 'on' : 'off');
+  url.searchParams.set('weather_radar', weatherRadarLayerEnabled ? 'on' : 'off');
+  url.searchParams.set('weather_wind', weatherWindLayerEnabled ? 'on' : 'off');
+  url.searchParams.set('labels', showLabels ? 'on' : 'off');
+  url.searchParams.set('nodes', nodesVisible ? 'on' : 'off');
+  url.searchParams.set(
+    'legend',
+    hud && hud.classList.contains('legend-collapsed') ? 'off' : 'on'
+  );
+  url.searchParams.set(
+    'menu',
+    hud && hud.classList.contains('panel-hidden') ? 'off' : 'on'
+  );
+  url.searchParams.set('units', distanceUnits);
+  url.searchParams.set('history_filter', String(historyFilterMode));
+  url.searchParams.set('route_bytes', routeByteFilter);
+  if (options.deviceId) {
+    url.searchParams.set('node', options.deviceId);
+    url.searchParams.set('nodes', 'on');
+  }
+  return url.toString();
+}
+
+function buildDeviceLink(id, d) {
+  const marker = markers.get(id);
+  const markerLatLng = marker && marker.getLatLng ? marker.getLatLng() : null;
+  const lat = markerLatLng ? markerLatLng.lat : Number(d && d.lat);
+  const lon = markerLatLng ? markerLatLng.lng : Number(d && d.lon);
+  return buildMapShareUrl({
+    center: { lat, lon },
+    zoom: Math.max(map.getZoom(), 13),
+    deviceId: id
+  });
+}
+
+async function copyTextWithFallback(text, promptLabel) {
+  let copied = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (_err) {
+    copied = false;
+  }
+  if (!copied) {
+    window.prompt(promptLabel, text);
+  }
+  return copied;
+}
+
+async function copyNodeLink(ev) {
+  const btn = ev?.currentTarget;
+  const id = btn?.dataset?.nodeLinkId || '';
+  if (!btn || !id) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const d = deviceData.get(id);
+  const link = buildDeviceLink(id, d);
+  const original = btn.textContent || 'Copy link';
+  const copied = await copyTextWithFallback(link, 'Copy node link:');
+  btn.textContent = copied ? 'Copied' : original;
+  window.setTimeout(() => {
+    btn.textContent = original;
+  }, 1200);
+}
+
 const shareToggle = document.getElementById('share-toggle');
 if (qrModalClose) {
   qrModalClose.addEventListener('click', closeQrModal);
@@ -6825,38 +7038,7 @@ if (shareToggle) {
     shareToggle.setAttribute('title', 'Copy share link');
   };
   shareToggle.addEventListener('click', async () => {
-    const center = map.getCenter();
-    const url = new URL(window.location.href);
-    url.searchParams.set('lat', center.lat.toFixed(5));
-    url.searchParams.set('lon', center.lng.toFixed(5));
-    url.searchParams.set('zoom', String(map.getZoom()));
-    url.searchParams.set('layer', baseLayer);
-    url.searchParams.set('history', historyVisible ? 'on' : 'off');
-    url.searchParams.set('heat', heatVisible ? 'on' : 'off');
-    url.searchParams.set('coverage', coverageVisible ? 'on' : 'off');
-    url.searchParams.set('weather', radarVisible ? 'on' : 'off');
-    url.searchParams.set('weather_radar', weatherRadarLayerEnabled ? 'on' : 'off');
-    url.searchParams.set('weather_wind', weatherWindLayerEnabled ? 'on' : 'off');
-    url.searchParams.set('labels', showLabels ? 'on' : 'off');
-    url.searchParams.set('nodes', nodesVisible ? 'on' : 'off');
-    url.searchParams.set('legend', hud && hud.classList.contains('legend-collapsed') ? 'off' : 'on');
-    url.searchParams.set('menu', hud && hud.classList.contains('panel-hidden') ? 'off' : 'on');
-    url.searchParams.set('units', distanceUnits);
-    url.searchParams.set('history_filter', String(historyFilterMode));
-    url.searchParams.set('route_bytes', routeByteFilter);
-    const shareUrl = url.toString();
-    let copied = false;
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(shareUrl);
-        copied = true;
-      }
-    } catch (err) {
-      copied = false;
-    }
-    if (!copied) {
-      window.prompt('Copy share link:', shareUrl);
-    }
+    await copyTextWithFallback(buildMapShareUrl(), 'Copy share link:');
     shareToggle.classList.add('copied');
     shareToggle.setAttribute('aria-label', 'Share link copied');
     shareToggle.setAttribute('title', 'Share link copied');
@@ -6924,6 +7106,13 @@ function setDistanceUnits(units, persist = true) {
   }
   if (activeRouteDetailsMeta && routeDetailsPanel && !routeDetailsPanel.hidden) {
     showRouteDetails(activeRouteDetailsMeta);
+  }
+  if (peersData) {
+    const inboundTotal = peersData.incoming_total || 0;
+    const outboundTotal = peersData.outgoing_total || 0;
+    const origin = { lat: peersData.lat, lon: peersData.lon };
+    renderPeerList(peersIn, peersData.incoming || [], inboundTotal, 'incoming', origin);
+    renderPeerList(peersOut, peersData.outgoing || [], outboundTotal, 'outgoing', origin);
   }
   if (radarVisible && weatherWindEnabled && weatherWindLayerEnabled) {
     refreshWeatherWindLayer({ silent: true, background: true });

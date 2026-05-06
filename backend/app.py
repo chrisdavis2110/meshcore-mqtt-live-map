@@ -3487,6 +3487,7 @@ def get_peers(device_id: str, request: Request, limit: Optional[int] = Query(Non
   if state and not _coords_are_zero(state.lat, state.lon):
     payload["lat"] = float(state.lat)
     payload["lon"] = float(state.lon)
+    _add_peer_distances(payload, float(state.lat), float(state.lon))
   payload["name"] = (
     (state.name if state else None) or device_names.get(device_id) or ""
   )
@@ -3496,6 +3497,34 @@ def get_peers(device_id: str, request: Request, limit: Optional[int] = Query(Non
                                             ) or (state.ts if state else None)
   payload["server_time"] = time.time()
   return payload
+
+
+def _add_peer_distances(
+  payload: Dict[str, Any], origin_lat: float, origin_lon: float
+) -> None:
+  if _coords_are_zero(origin_lat, origin_lon):
+    return
+  for key in ("incoming", "outgoing"):
+    peers = payload.get(key)
+    if not isinstance(peers, list):
+      continue
+    for peer in peers:
+      if not isinstance(peer, dict):
+        continue
+      lat = peer.get("lat")
+      lon = peer.get("lon")
+      if lat is None or lon is None:
+        continue
+      try:
+        peer_lat = float(lat)
+        peer_lon = float(lon)
+      except (TypeError, ValueError):
+        continue
+      if _coords_are_zero(peer_lat, peer_lon):
+        continue
+      peer["distance_m"] = round(
+        _haversine_m(origin_lat, origin_lon, peer_lat, peer_lon), 2
+      )
 
 
 def _peer_device_payload(
