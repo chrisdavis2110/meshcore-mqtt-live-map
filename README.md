@@ -40,7 +40,7 @@ Other community maps (versions may differ):
 - Share button that copies a URL with current view + settings
 - URL parameters to open the map at a specific view (center, zoom, toggles)
 - Node search by name or public key
-- Node popups can copy the full public key from the short key shown under the node name, with an optional MeshCore contact QR modal that shows the node name and a clickable truncated key
+- Node popups can copy the full public key from the short key shown under the node name, copy a direct `node=` map link, and optionally expose a MeshCore contact QR modal that shows the node name plus a clickable truncated key
 - Adjustable node size slider (defaults from env, saves locally)
 - LOS tool with elevation profile + peak markers, hover sync, realtime draggable endpoints (Shift+click or long‑press nodes), and Earth-curvature-aware blockage checks
 - Embeddable metadata (Open Graph/Twitter tags) driven by env vars
@@ -326,8 +326,8 @@ Use it:
 - LOS elevations are fetched via `/los/elevations` and LOS/relay math runs client-side (with `/los` fallback).
 - LOS now includes Earth curvature by default using an effective Earth radius factor of `1.333333`, unless you override the LOS curvature envs.
 - History tool always loads off (use the button or `history=on` in the URL).
-- Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, and forced MQTT listeners are excluded from peer lists.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`.
+- Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, distances are shown in the selected km/mi units when both endpoints have coordinates, and forced MQTT listeners are excluded from peer lists.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;
@@ -361,6 +361,7 @@ Each node includes:
 
 Peer summary:
 - `GET /peers/{device_id}?token=YOUR_TOKEN`
+  - Returns incoming/outgoing neighbors with counts/percentages from route history and `distance_m` when both endpoints have coordinates.
 
 Boundary mode:
 - Default behavior remains radius-based filtering.

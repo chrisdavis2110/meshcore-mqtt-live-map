@@ -6,6 +6,8 @@
 - Mixed-width paths remain visible in the matching byte view whenever a route contains at least one hop of that width, which keeps upgraded mixed meshes usable during rollout.
 - The selected route-byte filter can be shared with `route_bytes=all|1b|2b|3b`, but it resets to `All` on normal reloads so stale browser state does not hide routes unexpectedly.
 - Added `HEAT_DEFAULT_ON` so deployments can choose whether the Heat layer loads on or off by default before any browser-local overrides exist.
+- Node popups now include a direct map-link action that copies a URL with `node=<public-key>`; loading that link focuses and zooms to the matching node/repeater, with `repeater`, `device`, `device_id`, `public_key`, and `pubkey` accepted as aliases.
+- The Peers tool now includes peer distance in the selected km/mi units when both the selected node and peer have coordinates.
 
 ## v1.8.5 (04-30-2026)
 - Added a DockerHub publish workflow at `.github/workflows/docker-publish.yml` that builds the app from `backend/Dockerfile` and pushes multi-arch `linux/amd64` and `linux/arm64` images.

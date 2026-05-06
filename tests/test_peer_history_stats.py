@@ -10,6 +10,9 @@ def _clear_peer_state():
   state.route_history_segments.clear()
   state.route_history_edges.clear()
   state.peer_history_pairs.clear()
+  state.devices.clear()
+  state.device_names.clear()
+  state.device_roles.clear()
 
 
 def _route(ts):
@@ -112,3 +115,42 @@ def test_peer_history_records_route_ids_without_drawn_segments(monkeypatch):
   assert inbound["incoming_total"] == 1
   assert outbound["outgoing"][0]["peer_id"] == "BB001111"
   assert inbound["incoming"][0]["peer_id"] == "AA001111"
+
+
+def test_get_peers_adds_distance_m_for_located_peers(monkeypatch):
+  _clear_peer_state()
+  now = time.time()
+  bucket = history._peer_history_bucket_start(now)
+
+  monkeypatch.setattr(app, "PROD_MODE", False)
+  monkeypatch.setattr(app, "ROUTE_HISTORY_HOURS", 24)
+  state.devices["AA001111"] = state.DeviceState(
+    device_id="AA001111",
+    lat=42.3601,
+    lon=-71.0589,
+    ts=now,
+    name="Origin",
+    role="repeater",
+  )
+  state.devices["BB001111"] = state.DeviceState(
+    device_id="BB001111",
+    lat=42.3611,
+    lon=-71.0579,
+    ts=now,
+    name="Peer",
+    role="repeater",
+  )
+  state.peer_history_pairs["AA001111:BB001111"] = {
+    "a_id": "AA001111",
+    "b_id": "BB001111",
+    "buckets": {str(bucket): 3},
+  }
+
+  payload = app.get_peers("AA001111", None, limit=8)
+  peer = payload["outgoing"][0]
+  expected = app._haversine_m(42.3601, -71.0589, 42.3611, -71.0579)
+
+  assert payload["lat"] == 42.3601
+  assert payload["lon"] == -71.0589
+  assert peer["peer_id"] == "BB001111"
+  assert peer["distance_m"] == round(expected, 2)
