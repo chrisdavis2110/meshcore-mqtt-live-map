@@ -1,9 +1,9 @@
-const CACHE_NAME = 'meshmap-pwa-v6';
 const MESHMAP_APP_BASE = __MESHMAP_APP_BASE__;
 const meshmapHomePath = MESHMAP_APP_BASE ? `${MESHMAP_APP_BASE}/` : '/';
 const meshmapManifestPath = MESHMAP_APP_BASE
   ? `${MESHMAP_APP_BASE}/manifest.webmanifest`
   : '/manifest.webmanifest';
+const CACHE_NAME = 'meshmap-pwa-v6';
 const CORE_ASSETS = [meshmapHomePath, meshmapManifestPath];
 
 self.addEventListener('install', (event) => {

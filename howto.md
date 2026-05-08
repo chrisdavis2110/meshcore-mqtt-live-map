@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.8.6` (see `VERSIONS.md`).
+Current version: `1.9.0` (see `VERSIONS.md`).
 
 Useful UI defaults in the live map `.env`:
 - `HEAT_DEFAULT_ON=true|false` sets the default Heat toggle state for first load.
@@ -144,6 +144,10 @@ MQTT_WS_PATH=/
 MQTT_TLS=true
 # Comma-separated list supported, e.g. meshcore/BOS/#,meshcore/CON/#
 MQTT_TOPIC=meshcore/#
+
+# Optional: if you publish the map under a subpath such as
+# https://example.com/livemap/, set:
+# APP_BASE_PATH=/livemap
 
 # MQTT online presence tuning (v1.5+)
 MQTT_ONLINE_SECONDS=300

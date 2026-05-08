@@ -4,15 +4,16 @@
  */
 
 function meshmapPublicPathPrefix() {
-  const raw = (document.body && document.body.getAttribute('data-app-base-path')) || '';
-  return String(raw || '').trim();
+  const body = document.body;
+  if (!body || !body.dataset) return '';
+  return String(body.dataset.appBasePath || '').trim();
 }
 
-function meshmapApiPath(path) {
-  const p = path.startsWith('/') ? path : `/${path}`;
+function meshmapApiPath(p) {
   const prefix = meshmapPublicPathPrefix();
-  if (!prefix) return p;
-  return `${prefix}${p}`;
+  const path = p.startsWith('/') ? p : `/${p}`;
+  if (!prefix) return path;
+  return `${prefix}${path}`;
 }
 
 const TurnstileAuth = {
@@ -200,8 +201,12 @@ const TurnstileAuth = {
         const d = new Date();
         d.setTime(d.getTime() + (expiresIn * 1000));
         const expires = d.toUTCString();
-        const cookiePath = meshmapPublicPathPrefix() ? `${meshmapPublicPathPrefix()}/` : '/';
-        document.cookie = `meshmap_auth=${data.auth_token}; expires=${expires}; path=${cookiePath}; SameSite=Lax`;
+        const cookiePath = meshmapPublicPathPrefix()
+          ? `${meshmapPublicPathPrefix()}/`
+          : '/';
+        document.cookie = (
+          `meshmap_auth=${data.auth_token}; expires=${expires}; path=${cookiePath}; SameSite=Lax`
+        );
         
         this.log(4, `Cookie set: meshmap_auth`);
         

@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.8.6` (see `VERSIONS.md`).
+Current version: `1.9.0` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.8.6`).
+- `VERSION.txt` holds the current version string (`1.9.0`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -38,10 +38,11 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `curl -s http://localhost:8080/snapshot` (current device map).
 - `curl -s http://localhost:8080/stats` (counters, route types).
 - `curl -s http://localhost:8080/debug/last` (recent MQTT decode/debug entries).
-- `curl -s http://localhost:8080/peers/<device_id>` (peer counts for a node; uses route history).
+- `curl -s http://localhost:8080/peers/<device_id>` (peer counts/distances for a node; uses route history).
 
 ## Env Notes (Recent Additions)
 - `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
+- `APP_BASE_PATH` lets the map live under a public subpath such as `/livemap`; when blank, the app behaves as a normal root-hosted site.
 - `PACKET_ANALYZER_URL` adds an external link on Route Details hashes; set it to a base such as `https://analyzer.letsmesh.net/packets?packet_hash=`.
 - `QR_CODE_BUTTON_ENABLED` shows a `Generate QR Code` button in node popups; it opens a theme-aware MeshCore-compatible contact QR modal and defaults to `false`.
 - `PEERS_DEFAULT_LIMIT` controls the default number of peers returned by `/peers/{device_id}` when no `?limit=` is passed; default `8`.
@@ -110,7 +111,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Base map toggle: Light/Dark/Topo; persisted to localStorage.
 - Dark map also darkens node popups for readability.
 - Node popups do not auto-pan; dragging the map won’t snap back to keep a popup in view.
-- Node popups now let users click the short key under the node name to copy the full public key, and can optionally expose a MeshCore-compatible contact QR modal that shows the node name plus a clickable truncated key that still copies the full public key.
+- Node popups now let users click the short key under the node name to copy the full public key, copy a direct `node=` map link, and can optionally expose a MeshCore-compatible contact QR modal that shows the node name plus a clickable truncated key that still copies the full public key.
 - Legend is collapsible and persisted to localStorage.
 - HUD is capped to `90vh` and scrolls to avoid running off-screen.
 - Map start position is configurable with `MAP_START_LAT`, `MAP_START_LON`, `MAP_START_ZOOM`.
@@ -125,7 +126,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - History panel can be dismissed with the X button while keeping history lines visible (toggle History tool to show it again).
 - History slider modes: 0 = All, 1 = Blue only, 2 = Yellow only, 3 = Yellow + Red, 4 = Red only.
 - History legend swatch is hidden unless the History tool is active.
-- Peers tool shows incoming/outgoing neighbors for a selected node, with counts and percentages pulled from dedicated rolling peer-history buckets instead of raw route-history segments.
+- Peers tool shows incoming/outgoing neighbors for a selected node, with counts and percentages pulled from dedicated rolling peer-history buckets instead of raw route-history segments. When both endpoints have coordinates, it also shows peer distance in the selected km/mi units.
 - Peer-history buckets are also updated from adjacent route `point_ids` when a hop cannot be rendered as a visible map segment, so peer counts do not drop to zero just because a route endpoint lacked usable coordinates.
 - Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
 - Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
@@ -157,10 +158,11 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Route lines prefer known neighbor pairs (including overrides) before falling back to closest-hop selection.
 - Clicking the HUD logo hides/shows the left panel while tool panels stay open.
 - Share button copies a URL with the current view + toggles (including HUD visibility).
+- Direct node links can target a specific node/repeater with `node`, `repeater`, `device`, `device_id`, `public_key`, or `pubkey` in the URL.
 - Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.
 - Update banner shows when `GIT_CHECK_ENABLED=true` and the repo is behind; users can dismiss it per remote SHA.
 - Update banner dismissal relies on `.hud-update[hidden]` to ensure the banner actually disappears.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
 - Service worker uses `no-store` for navigation requests so env-driven UI toggles (like the radius ring) update without clearing site data.
 - HUD scrollbars are custom styled in Chromium for a cleaner look.
 

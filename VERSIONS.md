@@ -1,5 +1,12 @@
 # Versions
 
+## v1.9.0 (05-06-2026)
+- Added `APP_BASE_PATH` so the live map can be hosted under a subpath such as `/livemap` instead of only at `/` via [PR #65](https://github.com/yellowcooln/meshcore-mqtt-live-map/pull/65) by [@chrisdavis2110](https://github.com/chrisdavis2110).
+- Subpath hosting now rewrites the app shell, static assets, WebSocket path, service worker registration, manifest URLs, Turnstile verification flow, and auth cookie scope so the frontend continues to work correctly when a path prefix is configured.
+- Fixed preview/OG image URL generation so shared links and social embeds keep working correctly with `APP_BASE_PATH` and public site URLs.
+- Node popups now include a direct map-link action that copies a URL with `node=<public-key>`; loading that link focuses and zooms to the matching node/repeater, with `repeater`, `device`, `device_id`, `public_key`, and `pubkey` accepted as aliases via [PR #66](https://github.com/yellowcooln/meshcore-mqtt-live-map/pull/66) by [@mitchellmoss](https://github.com/mitchellmoss).
+- The Peers tool now includes peer distance in the selected km/mi units when both the selected node and peer have coordinates, and the backend `/peers/{device_id}` payload now exposes that value as `distance_m` via [PR #66](https://github.com/yellowcooln/meshcore-mqtt-live-map/pull/66) by [@mitchellmoss](https://github.com/mitchellmoss).
+
 ## v1.8.6 (05-02-2026)
 - Added issue #59: a new `Path bytes` HUD filter for live routes so the map can switch between `All`, `1-byte`, `2-byte`, and `3-byte` path-hash views without changing ingest or decode behavior.
 - The new route-byte filter applies to route lines, hop markers, Route Details, and the HUD route count so the visible map stays consistent while filtering.
