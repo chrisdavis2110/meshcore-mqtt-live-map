@@ -6528,7 +6528,10 @@ function upsertRoute(r, skipHeat = false) {
 
 async function initialSnapshot() {
   try {
-    const res = await fetch(withToken('/snapshot'), { headers: tokenHeaders() });
+    const initialSnapshotUrl = withToken(
+      '/snapshot?include_history_edges=0&include_heat=0'
+    );
+    const res = await fetch(initialSnapshotUrl, { headers: tokenHeaders() });
     const snap = await res.json();
     setServerTimeOffset(snap.server_time);
     if (snap.devices) {
