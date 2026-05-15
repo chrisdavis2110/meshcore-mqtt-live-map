@@ -1,5 +1,10 @@
 # Versions
 
+## v1.9.1 (05-08-2026)
+- Fixed issue #68: `ROUTE_HISTORY_ENABLED=false` now fully disables Route History instead of only stopping new history recording.
+- When Route History is disabled, the History button and panel are removed from the frontend, `history=on` no longer re-enables it, and the API/WebSocket snapshot stop publishing history edges and history window metadata.
+- The `ROUTE_HISTORY_ENABLED` env now behaves as an actual feature toggle for both backend payloads and the History tool UI, which makes it viable for lower-memory or high-volume map deployments that do not want route-history state at all.
+
 ## v1.9.0 (05-06-2026)
 - Added `APP_BASE_PATH` so the live map can be hosted under a subpath such as `/livemap` instead of only at `/` via [PR #65](https://github.com/yellowcooln/meshcore-mqtt-live-map/pull/65) by [@chrisdavis2110](https://github.com/chrisdavis2110).
 - Subpath hosting now rewrites the app shell, static assets, WebSocket path, service worker registration, manifest URLs, Turnstile verification flow, and auth cookie scope so the frontend continues to work correctly when a path prefix is configured.

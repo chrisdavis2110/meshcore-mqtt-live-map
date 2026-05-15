@@ -103,3 +103,27 @@ def test_ws_snapshot_omits_near_expired_routes_and_includes_server_time(monkeypa
   assert "drop" not in route_ids
   assert payload.get("server_time") == now
   app.routes.clear()
+
+
+def test_ws_snapshot_omits_history_when_route_history_disabled(monkeypatch):
+  ws = DummyWebSocket()
+  app.clients.clear()
+  app.route_history_edges.clear()
+  monkeypatch.setattr(app, "PROD_MODE", False)
+  monkeypatch.setattr(app, "ROUTE_HISTORY_ENABLED", False)
+  monkeypatch.setattr(app, "ROUTE_HISTORY_HOURS", 24)
+  app.route_history_edges["edge-1"] = {
+    "id": "edge-1",
+    "a": [1.0, 2.0],
+    "b": [3.0, 4.0],
+    "count": 5,
+    "recent": [],
+    "last_ts": 1000.0,
+  }
+
+  asyncio.run(app.ws_endpoint(ws))
+
+  payload = json.loads(ws.sent_messages[0])
+  assert payload["history_edges"] == []
+  assert payload["history_window_seconds"] == 0
+  app.route_history_edges.clear()

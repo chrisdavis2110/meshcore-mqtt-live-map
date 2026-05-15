@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.9.0` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.9.1` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -228,6 +228,7 @@ Device + route tuning:
 
 History overlay:
 - `ROUTE_HISTORY_ENABLED`
+  - Set `false` to disable Route History entirely, including the History button/panel and history payloads.
 - `ROUTE_HISTORY_HOURS`
 - `ROUTE_HISTORY_MAX_SEGMENTS`
 - `ROUTE_HISTORY_COMPACT_INTERVAL`

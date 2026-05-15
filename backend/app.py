@@ -281,6 +281,18 @@ def _client_weather_radar_lookup_url() -> str:
   return p
 
 
+def _history_edge_payloads() -> List[Dict[str, Any]]:
+  if not ROUTE_HISTORY_ENABLED:
+    return []
+  return [_history_edge_payload(e) for e in route_history_edges.values()]
+
+
+def _history_window_seconds_value() -> int:
+  if not ROUTE_HISTORY_ENABLED:
+    return 0
+  return int(max(0, ROUTE_HISTORY_HOURS * 3600))
+
+
 mqtt_client: Optional[mqtt.Client] = None
 background_tasks: Set[asyncio.Task[Any]] = set()
 clients: Set[WebSocket] = set()
@@ -2821,6 +2833,8 @@ def root(request: Request):
       DISTANCE_UNITS,
     "HEAT_DEFAULT_ON":
       str(HEAT_DEFAULT_ON).lower(),
+    "ROUTE_HISTORY_ENABLED":
+      str(ROUTE_HISTORY_ENABLED).lower(),
     "NODE_MARKER_RADIUS":
       NODE_MARKER_RADIUS,
     "HISTORY_LINK_SCALE":
@@ -3263,6 +3277,7 @@ def map_page(request: Request):
     "ASSET_VERSION": ASSET_VERSION,
     "DISTANCE_UNITS": DISTANCE_UNITS,
     "HEAT_DEFAULT_ON": str(HEAT_DEFAULT_ON).lower(),
+    "ROUTE_HISTORY_ENABLED": str(ROUTE_HISTORY_ENABLED).lower(),
     "NODE_MARKER_RADIUS": NODE_MARKER_RADIUS,
     "HISTORY_LINK_SCALE": HISTORY_LINK_SCALE,
     "TRAIL_INFO_SUFFIX": trail_info_suffix,
@@ -3428,9 +3443,8 @@ def snapshot(request: Request):
     },
     "trails": trails,
     "routes": _snapshot_routes(now),
-    "history_edges":
-      [_history_edge_payload(e) for e in route_history_edges.values()],
-    "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
+    "history_edges": _history_edge_payloads(),
+    "history_window_seconds": _history_window_seconds_value(),
     "heat": _serialize_heat_events(),
     "update": git_update_info,
     "mqtt_presence": _mqtt_presence_summary(now),
@@ -3454,7 +3468,8 @@ def get_stats():
       "result_counts": result_counts,
       "mapped_devices": len(devices),
       "route_count": len(routes),
-      "history_edge_count": len(route_history_edges),
+      "history_edge_count":
+        len(route_history_edges) if ROUTE_HISTORY_ENABLED else 0,
       "seen_devices": len(seen_devices),
       "mqtt_presence": presence_summary,
       "server_time": time.time(),
@@ -3472,9 +3487,9 @@ def get_stats():
     "route_count":
       len(routes),
     "history_edge_count":
-      len(route_history_edges),
+      len(route_history_edges) if ROUTE_HISTORY_ENABLED else 0,
     "history_segments":
-      len(route_history_segments),
+      len(route_history_segments) if ROUTE_HISTORY_ENABLED else 0,
     "seen_devices":
       len(seen_devices),
     "seen_recent":
@@ -3998,9 +4013,8 @@ async def ws_endpoint(ws: WebSocket):
         },
         "trails": trails,
         "routes": _snapshot_routes(time.time()),
-        "history_edges":
-          [_history_edge_payload(e) for e in route_history_edges.values()],
-        "history_window_seconds": int(max(0, ROUTE_HISTORY_HOURS * 3600)),
+        "history_edges": _history_edge_payloads(),
+        "history_window_seconds": _history_window_seconds_value(),
         "heat": _serialize_heat_events(),
         "update": git_update_info,
         "mqtt_presence": _mqtt_presence_summary(),

@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.9.0` (see `VERSIONS.md`).
+Current version: `1.9.1` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -19,7 +19,7 @@ Current version: `1.9.0` (see `VERSIONS.md`).
 - `deploy/` contains image-based examples for compose, Swarm, and Kubernetes.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.9.0`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.9.1`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -85,6 +85,7 @@ Current version: `1.9.0` (see `VERSIONS.md`).
 - Persisted state in `data/state.json` is loaded on startup; edit with care.
 - After editing `backend/*.py` or `backend/static/*`, rebuild with `docker compose up -d --build`.
 - History tool visibility is not persisted; it always loads off unless `history=on` is in the URL.
+- `ROUTE_HISTORY_ENABLED=false` disables Route History completely, including the History button/panel and history payloads in API/WebSocket snapshots.
 
 ## Feature Notes
 - MQTT supports WSS/TLS or TCP; the official `@michaelhart/meshcore-decoder` runs via a Node helper for advert/location parsing, 1/2/3-byte path decoding, and conservative MQTT role extraction.

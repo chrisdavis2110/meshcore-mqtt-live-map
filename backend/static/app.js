@@ -232,6 +232,8 @@ const prodMode = String(config.prodMode).toLowerCase() === 'true';
 const apiToken = config.prodToken || '';
 const qrCodeButtonEnabled =
   String(config.qrCodeButtonEnabled).toLowerCase() === 'true';
+const routeHistoryEnabled =
+  String(config.routeHistoryEnabled).toLowerCase() === 'true';
 const publicPathPrefix = String(config.appBasePath || '').trim();
 const apiPath = (path) => {
   const p = path.startsWith('/') ? path : `/${path}`;
@@ -623,6 +625,9 @@ const historyLinkSizeInput = document.getElementById('history-link-size');
 const historyLinkSizeValue = document.getElementById('history-link-size-value');
 const routeByteFilterSelect = document.getElementById('route-byte-filter');
 let historyWindowSeconds = null;
+if (!routeHistoryEnabled) {
+  historyWindowSeconds = 0;
+}
 const historyToolVersion = '1';
 localStorage.setItem('meshmapHistoryToolVersion', historyToolVersion);
 let historyVisible = false;
@@ -2091,6 +2096,12 @@ function setNodesVisible(visible) {
 
 function updateHistoryPanelVisibility() {
   if (!historyPanel) return;
+  if (!routeHistoryEnabled) {
+    historyPanel.classList.remove('active');
+    historyPanel.setAttribute('hidden', 'hidden');
+    historyPanel.style.display = 'none';
+    return;
+  }
   const shouldShow = historyVisible && !historyPanelHidden;
   historyPanel.classList.toggle('active', shouldShow);
   if (shouldShow) {
@@ -2112,6 +2123,27 @@ function setHistoryPanelHidden(hidden) {
 }
 
 function setHistoryVisible(visible) {
+  if (!routeHistoryEnabled) {
+    historyVisible = false;
+    historyPanelHidden = true;
+    if (historyLegendGroup) {
+      historyLegendGroup.classList.remove('active');
+      historyLegendGroup.setAttribute('hidden', 'hidden');
+      historyLegendGroup.style.display = 'none';
+    }
+    const btnDisabled = document.getElementById('history-toggle');
+    if (btnDisabled) {
+      btnDisabled.classList.remove('active');
+    }
+    if (map.hasLayer(historyLayer)) {
+      map.removeLayer(historyLayer);
+    }
+    clearHistoryLayer();
+    historyCache.clear();
+    updateHistoryPanelVisibility();
+    layoutSidePanels();
+    return;
+  }
   historyVisible = visible;
   if (visible) {
     historyPanelHidden = false;
@@ -6080,12 +6112,14 @@ function renderHistoryEdge(edge) {
 }
 
 function renderHistoryFromCache() {
+  if (!routeHistoryEnabled) return;
   historyCache.forEach(edge => renderHistoryEdge(edge));
   updateHistoryRendering();
   refreshStats();
 }
 
 function upsertHistoryEdge(edge) {
+  if (!routeHistoryEnabled) return;
   const id = historyEdgeId(edge);
   if (!id) return;
   const edgeData = { ...edge, id };
@@ -6098,6 +6132,7 @@ function upsertHistoryEdge(edge) {
 }
 
 function updateHistoryWindowLabel(seconds) {
+  if (!routeHistoryEnabled) return;
   const targets = [historyLabel, historyPanelLabel].filter(Boolean);
   if (!targets.length) return;
   let text = 'History';
@@ -6549,7 +6584,9 @@ async function initialSnapshot() {
       snap.routes.forEach(r => upsertRoute(r, true));
     }
     if (Array.isArray(snap.history_edges)) {
-      snap.history_edges.forEach(edge => upsertHistoryEdge(edge));
+      if (routeHistoryEnabled) {
+        snap.history_edges.forEach(edge => upsertHistoryEdge(edge));
+      }
     }
     applyMqttPresenceSummary(snap.mqtt_presence);
     if (snap.history_window_seconds != null) {
@@ -6639,6 +6676,7 @@ function handleRealtimeMessage(msg) {
   }
 
   if (msg.type === "history_edges") {
+    if (!routeHistoryEnabled) return;
     const edges = Array.isArray(msg.edges) ? msg.edges : [];
     edges.forEach(edge => upsertHistoryEdge(edge));
     refreshStats();
@@ -6646,6 +6684,7 @@ function handleRealtimeMessage(msg) {
   }
 
   if (msg.type === "history_edges_remove") {
+    if (!routeHistoryEnabled) return;
     removeHistoryEdges(msg.edge_ids || []);
     return;
   }
@@ -6687,7 +6726,9 @@ function connectWS() {
           msg.routes.forEach(r => upsertRoute(r, true));
         }
         if (Array.isArray(msg.history_edges)) {
-          msg.history_edges.forEach(edge => upsertHistoryEdge(edge));
+          if (routeHistoryEnabled) {
+            msg.history_edges.forEach(edge => upsertHistoryEdge(edge));
+          }
         }
         applyMqttPresenceSummary(msg.mqtt_presence);
         if (msg.history_window_seconds != null) {
@@ -7429,18 +7470,24 @@ if (nodeSizeInput) {
 
 const historyToggle = document.getElementById('history-toggle');
 if (historyToggle) {
-  let initialHistory = false;
-  if (queryHistoryVisible !== null) {
-    initialHistory = queryHistoryVisible;
-  }
-  setHistoryVisible(initialHistory);
-  historyToggle.addEventListener('click', () => {
-    if (historyVisible && historyPanelHidden) {
-      setHistoryPanelHidden(false);
-      return;
+  if (!routeHistoryEnabled) {
+    historyToggle.setAttribute('hidden', 'hidden');
+    historyToggle.style.display = 'none';
+    setHistoryVisible(false);
+  } else {
+    let initialHistory = false;
+    if (queryHistoryVisible !== null) {
+      initialHistory = queryHistoryVisible;
     }
-    setHistoryVisible(!historyVisible);
-  });
+    setHistoryVisible(initialHistory);
+    historyToggle.addEventListener('click', () => {
+      if (historyVisible && historyPanelHidden) {
+        setHistoryPanelHidden(false);
+        return;
+      }
+      setHistoryVisible(!historyVisible);
+    });
+  }
 }
 updateHistoryFilterLabel();
 if (historyFilter) {

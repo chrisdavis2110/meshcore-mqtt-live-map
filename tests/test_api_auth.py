@@ -86,6 +86,28 @@ def test_non_prod_mode_does_not_require_token(monkeypatch):
   assert peers["device_id"] == "dummy-device"
 
 
+def test_snapshot_omits_history_when_route_history_disabled(monkeypatch):
+  monkeypatch.setattr(app, "PROD_MODE", False)
+  monkeypatch.setattr(app, "ROUTE_HISTORY_ENABLED", False)
+  monkeypatch.setattr(app, "ROUTE_HISTORY_HOURS", 24)
+  app.route_history_edges.clear()
+  app.route_history_edges["edge-1"] = {
+    "id": "edge-1",
+    "a": [1.0, 2.0],
+    "b": [3.0, 4.0],
+    "count": 5,
+    "recent": [],
+    "last_ts": 1000.0,
+  }
+
+  snap = app.snapshot(_request("/snapshot"))
+
+  assert snap["history_edges"] == []
+  assert snap["history_window_seconds"] == 0
+
+  app.route_history_edges.clear()
+
+
 def test_qr_endpoint_requires_prod_token(monkeypatch):
   monkeypatch.setattr(app, "PROD_MODE", True)
   monkeypatch.setattr(app, "PROD_TOKEN", "secret-token")
