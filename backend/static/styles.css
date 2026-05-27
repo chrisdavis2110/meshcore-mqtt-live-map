@@ -1144,6 +1144,14 @@
       margin-top: 2px;
     }
 
+    .peers-lists-busy {
+      flex: 1 1 auto;
+    }
+
+    .peer-section-busy {
+      flex: 1 1 0;
+    }
+
     .peer-list {
       display: grid;
       gap: 4px;
@@ -1153,6 +1161,11 @@
       padding-right: 4px;
       min-height: 0;
       max-height: min(240px, 24vh);
+    }
+
+    .peer-section-busy .peer-list {
+      min-height: min(190px, 24vh);
+      max-height: none;
     }
 
     .peer-item {
@@ -1203,11 +1216,16 @@
       }
 
       .peers-panel {
-        max-height: 63vh;
+        max-height: 68vh;
       }
 
       .peer-list {
-        max-height: min(180px, 18vh);
+        max-height: min(180px, 20vh);
+      }
+
+      .peer-section-busy .peer-list {
+        min-height: min(180px, 22vh);
+        max-height: none;
       }
 
       .route-details-panel {

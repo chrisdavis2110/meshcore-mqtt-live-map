@@ -2796,17 +2796,36 @@ function getPeerDistanceMeters(origin, peer) {
   return haversineMeters(originLat, originLon, peerLat, peerLon);
 }
 
+function updatePeerListSizing(target, peerCount) {
+  if (!target) return;
+  const isBusy = peerCount > 3;
+  target.classList.toggle('peer-list-busy', isBusy);
+  const section = target.parentElement;
+  if (section) {
+    section.classList.toggle('peer-section-busy', isBusy);
+    const lists = section.parentElement;
+    if (lists) {
+      lists.classList.toggle(
+        'peers-lists-busy',
+        Boolean(lists.querySelector('.peer-section-busy'))
+      );
+    }
+  }
+}
+
 function renderPeerList(target, peers, total, label, origin = null) {
   if (!target) return;
   target.innerHTML = '';
-  if (!peers || peers.length === 0) {
+  const peerItems = Array.isArray(peers) ? peers : [];
+  updatePeerListSizing(target, peerItems.length);
+  if (peerItems.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'small';
     empty.textContent = `No ${label} data yet.`;
     target.appendChild(empty);
     return;
   }
-  peers.forEach(peer => {
+  peerItems.forEach(peer => {
     const item = document.createElement('div');
     item.className = 'peer-item';
     const name = peer.name || (peer.peer_id ? `${peer.peer_id.slice(0, 8)}…` : 'Unknown');
