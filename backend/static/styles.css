@@ -1136,10 +1136,10 @@
     }
 
     .peers-lists {
-      display: grid;
-      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      display: flex;
+      flex-direction: column;
       gap: 8px;
-      flex: 1 1 auto;
+      flex: 0 1 auto;
       min-height: 0;
       margin-top: 2px;
     }
@@ -1152,6 +1152,7 @@
       overflow-x: hidden;
       padding-right: 4px;
       min-height: 0;
+      max-height: min(240px, 24vh);
     }
 
     .peer-item {
@@ -1203,6 +1204,10 @@
 
       .peers-panel {
         max-height: 63vh;
+      }
+
+      .peer-list {
+        max-height: min(180px, 18vh);
       }
 
       .route-details-panel {
