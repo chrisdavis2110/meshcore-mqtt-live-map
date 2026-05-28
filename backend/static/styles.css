@@ -1015,10 +1015,6 @@
       flex-direction: column;
     }
 
-    .peers-panel.peers-panel-busy {
-      height: min(82vh, calc(100vh - 36px));
-    }
-
     .peers-panel .tool-panel-header {
       align-items: flex-start;
     }
@@ -1196,14 +1192,6 @@
       margin-top: 2px;
     }
 
-    .peers-lists-busy {
-      flex: 1 1 auto;
-    }
-
-    .peer-section-busy {
-      flex: 1 1 min(190px, 24vh);
-    }
-
     .peer-list {
       display: grid;
       gap: 4px;
@@ -1212,13 +1200,7 @@
       overflow-x: hidden;
       padding-right: 4px;
       min-height: 0;
-      max-height: min(240px, 24vh);
-    }
-
-    .peer-section-busy .peer-list {
-      flex: 1 1 auto;
-      min-height: 0;
-      max-height: none;
+      max-height: min(260px, 24vh);
     }
 
     .peer-item {
@@ -1276,21 +1258,11 @@
       }
 
       .peers-panel {
-        max-height: calc(100vh - 24px);
-      }
-
-      .peers-panel.peers-panel-busy {
-        height: calc(100vh - 24px);
+        max-height: 63vh;
       }
 
       .peer-list {
-        max-height: min(180px, 20vh);
-      }
-
-      .peer-section-busy .peer-list {
-        flex: 1 1 auto;
-        min-height: 0;
-        max-height: none;
+        max-height: min(180px, 18vh);
       }
 
       .route-details-panel {

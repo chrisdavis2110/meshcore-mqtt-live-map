@@ -2855,29 +2855,10 @@ function getPeerDistanceMeters(origin, peer) {
   return haversineMeters(originLat, originLon, peerLat, peerLon);
 }
 
-function updatePeerListSizing(target, peerCount) {
-  if (!target) return;
-  const isBusy = peerCount > 3;
-  target.classList.toggle('peer-list-busy', isBusy);
-  const section = target.parentElement;
-  if (section) {
-    section.classList.toggle('peer-section-busy', isBusy);
-    const lists = section.parentElement;
-    if (lists) {
-      const hasBusyList = Boolean(lists.querySelector('.peer-section-busy'));
-      lists.classList.toggle('peers-lists-busy', hasBusyList);
-      if (peersPanel) {
-        peersPanel.classList.toggle('peers-panel-busy', hasBusyList);
-      }
-    }
-  }
-}
-
 function renderPeerList(target, peers, total, label, origin = null) {
   if (!target) return;
   target.innerHTML = '';
   const peerItems = Array.isArray(peers) ? peers : [];
-  updatePeerListSizing(target, peerItems.length);
   if (peerItems.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'small';
