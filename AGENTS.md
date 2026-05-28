@@ -128,7 +128,7 @@ Current version: `1.9.2` (see `VERSIONS.md`).
 - LOS and Propagation remain separate tools on the same map so route obstruction checks and RF coverage planning can be used together without sharing one combined panel state.
 - Preview image endpoint renders in-bounds device dots for shared links.
 - Peers tool opens a right-side panel showing incoming/outgoing neighbors (counts + %) based on rolling peer-history buckets; selecting a node draws peer lines on the map.
-- Peers panel headings show total unique incoming/outgoing peer counts; `PEERS_DEFAULT_OPEN=true` starts the Peers tool active on page load.
+- Peers panel title uses the selected node name, keeps `24h window` under the title, and compact Incoming/Outgoing headings show Rx/Tx packet totals, unique peer counts, and blue/purple line hints; `PEERS_DEFAULT_OPEN=true` starts the Peers tool active on page load.
 - Peer-history buckets are also updated from route `point_ids` when a hop cannot be drawn as a visible segment, so peer counts still reflect real adjacency for non-drawable hops.
 - Peers tool ignores nodes listed in `MQTT_ONLINE_FORCE_NAMES` (used for observer listeners).
 - Units toggle (km/mi) is stored in localStorage and defaults to `DISTANCE_UNITS`.

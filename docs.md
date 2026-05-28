@@ -131,11 +131,11 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - History slider modes: 0 = All, 1 = Blue only, 2 = Yellow only, 3 = Yellow + Red, 4 = Red only.
 - History legend swatch is hidden unless the History tool is active.
 - Peers tool shows incoming/outgoing neighbors for a selected node, with counts and percentages pulled from dedicated rolling peer-history buckets instead of raw route-history segments. When both endpoints have coordinates, it also shows peer distance in the selected km/mi units.
-- The Peers panel headings show total unique incoming/outgoing peer counts even when the visible peer list is limited.
+- The Peers panel title uses the selected node name, the `24h window` label stays under the title, and compact Incoming/Outgoing headings show Rx/Tx packet totals, unique peer counts, and the blue/purple line hint.
 - Those peer-history buckets continue recording even when Route History is disabled, so turning off the History tool does not blank the Peers panel after the old window ages out.
 - Peer-history buckets are also updated from adjacent route `point_ids` when a hop cannot be rendered as a visible map segment, so peer counts do not drop to zero just because a route endpoint lacked usable coordinates.
 - Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
-- Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
+- Peers row stats are ordered as count, percent, then distance when coordinates are available.
 - Coverage tool only appears when `COVERAGE_API_URL` is set; it supports both the legacy `/get-samples` format and MeshMapper `coverage.php` grid-square responses.
 - Polygon boundary mode uses the same filter for devices, routes, and history, so the visible map and stored history window stay consistent.
 - Use `map_boundary.example.json` for the file format and either `tools/map-boundary-builder.html` or [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/) to generate a polygon JSON file outside the live app.

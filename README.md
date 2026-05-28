@@ -30,7 +30,7 @@ Other community maps (versions may differ):
 - Persistent device state and optional trails (disable with `TRAIL_LEN=0`)
 - 24-hour route history tool with volume-based coloring, click-to-view packet details, a heat-band slider, and a link-size slider
 - History panel can be dismissed with an X without hiding history lines (re-open via History tool)
-- Peers tool showing incoming/outgoing neighbors with on-map lines (blue = incoming, purple = outgoing)
+- Peers tool showing incoming/outgoing neighbors with on-map lines, compact Rx/Tx headings, peer counts, packet totals, and per-peer count/percent/distance stats
 - Coverage layer from the legacy [coverage map API](https://github.com/nullrouten0/meshcore-coverage-map) or the new [MeshMapper Coverage API](https://github.com/MeshMapper/MeshMapper_Wiki/blob/main/docs/coverage-api.md) (button hidden when not configured)
 - MeshMapper coverage viewport sync reuses cached rectangles instead of recreating every visible square on each pan/zoom, which keeps the coverage layer responsive on larger meshes
 - Weather tool panel with independent Radar and Wind toggles
@@ -333,7 +333,7 @@ Use it:
 - LOS now includes Earth curvature by default using an effective Earth radius factor of `1.333333`, unless you override the LOS curvature envs.
 - LOS and Propagation stay as separate tools on the same map so path obstruction checks and RF coverage planning can be used together without combining their controls into one panel.
 - History tool always loads off (use the button or `history=on` in the URL).
-- Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, distances are shown in the selected km/mi units when both endpoints have coordinates, unique peer counts are shown in the Incoming/Outgoing headings, and forced MQTT listeners are excluded from peer lists.
+- Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, distances are shown in the selected km/mi units when both endpoints have coordinates, compact headings show Rx/Tx packet totals and unique peer counts, and forced MQTT listeners are excluded from peer lists.
 - Route History and Peers are now independent: `ROUTE_HISTORY_ENABLED=false` disables the History tool and history payloads, but peer counts continue updating from live routes.
 - URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
 - Dark map also darkens node popups for readability.

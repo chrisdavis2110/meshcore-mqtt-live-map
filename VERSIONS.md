@@ -10,9 +10,9 @@
 - Added a per-pin LOS height field to the coordinate editor, making it explicit that entered heights are above ground level at the selected pin and not one shared route-wide value.
 - LOS pin editing now works from either workflow: add or drag pins on the map, or select a pin and move it from the coordinate editor while recomputing the affected LOS segments.
 - LOS and Propagation remain separate tools on the same map, which keeps path-obstruction checks and RF-coverage planning independent while still supporting deployment planning side by side.
-- Added issue #72: the Peers panel now places `Clear peers` in the header next to `Minimize`, uses a taller panel with only the incoming/outgoing lists scrolling, and shows unique peer counts directly in the Incoming/Outgoing headings.
+- Added issue #72 from Stormlove / [@beachmiles](https://github.com/beachmiles): the Peers panel now places `Clear peers` in the header next to `Minimize`, uses capped incoming/outgoing list scrolling, and shows unique peer counts directly in the Incoming/Outgoing headings.
 - Added `PEERS_DEFAULT_OPEN=false` so deployments can choose whether the Peers tool opens active on initial page load without forcing that behavior for existing installs.
-- Condensed the issue #72 Peers panel by moving the selected node name into the title, moving Rx/Tx packet totals and line-color hints into compact section headings, and ordering peer row stats as count, percent, then distance.
+- Condensed the issue #72 Peers panel cleanup ideas from Stormlove / [@beachmiles](https://github.com/beachmiles) by moving the selected node name into the title, moving Rx/Tx packet totals and line-color hints into compact section headings, and ordering peer row stats as count, percent, then distance.
 - Tuned the issue #72 Peers panel follow-up so small incoming/outgoing peer lists shrink to their content instead of leaving large empty gaps, while long peer lists scroll inside capped sections without forcing the whole panel to full height on mobile.
 - Added a legend-side MQTT-only filter button that temporarily shows only MQTT-online nodes while hiding non-MQTT markers, trails, routes, hop markers, route details, and peer lines. This view filter is intentionally not saved to browser storage and is not included in share links.
 

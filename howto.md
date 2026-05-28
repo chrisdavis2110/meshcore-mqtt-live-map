@@ -233,6 +233,10 @@ LOS_CURVATURE_FACTOR=1.333333
 ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK=false
 ```
 
+The Peers panel uses the selected node as the title, keeps the `24h window`
+label under that title, and shows Rx/Tx packet totals plus peer counts in the
+Incoming/Outgoing headings.
+
 LOS note:
 - The live map LOS tool now includes Earth curvature by default.
 - Leave `LOS_CURVATURE_ENABLED` unset to keep the default `true`.
