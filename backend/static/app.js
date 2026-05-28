@@ -2731,9 +2731,6 @@ function setPeersPanelTitle(name = 'Node peers', deviceId = '', windowHours = nu
     peersWindow.textContent = windowHours ? `${windowHours}h window` : '';
     peersWindow.hidden = !windowHours;
   }
-  if (peersPanel) {
-    peersPanel.classList.toggle('peers-panel-selected', Boolean(deviceId));
-  }
 }
 
 function setPeersSelectedStatus(name, deviceId, windowHours = null) {

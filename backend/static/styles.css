@@ -1015,7 +1015,6 @@
       flex-direction: column;
     }
 
-    .peers-panel.peers-panel-selected,
     .peers-panel.peers-panel-busy {
       height: min(82vh, calc(100vh - 36px));
     }
@@ -1280,7 +1279,6 @@
         max-height: calc(100vh - 24px);
       }
 
-      .peers-panel.peers-panel-selected,
       .peers-panel.peers-panel-busy {
         height: calc(100vh - 24px);
       }
