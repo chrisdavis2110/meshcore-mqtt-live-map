@@ -265,7 +265,10 @@
   </div>
   <div class="peers-panel tool-panel" id="peers-panel" hidden>
     <div class="tool-panel-header">
-      <div class="small"><strong>Node peers</strong></div>
+      <div class="small peers-panel-title">
+        <strong id="peers-title">Node peers</strong>
+        <span id="peers-window"></span>
+      </div>
       <div class="peers-header-actions">
         <button class="tool-panel-collapse" id="peers-clear" type="button">Clear peers</button>
         <button class="tool-panel-collapse" id="peers-panel-collapse" type="button"
@@ -273,8 +276,7 @@
       </div>
     </div>
     <div class="small" id="peers-status">Select a node to view peers.</div>
-    <div class="small" id="peers-meta"></div>
-    <div class="small">Blue lines = incoming. Purple lines = outgoing.</div>
+    <div class="small" id="peers-meta" hidden></div>
     <div class="peers-lists">
       <div class="peer-section">
         <div class="small peer-heading" id="peers-in-heading">Incoming (heard from)</div>

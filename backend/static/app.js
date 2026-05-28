@@ -523,6 +523,8 @@ const weatherRadarLayerToggle = document.getElementById('weather-radar-layer-tog
 const weatherWindLayerToggle = document.getElementById('weather-wind-layer-toggle');
 const peersPanel = document.getElementById('peers-panel');
 const peersPanelCollapse = document.getElementById('peers-panel-collapse');
+const peersTitle = document.getElementById('peers-title');
+const peersWindow = document.getElementById('peers-window');
 const peersStatus = document.getElementById('peers-status');
 const peersMeta = document.getElementById('peers-meta');
 const peersInHeading = document.getElementById('peers-in-heading');
@@ -2702,34 +2704,91 @@ function setPeersStatus(text) {
     peersStatus.classList.remove('peers-status-action');
     peersStatus.removeAttribute('role');
     peersStatus.removeAttribute('tabindex');
+    delete peersStatus.dataset.peerDeviceId;
     peersStatus.textContent = text || '';
+    peersStatus.hidden = !text;
   }
 }
 
-function setPeersSelectedStatus(name, deviceId) {
-  if (!peersStatus) return;
-  peersStatus.classList.add('peers-status-action');
-  peersStatus.setAttribute('role', 'button');
-  peersStatus.setAttribute('tabindex', '0');
-  peersStatus.textContent = `${name} peers`;
-  peersStatus.dataset.peerDeviceId = deviceId || '';
+function setPeersPanelTitle(name = 'Node peers', deviceId = '', windowHours = null) {
+  if (peersTitle) {
+    peersTitle.textContent = name || 'Node peers';
+    if (deviceId) {
+      peersTitle.classList.add('peers-title-action');
+      peersTitle.setAttribute('role', 'button');
+      peersTitle.setAttribute('tabindex', '0');
+      peersTitle.dataset.peerDeviceId = deviceId;
+      peersTitle.title = 'Focus selected node';
+    } else {
+      peersTitle.classList.remove('peers-title-action');
+      peersTitle.removeAttribute('role');
+      peersTitle.removeAttribute('tabindex');
+      peersTitle.removeAttribute('title');
+      delete peersTitle.dataset.peerDeviceId;
+    }
+  }
+  if (peersWindow) {
+    peersWindow.textContent = windowHours ? `· ${windowHours}h window` : '';
+    peersWindow.hidden = !windowHours;
+  }
 }
 
-function setPeerHeadings(incomingUnique = 0, outgoingUnique = 0) {
+function setPeersSelectedStatus(name, deviceId, windowHours = null) {
+  setPeersPanelTitle(name, deviceId, windowHours);
+  setPeersStatus('');
+}
+
+function packetLabel(count, direction) {
+  const value = Math.max(0, Math.trunc(Number(count) || 0));
+  const suffix = value === 1 ? 'pkt' : 'pkts';
+  return `${value} ${direction} ${suffix}`;
+}
+
+function peerCountLabel(count) {
+  const value = Math.max(0, Math.trunc(Number(count) || 0));
+  return `${value} ${value === 1 ? 'peer' : 'peers'}`;
+}
+
+function renderPeerHeading(target, title, total, direction, unique, lineLabel) {
+  if (!target) return;
+  if (total == null || unique == null) {
+    target.textContent = title;
+    return;
+  }
+  target.innerHTML = `
+    <span class="peer-heading-title">${title}</span>
+    <span class="peer-heading-stats">
+      <span>${packetLabel(total, direction)}</span>
+      <span>${peerCountLabel(unique)}</span>
+      <em>(${lineLabel})</em>
+    </span>
+  `;
+}
+
+function setPeerHeadings(
+  incomingUnique = null,
+  outgoingUnique = null,
+  incomingTotal = null,
+  outgoingTotal = null
+) {
   const inCount = Number(incomingUnique);
   const outCount = Number(outgoingUnique);
-  if (peersInHeading) {
-    const count = Number.isFinite(inCount)
-      ? Math.max(0, Math.trunc(inCount))
-      : 0;
-    peersInHeading.innerHTML = `Incoming (heard from) <span>${count} peers</span>`;
-  }
-  if (peersOutHeading) {
-    const count = Number.isFinite(outCount)
-      ? Math.max(0, Math.trunc(outCount))
-      : 0;
-    peersOutHeading.innerHTML = `Outgoing (heard by) <span>${count} peers</span>`;
-  }
+  renderPeerHeading(
+    peersInHeading,
+    'Incoming (heard from)',
+    incomingTotal,
+    'Rx',
+    Number.isFinite(inCount) ? inCount : null,
+    'Blue lines'
+  );
+  renderPeerHeading(
+    peersOutHeading,
+    'Outgoing (heard by)',
+    outgoingTotal,
+    'Tx',
+    Number.isFinite(outCount) ? outCount : null,
+    'Purple lines'
+  );
 }
 
 function clearPeerLines() {
@@ -2831,9 +2890,11 @@ function renderPeerList(target, peers, total, label, origin = null) {
     const name = peer.name || (peer.peer_id ? `${peer.peer_id.slice(0, 8)}…` : 'Unknown');
     const percent = total > 0 ? `${peer.percent.toFixed(1)}%` : '0%';
     const distance = formatPeerDistanceUnits(getPeerDistanceMeters(origin, peer));
-    const meta = distance
-      ? `${distance} • ${peer.count} • ${percent}`
-      : `${peer.count} • ${percent}`;
+    const metaParts = [`<strong>${peer.count}</strong>`, `<strong>${percent}</strong>`];
+    if (distance) {
+      metaParts.push(`<strong>${distance}</strong>`);
+    }
+    const meta = metaParts.join('<span class="peer-stat-separator" aria-hidden="true">•</span>');
     item.innerHTML = `<span class="peer-name">${name}</span><span class="peer-count">${meta}</span>`;
     item.addEventListener('click', () => {
       if (peer.peer_id) {
@@ -2849,8 +2910,12 @@ async function selectPeerNode(deviceId) {
   peersSelectedId = deviceId;
   if (!peersActive) return;
   const requestToken = ++peersRequestToken;
+  setPeersPanelTitle();
   setPeersStatus('Loading peers…');
-  if (peersMeta) peersMeta.textContent = '';
+  if (peersMeta) {
+    peersMeta.textContent = '';
+    peersMeta.hidden = true;
+  }
   try {
     const res = await fetch(withToken(`/peers/${encodeURIComponent(deviceId)}`), { headers: tokenHeaders() });
     if (!res.ok) {
@@ -2864,10 +2929,11 @@ async function selectPeerNode(deviceId) {
     const outboundTotal = data.outgoing_total || 0;
     const inboundUnique = data.incoming_unique ?? (data.incoming || []).length;
     const outboundUnique = data.outgoing_unique ?? (data.outgoing || []).length;
-    setPeersSelectedStatus(name, deviceId);
-    setPeerHeadings(inboundUnique, outboundUnique);
+    setPeersSelectedStatus(name, deviceId, data.window_hours || 24);
+    setPeerHeadings(inboundUnique, outboundUnique, inboundTotal, outboundTotal);
     if (peersMeta) {
-      peersMeta.textContent = `Incoming ${inboundTotal} • Outgoing ${outboundTotal} • ${data.window_hours || 24}h window`;
+      peersMeta.textContent = '';
+      peersMeta.hidden = true;
     }
     const origin = { lat: data.lat, lon: data.lon };
     renderPeerList(peersIn, data.incoming || [], inboundTotal, 'incoming', origin);
@@ -2879,9 +2945,13 @@ async function selectPeerNode(deviceId) {
     );
   } catch (err) {
     if (requestToken !== peersRequestToken) return;
+    setPeersPanelTitle();
     setPeersStatus('Peer lookup failed.');
-    if (peersMeta) peersMeta.textContent = '';
-    setPeerHeadings(0, 0);
+    if (peersMeta) {
+      peersMeta.textContent = '';
+      peersMeta.hidden = true;
+    }
+    setPeerHeadings();
     renderPeerList(peersIn, [], 0, 'incoming');
     renderPeerList(peersOut, [], 0, 'outgoing');
     peersData = null;
@@ -2893,9 +2963,13 @@ function clearPeers() {
   peersRequestToken += 1;
   peersSelectedId = null;
   peersData = null;
+  setPeersPanelTitle();
   setPeersStatus('Select a node to view peers.');
-  if (peersMeta) peersMeta.textContent = '';
-  setPeerHeadings(0, 0);
+  if (peersMeta) {
+    peersMeta.textContent = '';
+    peersMeta.hidden = true;
+  }
+  setPeerHeadings();
   renderPeerList(peersIn, [], 0, 'incoming');
   renderPeerList(peersOut, [], 0, 'outgoing');
   clearPeerLines();
@@ -7751,6 +7825,20 @@ if (peersStatus) {
     if (ev.key === 'Enter' || ev.key === ' ') {
       ev.preventDefault();
       focusDevice(peersStatus.dataset.peerDeviceId);
+    }
+  });
+}
+if (peersTitle) {
+  peersTitle.addEventListener('click', () => {
+    if (peersTitle.dataset.peerDeviceId) {
+      focusDevice(peersTitle.dataset.peerDeviceId);
+    }
+  });
+  peersTitle.addEventListener('keydown', (ev) => {
+    if (!peersTitle.dataset.peerDeviceId) return;
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      focusDevice(peersTitle.dataset.peerDeviceId);
     }
   });
 }
