@@ -12,7 +12,7 @@
 - LOS and Propagation remain separate tools on the same map, which keeps path-obstruction checks and RF-coverage planning independent while still supporting deployment planning side by side.
 - Added issue #72: the Peers panel now places `Clear peers` in the header next to `Minimize`, uses a taller panel with only the incoming/outgoing lists scrolling, and shows unique peer counts directly in the Incoming/Outgoing headings.
 - Added `PEERS_DEFAULT_OPEN=false` so deployments can choose whether the Peers tool opens active on initial page load without forcing that behavior for existing installs.
-- Condensed the issue #72 Peers panel by moving the selected node name into the title, moving Rx/Tx packet totals and line-color hints into the section headings, and ordering peer row stats as count, percent, then distance.
+- Condensed the issue #72 Peers panel by moving the selected node name into the title, moving Rx/Tx packet totals and line-color hints into compact section headings, and ordering peer row stats as count, percent, then distance.
 - Tuned the issue #72 Peers panel follow-up so small incoming/outgoing peer lists shrink to their content instead of leaving large empty gaps, while busy peer lists flex within the available panel height instead of clipping rows on short/mobile viewports.
 - Added a legend-side MQTT-only filter button that temporarily shows only MQTT-online nodes while hiding non-MQTT markers, trails, routes, hop markers, route details, and peer lines. This view filter is intentionally not saved to browser storage and is not included in share links.
 

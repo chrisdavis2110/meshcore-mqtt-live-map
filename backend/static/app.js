@@ -2864,10 +2864,11 @@ function updatePeerListSizing(target, peerCount) {
     section.classList.toggle('peer-section-busy', isBusy);
     const lists = section.parentElement;
     if (lists) {
-      lists.classList.toggle(
-        'peers-lists-busy',
-        Boolean(lists.querySelector('.peer-section-busy'))
-      );
+      const hasBusyList = Boolean(lists.querySelector('.peer-section-busy'));
+      lists.classList.toggle('peers-lists-busy', hasBusyList);
+      if (peersPanel) {
+        peersPanel.classList.toggle('peers-panel-busy', hasBusyList);
+      }
     }
   }
 }

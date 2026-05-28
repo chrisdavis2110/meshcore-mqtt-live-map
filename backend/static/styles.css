@@ -1015,6 +1015,10 @@
       flex-direction: column;
     }
 
+    .peers-panel.peers-panel-busy {
+      height: min(82vh, calc(100vh - 36px));
+    }
+
     .peers-header-actions {
       display: flex;
       align-items: center;
@@ -1151,9 +1155,15 @@
     }
 
     .peer-heading {
-      display: grid;
-      gap: 2px;
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 2px 8px;
       opacity: 0.8;
+    }
+
+    .peer-heading-title {
+      white-space: nowrap;
     }
 
     .peer-heading-stats {
@@ -1266,6 +1276,10 @@
 
       .peers-panel {
         max-height: calc(100vh - 24px);
+      }
+
+      .peers-panel.peers-panel-busy {
+        height: calc(100vh - 24px);
       }
 
       .peer-list {
