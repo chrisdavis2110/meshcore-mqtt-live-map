@@ -2728,8 +2728,11 @@ function setPeersPanelTitle(name = 'Node peers', deviceId = '', windowHours = nu
     }
   }
   if (peersWindow) {
-    peersWindow.textContent = windowHours ? `· ${windowHours}h window` : '';
+    peersWindow.textContent = windowHours ? `${windowHours}h window` : '';
     peersWindow.hidden = !windowHours;
+  }
+  if (peersPanel) {
+    peersPanel.classList.toggle('peers-panel-selected', Boolean(deviceId));
   }
 }
 
