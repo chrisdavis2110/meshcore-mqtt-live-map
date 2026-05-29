@@ -127,6 +127,7 @@ from config import (
   MQTT_ONLINE_FORCE_NAMES_SET,
   MQTT_STATUS_OFFLINE_VALUES_SET,
   PEERS_DEFAULT_LIMIT,
+  PEERS_DEFAULT_OPEN,
   DEBUG_PAYLOAD,
   DEBUG_PAYLOAD_MAX,
   TURNSTILE_ENABLED,
@@ -2835,6 +2836,8 @@ def root(request: Request):
       str(HEAT_DEFAULT_ON).lower(),
     "ROUTE_HISTORY_ENABLED":
       str(ROUTE_HISTORY_ENABLED).lower(),
+    "PEERS_DEFAULT_OPEN":
+      str(PEERS_DEFAULT_OPEN).lower(),
     "NODE_MARKER_RADIUS":
       NODE_MARKER_RADIUS,
     "HISTORY_LINK_SCALE":
@@ -3278,6 +3281,7 @@ def map_page(request: Request):
     "DISTANCE_UNITS": DISTANCE_UNITS,
     "HEAT_DEFAULT_ON": str(HEAT_DEFAULT_ON).lower(),
     "ROUTE_HISTORY_ENABLED": str(ROUTE_HISTORY_ENABLED).lower(),
+    "PEERS_DEFAULT_OPEN": str(PEERS_DEFAULT_OPEN).lower(),
     "NODE_MARKER_RADIUS": NODE_MARKER_RADIUS,
     "HISTORY_LINK_SCALE": HISTORY_LINK_SCALE,
     "TRAIL_INFO_SUFFIX": trail_info_suffix,
@@ -3706,6 +3710,8 @@ def _peer_stats_for_device(device_id: str, limit: int) -> Dict[str, Any]:
 
   inbound_total = sum(inbound.values())
   outbound_total = sum(outbound.values())
+  inbound_unique = len(inbound)
+  outbound_unique = len(outbound)
 
   inbound_items = [
     _peer_device_payload(
@@ -3728,6 +3734,8 @@ def _peer_stats_for_device(device_id: str, limit: int) -> Dict[str, Any]:
     "device_id": device_id,
     "incoming_total": inbound_total,
     "outgoing_total": outbound_total,
+    "incoming_unique": inbound_unique,
+    "outgoing_unique": outbound_unique,
     "incoming": inbound_items,
     "outgoing": outbound_items,
     "window_hours": ROUTE_HISTORY_HOURS,

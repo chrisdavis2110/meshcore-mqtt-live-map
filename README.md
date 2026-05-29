@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.9.1` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.9.2` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -22,7 +22,7 @@ Other community maps (versions may differ):
 
 ## Features
 - Live node markers with roles (Repeater, Companion, Room Server, Unknown)
-- MQTT online indicator (green outline + popup status) based on MQTT `status`/`internal` topics, with conservative role detection from explicit MQTT role fields only
+- MQTT online indicator (green outline + popup status) based on MQTT `status`/`internal` topics, with a temporary legend-side MQTT-only map filter and conservative role detection from explicit MQTT role fields only
 - Animated route/trace lines
 - Hidden arcade Pacman route visualization mode for live route direction
 - Dev route inspection: click a route line in dev (`PROD_MODE=false`) to log hop-by-hop details in the browser console, including resolved `point_id` / `point_label` data (PR #14, credit: https://github.com/sefator)
@@ -30,12 +30,12 @@ Other community maps (versions may differ):
 - Persistent device state and optional trails (disable with `TRAIL_LEN=0`)
 - 24-hour route history tool with volume-based coloring, click-to-view packet details, a heat-band slider, and a link-size slider
 - History panel can be dismissed with an X without hiding history lines (re-open via History tool)
-- Peers tool showing incoming/outgoing neighbors with on-map lines (blue = incoming, purple = outgoing)
+- Peers tool showing incoming/outgoing neighbors with on-map lines, compact Rx/Tx headings, peer counts, packet totals, and per-peer count/percent/distance stats
 - Coverage layer from the legacy [coverage map API](https://github.com/nullrouten0/meshcore-coverage-map) or the new [MeshMapper Coverage API](https://github.com/MeshMapper/MeshMapper_Wiki/blob/main/docs/coverage-api.md) (button hidden when not configured)
 - MeshMapper coverage viewport sync reuses cached rectangles instead of recreating every visible square on each pan/zoom, which keeps the coverage layer responsive on larger meshes
 - Weather tool panel with independent Radar and Wind toggles
 - Update available banner (git local vs upstream) with dismiss
-- UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle
+- UI controls: legend toggle, dark map, topo map, units toggle (km/mi), labels toggle, hide nodes, heat toggle, temporary MQTT-only filter
 - Route path-byte filter for `All`, `1-byte`, `2-byte`, or `3-byte` live route views, with matching hop markers and Route Details
 - Share button that copies a URL with current view + settings
 - Optional `APP_BASE_PATH` support for hosting the map under a subpath such as `/livemap`
@@ -43,7 +43,7 @@ Other community maps (versions may differ):
 - Node search by name or public key
 - Node popups can copy the full public key from the short key shown under the node name, copy a direct `node=` map link, and optionally expose a MeshCore contact QR modal that shows the node name plus a clickable truncated key
 - Adjustable node size slider (defaults from env, saves locally)
-- LOS tool with elevation profile + peak markers, hover sync, realtime draggable endpoints (Shift+click or long‑press nodes), and Earth-curvature-aware blockage checks
+- LOS tool with elevation profile + peak markers, hover sync, direct lat/lon pin entry, realtime draggable endpoints (Shift+click or long‑press nodes), and Earth-curvature-aware blockage checks
 - Embeddable metadata (Open Graph/Twitter tags) driven by env vars
 - Preview image renders in-bounds device dots for shared links
 - Route pruning via neighbor-aware closest-hop selection + max hop distance (configurable)
@@ -165,6 +165,7 @@ Site metadata (page title + embeds):
 - `PACKET_ANALYZER_URL` (optional analyzer base URL for Route Details hashes; e.g. `https://analyzer.letsmesh.net/packets?packet_hash=`)
 - `QR_CODE_BUTTON_ENABLED` (show a `Generate QR Code` button in node popups that opens a theme-aware MeshCore-compatible contact QR modal; default `false`)
 - `PEERS_DEFAULT_LIMIT` (optional default number of incoming/outgoing peers returned by `/peers/{device_id}`; default `8`)
+- `PEERS_DEFAULT_OPEN` (optional `true`/`false`; opens the Peers tool active on page load when `true`; default `false`)
 - `MAP_BOUNDARY_MODE` (`radius` or `polygon`; default `radius`)
 - `MAP_BOUNDARY_FILE` (JSON file used when `MAP_BOUNDARY_MODE=polygon`; default `/data/map_boundary.json`)
 - `MAP_BOUNDARY_SHOW` (draw the active radius/polygon boundary overlay on the map)
@@ -229,6 +230,7 @@ Device + route tuning:
 History overlay:
 - `ROUTE_HISTORY_ENABLED`
   - Set `false` to disable Route History entirely, including the History button/panel and history payloads.
+  - Peer counts still continue working when this is `false`; the Peers tool uses separate rolling peer-history buckets.
 - `ROUTE_HISTORY_HOURS`
 - `ROUTE_HISTORY_MAX_SEGMENTS`
 - `ROUTE_HISTORY_COMPACT_INTERVAL`
@@ -322,14 +324,17 @@ Use it:
   broker visibility.
 - MQTT connectivity (`MQTT online`) is based on `/status` + `/internal`; `/packets` is treated as feed activity and does not by itself mark a node online.
 - If a node is still MQTT-online but has stopped sending fresh location packets, the map keeps its last known position visible until MQTT presence expires.
+- The legend `MQTT online` row includes an `Only` filter that temporarily hides non-MQTT markers, trails, routes, hop markers, route details, and peer lines. This filter is local to the current page view only; it is not saved in browser storage and is not added to share links.
 - Live route IDs are observer-aware (`message_hash:receiver_id`) so the same
   message seen by multiple MQTT observers does not overwrite active lines.
-- Line-of-sight tool: click **LOS tool** and add pins to build a chained path, or **Shift+click** nodes to place LOS pins from existing nodes. Drag endpoints or click a pin and then click the map to move that specific point. Heights are stored per pin.
+- Line-of-sight tool: click **LOS tool** and add pins to build a chained path, or **Shift+click** nodes to place LOS pins from existing nodes. You can also add pins directly from the LOS panel with latitude/longitude + pin height inputs. Drag endpoints or click a pin and then click the map to move that specific point, or update its coordinates from the panel. Heights are stored per pin.
 - On mobile, long‑press a node to select it for LOS.
 - LOS elevations are fetched via `/los/elevations` and LOS/relay math runs client-side (with `/los` fallback).
 - LOS now includes Earth curvature by default using an effective Earth radius factor of `1.333333`, unless you override the LOS curvature envs.
+- LOS and Propagation stay as separate tools on the same map so path obstruction checks and RF coverage planning can be used together without combining their controls into one panel.
 - History tool always loads off (use the button or `history=on` in the URL).
-- Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, distances are shown in the selected km/mi units when both endpoints have coordinates, and forced MQTT listeners are excluded from peer lists.
+- Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, distances are shown in the selected km/mi units when both endpoints have coordinates, compact headings show Rx/Tx packet totals and unique peer counts, and forced MQTT listeners are excluded from peer lists.
+- Route History and Peers are now independent: `ROUTE_HISTORY_ENABLED=false` disables the History tool and history payloads, but peer counts continue updating from live routes.
 - URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).

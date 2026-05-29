@@ -86,6 +86,11 @@ const queryRouteByteFilter = parseRouteByteFilterParam(
   queryParams.get('routeBytes') ||
   queryParams.get('routebytes')
 );
+const queryPeersActive = parseBoolParam(
+  queryParams.get('peers') ||
+  queryParams.get('peer_tool') ||
+  queryParams.get('peerTool')
+);
 const initialUpdateAvailable = parseBoolParam(config.updateAvailable);
 const initialUpdateLocal = (config.updateLocal || '').trim();
 const initialUpdateRemote = (config.updateRemote || '').trim();
@@ -254,6 +259,7 @@ const polylines = new Map(); // device_id -> Leaflet polyline
 const markerLayer = L.layerGroup().addTo(map);
 const trailLayer = L.layerGroup().addTo(map);
 let nodesVisible = true;
+let mqttOnlyVisible = false;
 const routeLines = new Map(); // route_id -> { line, timeout }
 const routeCache = new Map(); // route_id -> raw route payload
 const deviceMeta = new Map(); // device_id -> { lat, lon, name }
@@ -498,6 +504,12 @@ const losPanel = document.getElementById('los-panel');
 const losPanelCollapse = document.getElementById('los-panel-collapse');
 const losHeightAInput = document.getElementById('los-height-a');
 const losHeightBInput = document.getElementById('los-height-b');
+const losPointLabel = document.getElementById('los-point-label');
+const losPointLatInput = document.getElementById('los-point-lat');
+const losPointLonInput = document.getElementById('los-point-lon');
+const losPointHeightInput = document.getElementById('los-point-height');
+const losAddCoordsButton = document.getElementById('los-add-coords');
+const losUpdatePointButton = document.getElementById('los-update-point');
 const propPanel = document.getElementById('prop-panel');
 const propPanelCollapse = document.getElementById('prop-panel-collapse');
 const historyPanel = document.getElementById('history-panel');
@@ -511,8 +523,12 @@ const weatherRadarLayerToggle = document.getElementById('weather-radar-layer-tog
 const weatherWindLayerToggle = document.getElementById('weather-wind-layer-toggle');
 const peersPanel = document.getElementById('peers-panel');
 const peersPanelCollapse = document.getElementById('peers-panel-collapse');
+const peersTitle = document.getElementById('peers-title');
+const peersWindow = document.getElementById('peers-window');
 const peersStatus = document.getElementById('peers-status');
 const peersMeta = document.getElementById('peers-meta');
+const peersInHeading = document.getElementById('peers-in-heading');
+const peersOutHeading = document.getElementById('peers-out-heading');
 const peersIn = document.getElementById('peers-in');
 const peersOut = document.getElementById('peers-out');
 const peersToggle = document.getElementById('peers-toggle');
@@ -568,6 +584,34 @@ const setLosPointHeight = (index, value) => {
   losPointHeights[index] = Number.isFinite(next) ? next : 0;
   persistLosPointHeights();
 };
+const formatLosPointCoordinate = (value) => {
+  const next = Number(value);
+  return Number.isFinite(next) ? next.toFixed(6) : '';
+};
+const syncLosPointEditor = () => {
+  const hasSelection = Number.isInteger(losSelectedPointIndex) &&
+    losSelectedPointIndex >= 0 &&
+    losSelectedPointIndex < losPoints.length;
+  if (losPointLabel) {
+    losPointLabel.textContent = hasSelection
+      ? `Selected pin ${losSelectedPointIndex + 1}.`
+      : 'No pin selected.';
+  }
+  if (losUpdatePointButton) {
+    losUpdatePointButton.disabled = !hasSelection;
+  }
+  if (!hasSelection) return;
+  const point = losPoints[losSelectedPointIndex];
+  if (losPointLatInput) {
+    losPointLatInput.value = formatLosPointCoordinate(point.lat);
+  }
+  if (losPointLonInput) {
+    losPointLonInput.value = formatLosPointCoordinate(point.lng);
+  }
+  if (losPointHeightInput) {
+    losPointHeightInput.value = String(getLosPointHeight(losSelectedPointIndex));
+  }
+};
 const syncLosHeightInputs = () => {
   const startIdx = Number.isInteger(losActiveSegmentIndex) ? losActiveSegmentIndex : null;
   const endIdx = Number.isInteger(startIdx) ? startIdx + 1 : null;
@@ -579,6 +623,7 @@ const syncLosHeightInputs = () => {
     losHeightBInput.value = String(endIdx != null ? getLosPointHeight(endIdx) : 0);
     losHeightBInput.disabled = endIdx == null;
   }
+  syncLosPointEditor();
 };
 syncLosHeightInputs();
 const deviceData = new Map();
@@ -633,6 +678,7 @@ localStorage.setItem('meshmapHistoryToolVersion', historyToolVersion);
 let historyVisible = false;
 let historyPanelHidden = false;
 let weatherPanelHidden = false;
+const peersDefaultOpen = parseBoolParam(config.peersDefaultOpen) === true;
 let peersActive = false;
 let peersSelectedId = null;
 let peersData = null;
@@ -697,6 +743,7 @@ if (storedHeat === null) {
   localStorage.setItem('meshmapShowHeat', heatDefaultOn ? 'true' : 'false');
 }
 const mqttWindowLabel = document.getElementById('mqtt-online-label');
+const mqttOnlyToggle = document.getElementById('mqtt-only-toggle');
 if (mqttWindowLabel) {
   const mqttWindowSeconds = Math.max(
     mqttOnlineSeconds,
@@ -705,6 +752,16 @@ if (mqttWindowLabel) {
   );
   mqttWindowLabel.textContent = `MQTT online (last ${formatOnlineWindow(mqttWindowSeconds)})`;
 }
+function updateMqttOnlyToggleUi() {
+  if (!mqttOnlyToggle) return;
+  mqttOnlyToggle.classList.toggle('active', mqttOnlyVisible);
+  mqttOnlyToggle.setAttribute('aria-pressed', mqttOnlyVisible ? 'true' : 'false');
+  mqttOnlyToggle.textContent = mqttOnlyVisible ? 'All' : 'Only';
+  mqttOnlyToggle.title = mqttOnlyVisible
+    ? 'Show all nodes'
+    : 'Only show MQTT online nodes';
+}
+updateMqttOnlyToggleUi();
 
 const propagationLayer = L.layerGroup().addTo(map);
 let propagationActive = false;
@@ -2422,10 +2479,14 @@ function routeMatchesByteFilter(meta) {
   return hashes.some((hash) => routeHashByteWidth(hash) === targetWidth);
 }
 
+function routeVisibleForCurrentFilters(meta) {
+  return nodesVisible && !mqttOnlyVisible && routeMatchesByteFilter(meta);
+}
+
 function getVisibleRouteCount() {
   let count = 0;
   routeLines.forEach((entry) => {
-    if (routeMatchesByteFilter(entry && entry.meta)) {
+    if (routeVisibleForCurrentFilters(entry && entry.meta)) {
       count += 1;
     }
   });
@@ -2434,7 +2495,7 @@ function getVisibleRouteCount() {
 
 function syncRouteEntryDisplay(routeId, entry) {
   if (!entry || !entry.line) return;
-  const visible = nodesVisible && routeMatchesByteFilter(entry.meta);
+  const visible = routeVisibleForCurrentFilters(entry.meta);
   const style = routeStyleForDisplay(
     entry.payloadType,
     entry.routeMode,
@@ -2477,7 +2538,7 @@ function syncAllRouteDisplays() {
 
 function renderHopMarkers(routeId, meta) {
   clearHopMarkersForRoute(routeId);
-  if (!hopsVisible || !meta || !meta.points || !routeMatchesByteFilter(meta)) {
+  if (!hopsVisible || !meta || !meta.points || !routeVisibleForCurrentFilters(meta)) {
     return;
   }
 
@@ -2640,8 +2701,94 @@ function showRouteDetails(meta) {
 
 function setPeersStatus(text) {
   if (peersStatus) {
+    peersStatus.classList.remove('peers-status-action');
+    peersStatus.removeAttribute('role');
+    peersStatus.removeAttribute('tabindex');
+    delete peersStatus.dataset.peerDeviceId;
     peersStatus.textContent = text || '';
+    peersStatus.hidden = !text;
   }
+}
+
+function setPeersPanelTitle(name = 'Node peers', deviceId = '', windowHours = null) {
+  if (peersTitle) {
+    peersTitle.textContent = name || 'Node peers';
+    if (deviceId) {
+      peersTitle.classList.add('peers-title-action');
+      peersTitle.setAttribute('role', 'button');
+      peersTitle.setAttribute('tabindex', '0');
+      peersTitle.dataset.peerDeviceId = deviceId;
+      peersTitle.title = 'Focus selected node';
+    } else {
+      peersTitle.classList.remove('peers-title-action');
+      peersTitle.removeAttribute('role');
+      peersTitle.removeAttribute('tabindex');
+      peersTitle.removeAttribute('title');
+      delete peersTitle.dataset.peerDeviceId;
+    }
+  }
+  if (peersWindow) {
+    peersWindow.textContent = windowHours ? `${windowHours}h window` : '';
+    peersWindow.hidden = !windowHours;
+  }
+}
+
+function setPeersSelectedStatus(name, deviceId, windowHours = null) {
+  setPeersPanelTitle(name, deviceId, windowHours);
+  setPeersStatus('');
+}
+
+function packetLabel(count, direction) {
+  const value = Math.max(0, Math.trunc(Number(count) || 0));
+  const suffix = value === 1 ? 'pkt' : 'pkts';
+  return `${value} ${direction} ${suffix}`;
+}
+
+function peerCountLabel(count) {
+  const value = Math.max(0, Math.trunc(Number(count) || 0));
+  return `${value} ${value === 1 ? 'peer' : 'peers'}`;
+}
+
+function renderPeerHeading(target, title, total, direction, unique, lineLabel) {
+  if (!target) return;
+  if (total == null || unique == null) {
+    target.textContent = title;
+    return;
+  }
+  target.innerHTML = `
+    <span class="peer-heading-title">${title}</span>
+    <span class="peer-heading-stats">
+      <span>${packetLabel(total, direction)}</span>
+      <span>${peerCountLabel(unique)}</span>
+      <em>(${lineLabel})</em>
+    </span>
+  `;
+}
+
+function setPeerHeadings(
+  incomingUnique = null,
+  outgoingUnique = null,
+  incomingTotal = null,
+  outgoingTotal = null
+) {
+  const inCount = Number(incomingUnique);
+  const outCount = Number(outgoingUnique);
+  renderPeerHeading(
+    peersInHeading,
+    'Incoming (heard from)',
+    incomingTotal,
+    'Rx',
+    Number.isFinite(inCount) ? inCount : null,
+    'Blue lines'
+  );
+  renderPeerHeading(
+    peersOutHeading,
+    'Outgoing (heard by)',
+    outgoingTotal,
+    'Tx',
+    Number.isFinite(outCount) ? outCount : null,
+    'Purple lines'
+  );
 }
 
 function clearPeerLines() {
@@ -2660,12 +2807,20 @@ function renderPeerLines(origin, incoming, outgoing) {
   clearPeerLines();
   if (!peersActive || !nodesVisible) return;
   if (!origin || origin.lat == null || origin.lon == null) return;
+  if (mqttOnlyVisible && peersSelectedId) {
+    const selectedDevice = deviceData.get(peersSelectedId);
+    if (selectedDevice && !devicePassesMqttOnlyFilter(selectedDevice)) return;
+  }
   if (!map.hasLayer(peerLayer)) {
     peerLayer.addTo(map);
   }
   const originLatLng = [origin.lat, origin.lon];
   const drawLine = (peer, color, dash, direction) => {
     if (peer.lat == null || peer.lon == null) return;
+    if (mqttOnlyVisible && peer.peer_id) {
+      const peerDevice = deviceData.get(peer.peer_id);
+      if (peerDevice && !devicePassesMqttOnlyFilter(peerDevice)) return;
+    }
     const line = L.polyline([originLatLng, [peer.lat, peer.lon]], {
       pane: 'peerPane',
       color,
@@ -2703,22 +2858,25 @@ function getPeerDistanceMeters(origin, peer) {
 function renderPeerList(target, peers, total, label, origin = null) {
   if (!target) return;
   target.innerHTML = '';
-  if (!peers || peers.length === 0) {
+  const peerItems = Array.isArray(peers) ? peers : [];
+  if (peerItems.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'small';
     empty.textContent = `No ${label} data yet.`;
     target.appendChild(empty);
     return;
   }
-  peers.forEach(peer => {
+  peerItems.forEach(peer => {
     const item = document.createElement('div');
     item.className = 'peer-item';
     const name = peer.name || (peer.peer_id ? `${peer.peer_id.slice(0, 8)}…` : 'Unknown');
     const percent = total > 0 ? `${peer.percent.toFixed(1)}%` : '0%';
     const distance = formatPeerDistanceUnits(getPeerDistanceMeters(origin, peer));
-    const meta = distance
-      ? `${distance} • ${peer.count} • ${percent}`
-      : `${peer.count} • ${percent}`;
+    const metaParts = [`${peer.count}`, `${percent}`];
+    if (distance) {
+      metaParts.push(distance);
+    }
+    const meta = metaParts.join('<span class="peer-stat-separator" aria-hidden="true">•</span>');
     item.innerHTML = `<span class="peer-name">${name}</span><span class="peer-count">${meta}</span>`;
     item.addEventListener('click', () => {
       if (peer.peer_id) {
@@ -2734,8 +2892,12 @@ async function selectPeerNode(deviceId) {
   peersSelectedId = deviceId;
   if (!peersActive) return;
   const requestToken = ++peersRequestToken;
+  setPeersPanelTitle();
   setPeersStatus('Loading peers…');
-  if (peersMeta) peersMeta.textContent = '';
+  if (peersMeta) {
+    peersMeta.textContent = '';
+    peersMeta.hidden = true;
+  }
   try {
     const res = await fetch(withToken(`/peers/${encodeURIComponent(deviceId)}`), { headers: tokenHeaders() });
     if (!res.ok) {
@@ -2747,9 +2909,13 @@ async function selectPeerNode(deviceId) {
     const name = data.name || (deviceId ? `${deviceId.slice(0, 8)}…` : 'Unknown');
     const inboundTotal = data.incoming_total || 0;
     const outboundTotal = data.outgoing_total || 0;
-    setPeersStatus(`${name} peers`);
+    const inboundUnique = data.incoming_unique ?? (data.incoming || []).length;
+    const outboundUnique = data.outgoing_unique ?? (data.outgoing || []).length;
+    setPeersSelectedStatus(name, deviceId, data.window_hours || 24);
+    setPeerHeadings(inboundUnique, outboundUnique, inboundTotal, outboundTotal);
     if (peersMeta) {
-      peersMeta.textContent = `Incoming ${inboundTotal} • Outgoing ${outboundTotal} • ${data.window_hours || 24}h window`;
+      peersMeta.textContent = '';
+      peersMeta.hidden = true;
     }
     const origin = { lat: data.lat, lon: data.lon };
     renderPeerList(peersIn, data.incoming || [], inboundTotal, 'incoming', origin);
@@ -2761,8 +2927,13 @@ async function selectPeerNode(deviceId) {
     );
   } catch (err) {
     if (requestToken !== peersRequestToken) return;
+    setPeersPanelTitle();
     setPeersStatus('Peer lookup failed.');
-    if (peersMeta) peersMeta.textContent = '';
+    if (peersMeta) {
+      peersMeta.textContent = '';
+      peersMeta.hidden = true;
+    }
+    setPeerHeadings();
     renderPeerList(peersIn, [], 0, 'incoming');
     renderPeerList(peersOut, [], 0, 'outgoing');
     peersData = null;
@@ -2774,8 +2945,13 @@ function clearPeers() {
   peersRequestToken += 1;
   peersSelectedId = null;
   peersData = null;
+  setPeersPanelTitle();
   setPeersStatus('Select a node to view peers.');
-  if (peersMeta) peersMeta.textContent = '';
+  if (peersMeta) {
+    peersMeta.textContent = '';
+    peersMeta.hidden = true;
+  }
+  setPeerHeadings();
   renderPeerList(peersIn, [], 0, 'incoming');
   renderPeerList(peersOut, [], 0, 'outgoing');
   clearPeerLines();
@@ -2792,10 +2968,10 @@ function setPeersActive(active) {
     if (active) {
       setPeersPanelCollapsed(false);
       peersPanel.removeAttribute('hidden');
-      peersPanel.style.display = 'block';
+      peersPanel.style.display = '';
     } else {
       peersPanel.setAttribute('hidden', 'hidden');
-      peersPanel.style.display = 'none';
+      peersPanel.style.display = '';
     }
   }
   if (active && peersData) {
@@ -2804,6 +2980,8 @@ function setPeersActive(active) {
       peersData.incoming || [],
       peersData.outgoing || []
     );
+  } else if (active) {
+    setPeerHeadings(0, 0);
   }
   if (!active) {
     clearPeers();
@@ -2938,6 +3116,39 @@ function isMqttOnline(d) {
   const lastSeen = Number(d.mqtt_seen_ts) || 0;
   if (!lastSeen) return false;
   return mqttOnlineSeconds > 0 && (now - lastSeen) <= mqttOnlineSeconds;
+}
+
+function devicePassesMqttOnlyFilter(d) {
+  return !mqttOnlyVisible || isMqttOnline(d);
+}
+
+function shouldShowDeviceOnMap(d) {
+  return Boolean(d) &&
+    nodesVisible &&
+    devicePassesMqttOnlyFilter(d) &&
+    latLngInViewport(d.lat, d.lon);
+}
+
+function setMqttOnlyVisible(visible) {
+  mqttOnlyVisible = Boolean(visible);
+  updateMqttOnlyToggleUi();
+  refreshViewportLayers();
+  routeLines.forEach((entry, routeId) => {
+    syncRouteEntryDisplay(routeId, entry);
+  });
+  if (peersActive && peersData) {
+    const selectedDevice = peersSelectedId ? deviceData.get(peersSelectedId) : null;
+    if (selectedDevice && !devicePassesMqttOnlyFilter(selectedDevice)) {
+      clearPeerLines();
+    } else {
+      renderPeerLines(
+        { lat: peersData.lat, lon: peersData.lon },
+        peersData.incoming || [],
+        peersData.outgoing || []
+      );
+    }
+  }
+  refreshStats();
 }
 
 function updateMarkerLabel(m, d) {
@@ -5640,7 +5851,7 @@ function handleQrPopupClick(ev) {
 function upsertDevice(d, trail) {
   const id = d.device_id;
   const latlng = [d.lat, d.lon];
-  const visibleInViewport = latLngInViewport(d.lat, d.lon);
+  const visibleOnMap = shouldShowDeviceOnMap(d);
   const role = resolveRole(d);
   const style = markerStyleForDevice(d);
   deviceData.set(id, d);
@@ -5765,14 +5976,14 @@ function upsertDevice(d, trail) {
     });
     markers.set(id, m);
     updateMarkerLabel(m, d);
-    syncLayerMembership(markerLayer, m, nodesVisible && visibleInViewport);
+    syncLayerMembership(markerLayer, m, visibleOnMap);
   } else {
     const m = markers.get(id);
     m.setLatLng(latlng);
     m.setPopupContent(makePopup(d));
     if (m.setStyle) m.setStyle(style);
     updateMarkerLabel(m, d);
-    syncLayerMembership(markerLayer, m, nodesVisible && visibleInViewport);
+    syncLayerMembership(markerLayer, m, visibleOnMap);
   }
 
   // trail polyline (skip companions)
@@ -5787,14 +5998,14 @@ function upsertDevice(d, trail) {
         className: 'trail-animated'
       });
       polylines.set(id, pl);
-      syncLayerMembership(trailLayer, pl, nodesVisible && visibleInViewport);
+      syncLayerMembership(trailLayer, pl, visibleOnMap);
     } else {
       const pl = polylines.get(id);
       pl.setLatLngs(points);
       if (pl.setStyle) {
         pl.setStyle({ color: '#38bdf8', weight: 3, opacity: 0.85 });
       }
-      syncLayerMembership(trailLayer, pl, nodesVisible && visibleInViewport);
+      syncLayerMembership(trailLayer, pl, visibleOnMap);
     }
   } else if (polylines.has(id)) {
     trailLayer.removeLayer(polylines.get(id));
@@ -5870,20 +6081,18 @@ function refreshOnlineMarkers() {
     if (m.setStyle) m.setStyle(style);
     if (m.getPopup()) m.setPopupContent(makePopup(d));
   });
+  refreshViewportLayers();
   refreshStats();
 }
 
 function refreshViewportLayers() {
-  const shouldShowNodes = nodesVisible;
   for (const [id, marker] of markers.entries()) {
     const d = deviceData.get(id);
-    const visible = Boolean(d) && shouldShowNodes && latLngInViewport(d.lat, d.lon);
-    syncLayerMembership(markerLayer, marker, visible);
+    syncLayerMembership(markerLayer, marker, shouldShowDeviceOnMap(d));
   }
   for (const [id, line] of polylines.entries()) {
     const d = deviceData.get(id);
-    const visible = Boolean(d) && shouldShowNodes && latLngInViewport(d.lat, d.lon);
-    syncLayerMembership(trailLayer, line, visible);
+    syncLayerMembership(trailLayer, line, shouldShowDeviceOnMap(d));
   }
   if (coverageVisible && coverageData) {
     if (coverageProvider === 'meshmapper' && meshMapperCoverageSource === coverageData && meshMapperCoverageRects.length) {
@@ -7251,10 +7460,26 @@ const parseLosHeightValue = (input) => {
   const value = Number(input.value);
   return Number.isFinite(value) ? value : 0;
 };
+const parseLosPointEditorValues = () => {
+  const rawLat = losPointLatInput ? String(losPointLatInput.value || '').trim() : '';
+  const rawLon = losPointLonInput ? String(losPointLonInput.value || '').trim() : '';
+  const rawHeight = losPointHeightInput
+    ? String(losPointHeightInput.value || '').trim()
+    : '';
+  if (!rawLat || !rawLon) return null;
+  const lat = Number(rawLat);
+  const lon = Number(rawLon);
+  const height = rawHeight ? Number(rawHeight) : 0;
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) return null;
+  if (!Number.isFinite(height)) return null;
+  return { lat, lon, height };
+};
 const handleLosHeightChange = () => {
   if (!Number.isInteger(losActiveSegmentIndex) || losActiveSegmentIndex < 0) return;
   setLosPointHeight(losActiveSegmentIndex, parseLosHeightValue(losHeightAInput));
   setLosPointHeight(losActiveSegmentIndex + 1, parseLosHeightValue(losHeightBInput));
+  syncLosPointEditor();
   if (losPoints.length >= 2) {
     if (losActiveSegmentIndex >= 0 && losActiveSegmentIndex < losSegmentMeta.length) {
       losSegmentMeta[losActiveSegmentIndex] = null;
@@ -7361,6 +7586,7 @@ function setLosSelectedPoint(index) {
     if (!el) return;
     el.classList.toggle('selected', losSelectedPointIndex === idx);
   });
+  syncLosPointEditor();
 }
 
 function createLosPointMarker(latlng, index) {
@@ -7414,15 +7640,23 @@ function createLosPointMarker(latlng, index) {
   return marker;
 }
 
-function handleLosPoint(latlng) {
+function handleLosPoint(latlng, options = {}) {
   losPoints.push(latlng);
   if (losPointHeights.length < losPoints.length) {
     losPointHeights.push(0);
     persistLosPointHeights();
   }
+  const pointIndex = losPoints.length - 1;
+  if (options.height != null) {
+    setLosPointHeight(pointIndex, options.height);
+  }
   const marker = createLosPointMarker(latlng, losPoints.length - 1);
   losPointMarkers.push(marker);
-  setLosSelectedPoint(null);
+  if (options.select === true) {
+    setLosSelectedPoint(pointIndex);
+  } else {
+    setLosSelectedPoint(null);
+  }
 
   if (losPoints.length === 1) {
     setLosStatus('LOS: select next point');
@@ -7432,6 +7666,47 @@ function handleLosPoint(latlng) {
   ensureLosSegments();
   selectLosSegment(losPoints.length - 2, { silent: true });
   scheduleLosCheck(true, { allowNetwork: true, forceNetwork: true });
+}
+
+async function addLosPointFromInputs() {
+  const parsed = parseLosPointEditorValues();
+  if (!parsed) {
+    setLosStatus('LOS: enter valid latitude and longitude');
+    return;
+  }
+  handleLosPoint(L.latLng(parsed.lat, parsed.lon), { height: parsed.height });
+}
+
+async function moveSelectedLosPointFromInputs() {
+  if (!Number.isInteger(losSelectedPointIndex) ||
+      losSelectedPointIndex < 0 ||
+      losSelectedPointIndex >= losPoints.length) {
+    setLosStatus('LOS: select a pin first');
+    return;
+  }
+  const parsed = parseLosPointEditorValues();
+  if (!parsed) {
+    setLosStatus('LOS: enter valid latitude and longitude');
+    return;
+  }
+  const next = L.latLng(parsed.lat, parsed.lon);
+  setLosPointHeight(losSelectedPointIndex, parsed.height);
+  if (losPointMarkers[losSelectedPointIndex]) {
+    losPointMarkers[losSelectedPointIndex].setLatLng(next);
+  }
+  const affected = updateLosPointPosition(losSelectedPointIndex, next) || [];
+  syncLosHeightInputs();
+  syncLosPointEditor();
+  if (!affected.length) {
+    setLosStatus(`LOS: moved pin ${losSelectedPointIndex + 1}`);
+    return;
+  }
+  setLosStatus('LOS: calculating...');
+  await recomputeLosSegments(affected, {
+    allowNetwork: true,
+    forceNetwork: true,
+    finalIndex: affected[affected.length - 1]
+  });
 }
 
 if (losClearButton) {
@@ -7447,6 +7722,16 @@ if (losRemoveLastButton) {
     removeLastLosPoint();
   });
 }
+if (losAddCoordsButton) {
+  losAddCoordsButton.addEventListener('click', () => {
+    addLosPointFromInputs();
+  });
+}
+if (losUpdatePointButton) {
+  losUpdatePointButton.addEventListener('click', () => {
+    moveSelectedLosPointFromInputs();
+  });
+}
 const nodesToggle = document.getElementById('nodes-toggle');
 if (nodesToggle) {
   const storedNodes = localStorage.getItem('meshmapNodesVisible');
@@ -7459,6 +7744,11 @@ if (nodesToggle) {
   nodesToggle.addEventListener('click', () => {
     setNodesVisible(!nodesVisible);
     localStorage.setItem('meshmapNodesVisible', nodesVisible ? 'true' : 'false');
+  });
+}
+if (mqttOnlyToggle) {
+  mqttOnlyToggle.addEventListener('click', () => {
+    setMqttOnlyVisible(!mqttOnlyVisible);
   });
 }
 updateNodeSizeUi();
@@ -7502,9 +7792,39 @@ if (historyLinkSizeInput) {
 }
 
 if (peersToggle) {
-  setPeersActive(false);
+  const initialPeersActive =
+    queryPeersActive !== null ? queryPeersActive : peersDefaultOpen;
+  setPeersActive(initialPeersActive);
   peersToggle.addEventListener('click', () => {
     setPeersActive(!peersActive);
+  });
+}
+if (peersStatus) {
+  peersStatus.addEventListener('click', () => {
+    if (peersStatus.dataset.peerDeviceId) {
+      focusDevice(peersStatus.dataset.peerDeviceId);
+    }
+  });
+  peersStatus.addEventListener('keydown', (ev) => {
+    if (!peersStatus.dataset.peerDeviceId) return;
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      focusDevice(peersStatus.dataset.peerDeviceId);
+    }
+  });
+}
+if (peersTitle) {
+  peersTitle.addEventListener('click', () => {
+    if (peersTitle.dataset.peerDeviceId) {
+      focusDevice(peersTitle.dataset.peerDeviceId);
+    }
+  });
+  peersTitle.addEventListener('keydown', (ev) => {
+    if (!peersTitle.dataset.peerDeviceId) return;
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      focusDevice(peersTitle.dataset.peerDeviceId);
+    }
   });
 }
 if (peersClear) {

@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.9.1` (see `VERSIONS.md`).
+Current version: `1.9.2` (see `VERSIONS.md`).
 
 Useful UI defaults in the live map `.env`:
 - `HEAT_DEFAULT_ON=true|false` sets the default Heat toggle state for first load.
@@ -174,6 +174,9 @@ Authentication summary:
 Presence behavior:
 - `/status` + `/internal` determine whether a node is shown as **MQTT online**.
 - `/packets` is tracked as feed activity and does not, by itself, mark a node online.
+- The legend `MQTT online` row has an **Only** button for a temporary
+  MQTT-online-only view. It is not saved to browser storage and is not included
+  in share links.
 
 Optional coordinate overrides (for fixed node placement):
 
@@ -221,6 +224,7 @@ Optional packet analyzer link base (used for Route Details hashes):
 PACKET_ANALYZER_URL=https://analyzer.letsmesh.net/packets?packet_hash=
 QR_CODE_BUTTON_ENABLED=false
 PEERS_DEFAULT_LIMIT=8
+PEERS_DEFAULT_OPEN=false
 MAP_BOUNDARY_MODE=radius
 MAP_BOUNDARY_FILE=/data/map_boundary.json
 MAP_BOUNDARY_SHOW=false
@@ -229,10 +233,15 @@ LOS_CURVATURE_FACTOR=1.333333
 ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK=false
 ```
 
+The Peers panel uses the selected node as the title, keeps the `24h window`
+label under that title, and shows Rx/Tx packet totals plus peer counts in the
+Incoming/Outgoing headings.
+
 LOS note:
 - The live map LOS tool now includes Earth curvature by default.
 - Leave `LOS_CURVATURE_ENABLED` unset to keep the default `true`.
 - Leave `LOS_CURVATURE_FACTOR` unset to keep the default `1.333333`.
+- LOS pins can be added from the map or entered directly by latitude/longitude in the LOS panel, with height stored per pin above ground level.
 
 Optional polygon boundary mode:
 ```env

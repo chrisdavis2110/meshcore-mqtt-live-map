@@ -1,5 +1,21 @@
 # Versions
 
+## v1.9.2 (05-23-2026)
+- Fixed the remaining issue #68 Docker Compose gap by passing the Route History envs into the container: `ROUTE_HISTORY_ENABLED`, `ROUTE_HISTORY_HOURS`, `ROUTE_HISTORY_MAX_SEGMENTS`, `ROUTE_HISTORY_FILE`, `ROUTE_HISTORY_PAYLOAD_TYPES`, and `ROUTE_HISTORY_COMPACT_INTERVAL`.
+- Compose-based deployments can now actually disable Route History from `.env`; previous `1.9.1` installs could still behave as if history was enabled because the container was falling back to backend defaults.
+- Fixed the follow-up issue #68 peer regression where disabling Route History eventually caused the Peers tool counts to go empty after older peer buckets expired.
+- Peer-history buckets now continue recording from live routes even when Route History is disabled, so the History tool can stay off without disabling incoming/outgoing peer counts.
+- Route History remains disabled as intended: no History button/panel, no history payloads in `/snapshot` or WebSocket snapshots, and no route-history file growth from live traffic.
+- Added issue #71: the LOS panel now supports direct latitude/longitude pin entry so operators can add LOS points without placing every pin from the map view first.
+- Added a per-pin LOS height field to the coordinate editor, making it explicit that entered heights are above ground level at the selected pin and not one shared route-wide value.
+- LOS pin editing now works from either workflow: add or drag pins on the map, or select a pin and move it from the coordinate editor while recomputing the affected LOS segments.
+- LOS and Propagation remain separate tools on the same map, which keeps path-obstruction checks and RF-coverage planning independent while still supporting deployment planning side by side.
+- Added issue #72 from Stormlove / [@beachmiles](https://github.com/beachmiles): the Peers panel now places `Clear peers` in the header next to `Minimize`, uses capped incoming/outgoing list scrolling, and shows unique peer counts directly in the Incoming/Outgoing headings.
+- Added `PEERS_DEFAULT_OPEN=false` so deployments can choose whether the Peers tool opens active on initial page load without forcing that behavior for existing installs.
+- Condensed the issue #72 Peers panel cleanup ideas from Stormlove / [@beachmiles](https://github.com/beachmiles) by moving the selected node name into the title, moving Rx/Tx packet totals and line-color hints into compact section headings, and ordering peer row stats as count, percent, then distance.
+- Tuned the issue #72 Peers panel follow-up so small incoming/outgoing peer lists shrink to their content instead of leaving large empty gaps, while long peer lists scroll inside capped sections without forcing the whole panel to full height on mobile.
+- Added a legend-side MQTT-only filter button that temporarily shows only MQTT-online nodes while hiding non-MQTT markers, trails, routes, hop markers, route details, and peer lines. This view filter is intentionally not saved to browser storage and is not included in share links.
+
 ## v1.9.1 (05-08-2026)
 - Fixed issue #68: `ROUTE_HISTORY_ENABLED=false` now fully disables Route History instead of only stopping new history recording.
 - When Route History is disabled, the History button and panel are removed from the frontend, `history=on` no longer re-enables it, and the API/WebSocket snapshot stop publishing history edges and history window metadata.

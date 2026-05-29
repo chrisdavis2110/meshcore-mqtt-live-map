@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.9.1` (see `VERSIONS.md`).
+Current version: `1.9.2` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.9.1`).
+- `VERSION.txt` holds the current version string (`1.9.2`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -46,7 +46,9 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `PACKET_ANALYZER_URL` adds an external link on Route Details hashes; set it to a base such as `https://analyzer.letsmesh.net/packets?packet_hash=`.
 - `QR_CODE_BUTTON_ENABLED` shows a `Generate QR Code` button in node popups; it opens a theme-aware MeshCore-compatible contact QR modal and defaults to `false`.
 - `PEERS_DEFAULT_LIMIT` controls the default number of peers returned by `/peers/{device_id}` when no `?limit=` is passed; default `8`.
+- `PEERS_DEFAULT_OPEN` controls whether the Peers tool starts active on page load; default `false`.
 - `ROUTE_HISTORY_ENABLED=false` now disables the History tool end-to-end: no History button/panel, no `history=on` activation, and no history payloads in `/snapshot` or the WebSocket snapshot.
+- `ROUTE_HISTORY_ENABLED=false` no longer disables peer counts; the Peers tool keeps its own rolling buckets and continues updating from live routes.
 - `MAP_BOUNDARY_MODE` switches geographic filtering between `radius` and `polygon`; default is `radius`.
 - `MAP_BOUNDARY_FILE` points at the polygon JSON file used when `MAP_BOUNDARY_MODE=polygon`.
 - `MAP_BOUNDARY_SHOW` controls whether the active radius/polygon boundary is drawn on the map.
@@ -123,14 +125,17 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Node size slider defaults from `NODE_MARKER_RADIUS` and persists in localStorage.
 - History link size slider defaults from `HISTORY_LINK_SCALE` and persists in localStorage.
 - Node search (name or key) and a labels toggle (persisted to localStorage).
+- The MQTT legend row has an `Only` button for a temporary MQTT-online-only view; it hides non-MQTT markers, trails, routes, hop markers, route details, and peer lines without persisting to localStorage or share links.
 - History tool defaults off and opens a right-side panel with a heat filter slider (visibility is not persisted).
 - History panel can be dismissed with the X button while keeping history lines visible (toggle History tool to show it again).
 - History slider modes: 0 = All, 1 = Blue only, 2 = Yellow only, 3 = Yellow + Red, 4 = Red only.
 - History legend swatch is hidden unless the History tool is active.
 - Peers tool shows incoming/outgoing neighbors for a selected node, with counts and percentages pulled from dedicated rolling peer-history buckets instead of raw route-history segments. When both endpoints have coordinates, it also shows peer distance in the selected km/mi units.
+- The Peers panel title uses the selected node name, the `24h window` label stays under the title, and compact Incoming/Outgoing headings show Rx/Tx packet totals, unique peer counts, and the blue/purple line hint.
+- Those peer-history buckets continue recording even when Route History is disabled, so turning off the History tool does not blank the Peers panel after the old window ages out.
 - Peer-history buckets are also updated from adjacent route `point_ids` when a hop cannot be rendered as a visible map segment, so peer counts do not drop to zero just because a route endpoint lacked usable coordinates.
 - Peers tool skips nodes listed in `MQTT_ONLINE_FORCE_NAMES` (observer listeners).
-- Peers panel legend clarifies line colors (incoming = blue, outgoing = purple).
+- Peers row stats are ordered as count, percent, then distance when coordinates are available.
 - Coverage tool only appears when `COVERAGE_API_URL` is set; it supports both the legacy `/get-samples` format and MeshMapper `coverage.php` grid-square responses.
 - Polygon boundary mode uses the same filter for devices, routes, and history, so the visible map and stored history window stay consistent.
 - Use `map_boundary.example.json` for the file format and either `tools/map-boundary-builder.html` or [https://yellowcooln.com/map-boundary-builder/](https://yellowcooln.com/map-boundary-builder/) to generate a polygon JSON file outside the live app.
@@ -177,7 +182,9 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Hovering the LOS profile also tracks a cursor on the map and highlights nearby peaks.
 - LOS legend items (clear/blocked/peaks/relay) are hidden unless the LOS tool is active.
 - Shift+click nodes (or long‑press on mobile) or click the map repeatedly to add LOS pins and build a chained path segment-by-segment.
-- Drag endpoints to update LOS in realtime. Click a point marker to select it, then click the map to reposition that specific point. LOS heights are stored per pin, not as one shared A/B pair.
+- The LOS panel also supports direct latitude/longitude pin entry, including a per-pin height field for above-ground-level entry at that pin.
+- Drag endpoints to update LOS in realtime. Click a point marker to select it, then click the map to reposition that specific point, or move it from the LOS coordinate editor. LOS heights are stored per pin, not as one shared A/B pair.
+- LOS and Propagation stay as separate right-side tools on the same map so path clearance and RF coverage can be planned side by side without merging their controls.
 
 ## Device Names + Roles
 - Names come from advert payloads or status messages when available.

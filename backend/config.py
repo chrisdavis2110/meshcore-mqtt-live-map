@@ -119,6 +119,7 @@ except ValueError:
   PEERS_DEFAULT_LIMIT = 8
 if PEERS_DEFAULT_LIMIT < 1:
   PEERS_DEFAULT_LIMIT = 1
+PEERS_DEFAULT_OPEN = os.getenv("PEERS_DEFAULT_OPEN", "false").lower() == "true"
 
 DEBUG_PAYLOAD = os.getenv("DEBUG_PAYLOAD", "false").lower() == "true"
 DEBUG_PAYLOAD_MAX = int(os.getenv("DEBUG_PAYLOAD_MAX", "400"))

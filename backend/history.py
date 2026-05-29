@@ -45,7 +45,7 @@ def _peer_history_pair_key(a_id: str, b_id: str) -> str:
 
 
 def _record_peer_history_segment(a_id: Any, b_id: Any, ts: float) -> bool:
-  if not ROUTE_HISTORY_ENABLED or ROUTE_HISTORY_HOURS <= 0:
+  if ROUTE_HISTORY_HOURS <= 0:
     return False
   if not isinstance(a_id, str) or not a_id.strip():
     return False
@@ -148,6 +148,16 @@ def _history_payload_allowed(payload_type: Optional[int]) -> bool:
   return payload_type in ROUTE_HISTORY_PAYLOAD_TYPES_SET
 
 
+def _peer_history_payload_allowed(payload_type: Optional[int]) -> bool:
+  if ROUTE_HISTORY_HOURS <= 0:
+    return False
+  if not ROUTE_HISTORY_PAYLOAD_TYPES_SET:
+    return True
+  if payload_type is None:
+    return False
+  return payload_type in ROUTE_HISTORY_PAYLOAD_TYPES_SET
+
+
 def _within_map_radius(lat: float, lon: float) -> bool:
   return within_map_boundary(lat, lon)
 
@@ -208,14 +218,12 @@ def _update_history_edge_recent(
 def _record_route_history(
   route: Dict[str, Any]
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-  if not ROUTE_HISTORY_ENABLED:
-    return [], []
   if ROUTE_HISTORY_ALLOWED_MODES_SET:
     route_mode = route.get("route_mode")
     if not route_mode or route_mode not in ROUTE_HISTORY_ALLOWED_MODES_SET:
       return [], []
   payload_type = route.get("payload_type")
-  if not _history_payload_allowed(payload_type):
+  if not _peer_history_payload_allowed(payload_type):
     return [], []
   points = route.get("points")
   point_ids = route.get("point_ids"
@@ -238,6 +246,14 @@ def _record_route_history(
         point_ids[idx], point_ids[idx + 1], float(ts)
       ):
         peer_recorded = True
+
+  if not ROUTE_HISTORY_ENABLED:
+    if peer_recorded:
+      _prune_peer_history(ts)
+      state.state_dirty = True
+    return [], []
+  if not _history_payload_allowed(payload_type):
+    return [], []
 
   if not isinstance(points, list) or len(points) < 2:
     if peer_recorded:

@@ -44,6 +44,7 @@
   data-distance-units="{{DISTANCE_UNITS}}"
   data-heat-default-on="{{HEAT_DEFAULT_ON}}"
   data-route-history-enabled="{{ROUTE_HISTORY_ENABLED}}"
+  data-peers-default-open="{{PEERS_DEFAULT_OPEN}}"
   data-node-radius="{{NODE_MARKER_RADIUS}}" data-history-link-scale="{{HISTORY_LINK_SCALE}}"
   data-coverage-api-url="{{COVERAGE_API_URL}}" data-custom-link-url="{{CUSTOM_LINK_URL}}"
   data-packet-analyzer-url="{{PACKET_ANALYZER_URL}}"
@@ -179,8 +180,11 @@
           <div class="legend-item"><span class="legend-dot legend-los-relay"></span> Relay suggested</div>
         </div>
         <div class="legend-item"><span class="legend-heat"></span> Heat (last 10 min)</div>
-        <div class="legend-item"><span class="legend-dot legend-online"></span><span id="mqtt-online-label">MQTT online
-            (last 5 min)</span></div>
+        <div class="legend-item legend-item-filter"><span class="legend-dot legend-online"></span><span id="mqtt-online-label">MQTT online
+            (last 5 min)</span>
+          <button class="legend-filter-button" id="mqtt-only-toggle" type="button" aria-pressed="false"
+            title="Only show MQTT online nodes">Only</button>
+        </div>
         <div class="legend-item"><span class="legend-dot legend-repeater"></span> Repeater</div>
         <div class="legend-item"><span class="legend-dot legend-companion"></span> Companion</div>
         <div class="legend-item"><span class="legend-dot legend-room"></span> Room server</div>
@@ -203,6 +207,26 @@
       <span>End pin height (m)</span>
       <input id="los-height-b" type="number" inputmode="numeric" step="1" value="0" />
     </label>
+    <div class="los-point-editor">
+      <div class="small"><strong>Pin coordinates</strong></div>
+      <div class="small" id="los-point-label">No pin selected.</div>
+      <label class="los-field">
+        <span>Latitude</span>
+        <input id="los-point-lat" type="number" inputmode="decimal" step="0.000001" placeholder="-33.868820" />
+      </label>
+      <label class="los-field">
+        <span>Longitude</span>
+        <input id="los-point-lon" type="number" inputmode="decimal" step="0.000001" placeholder="151.209296" />
+      </label>
+      <label class="los-field">
+        <span>Pin height (m)</span>
+        <input id="los-point-height" type="number" inputmode="numeric" step="1" value="0" />
+      </label>
+      <div class="los-actions">
+        <button class="map-toggle" id="los-add-coords" type="button">Add pin from coords</button>
+        <button class="map-toggle" id="los-update-point" type="button">Move selected pin</button>
+      </div>
+    </div>
     <div class="small">Add pins to build a route. Select a segment to edit its start and end pin heights. Heights are above ground at that pin. Click the profile to copy coordinates.</div>
     <button class="map-toggle" id="los-remove-last" type="button">Remove last pin</button>
     <button class="map-toggle" id="los-clear" type="button">Clear LOS pins</button>
@@ -241,22 +265,28 @@
   </div>
   <div class="peers-panel tool-panel" id="peers-panel" hidden>
     <div class="tool-panel-header">
-      <div class="small"><strong>Node peers</strong></div>
-      <button class="tool-panel-collapse" id="peers-panel-collapse" type="button"
-        aria-controls="peers-panel" aria-expanded="true">Minimize</button>
+      <div class="small peers-panel-title">
+        <strong id="peers-title">Node peers</strong>
+        <span id="peers-window"></span>
+      </div>
+      <div class="peers-header-actions">
+        <button class="tool-panel-collapse" id="peers-clear" type="button">Clear peers</button>
+        <button class="tool-panel-collapse" id="peers-panel-collapse" type="button"
+          aria-controls="peers-panel" aria-expanded="true">Minimize</button>
+      </div>
     </div>
     <div class="small" id="peers-status">Select a node to view peers.</div>
-    <div class="small" id="peers-meta"></div>
-    <div class="small">Blue lines = incoming. Purple lines = outgoing.</div>
-    <div class="peer-section">
-      <div class="small peer-heading">Incoming (heard from)</div>
-      <div class="peer-list" id="peers-in"></div>
+    <div class="small" id="peers-meta" hidden></div>
+    <div class="peers-lists">
+      <div class="peer-section">
+        <div class="small peer-heading" id="peers-in-heading">Incoming (heard from)</div>
+        <div class="peer-list" id="peers-in"></div>
+      </div>
+      <div class="peer-section">
+        <div class="small peer-heading" id="peers-out-heading">Outgoing (heard by)</div>
+        <div class="peer-list" id="peers-out"></div>
+      </div>
     </div>
-    <div class="peer-section">
-      <div class="small peer-heading">Outgoing (heard by)</div>
-      <div class="peer-list" id="peers-out"></div>
-    </div>
-    <button class="map-toggle" id="peers-clear" type="button">Clear peers</button>
   </div>
   <div class="route-details-panel tool-panel" id="route-details-panel" hidden>
     <div class="tool-panel-header">

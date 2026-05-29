@@ -117,6 +117,51 @@ def test_peer_history_records_route_ids_without_drawn_segments(monkeypatch):
   assert inbound["incoming"][0]["peer_id"] == "AA001111"
 
 
+def test_peer_history_still_records_when_route_history_disabled(monkeypatch):
+  _clear_peer_state()
+  now = time.time()
+
+  monkeypatch.setattr(history, "ROUTE_HISTORY_ENABLED", False)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_HOURS", 24)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_ALLOWED_MODES_SET", {"path"})
+  monkeypatch.setattr(app, "ROUTE_HISTORY_HOURS", 24)
+
+  history._record_route_history(_route(now))
+
+  assert len(state.route_history_segments) == 0
+  outbound = app._peer_stats_for_device("AA001111", limit=8)
+  inbound = app._peer_stats_for_device("BB001111", limit=8)
+
+  assert outbound["outgoing_total"] == 1
+  assert inbound["incoming_total"] == 1
+  assert outbound["outgoing"][0]["peer_id"] == "BB001111"
+  assert inbound["incoming"][0]["peer_id"] == "AA001111"
+
+
+def test_peer_stats_report_unique_counts_before_limit(monkeypatch):
+  _clear_peer_state()
+  now = time.time()
+  bucket = history._peer_history_bucket_start(now)
+
+  monkeypatch.setattr(app, "ROUTE_HISTORY_HOURS", 24)
+  state.peer_history_pairs["AA001111:BB001111"] = {
+    "a_id": "AA001111",
+    "b_id": "BB001111",
+    "buckets": {str(bucket): 2},
+  }
+  state.peer_history_pairs["AA001111:CC001111"] = {
+    "a_id": "AA001111",
+    "b_id": "CC001111",
+    "buckets": {str(bucket): 1},
+  }
+
+  payload = app._peer_stats_for_device("AA001111", limit=1)
+
+  assert payload["outgoing_unique"] == 2
+  assert payload["outgoing_total"] == 3
+  assert len(payload["outgoing"]) == 1
+
+
 def test_get_peers_adds_distance_m_for_located_peers(monkeypatch):
   _clear_peer_state()
   now = time.time()

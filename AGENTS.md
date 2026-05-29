@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Current version: `1.9.1` (see `VERSIONS.md`).
+Current version: `1.9.2` (see `VERSIONS.md`).
 
 ## Project Structure & Module Organization
 - `backend/app.py` wires FastAPI routes, MQTT lifecycle, and websocket broadcast flow.
@@ -19,7 +19,7 @@ Current version: `1.9.1` (see `VERSIONS.md`).
 - `deploy/` contains image-based examples for compose, Swarm, and Kubernetes.
 - `data/` stores persisted state (`state.json`), route history (`route_history.jsonl`), role overrides (`device_roles.json`), and optional neighbor overrides (`neighbor_overrides.json`).
 - `.env` holds dev runtime settings; `.env.example` mirrors template defaults.
-- `VERSION.txt` tracks the current version (now `1.9.1`); append changes in `VERSIONS.md`.
+- `VERSION.txt` tracks the current version (now `1.9.2`); append changes in `VERSIONS.md`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d --build` rebuilds and restarts the backend (preferred workflow).
@@ -86,6 +86,7 @@ Current version: `1.9.1` (see `VERSIONS.md`).
 - After editing `backend/*.py` or `backend/static/*`, rebuild with `docker compose up -d --build`.
 - History tool visibility is not persisted; it always loads off unless `history=on` is in the URL.
 - `ROUTE_HISTORY_ENABLED=false` disables Route History completely, including the History button/panel and history payloads in API/WebSocket snapshots.
+- Peer-history buckets remain active when `ROUTE_HISTORY_ENABLED=false`, so the Peers tool keeps live counts even with Route History disabled.
 
 ## Feature Notes
 - MQTT supports WSS/TLS or TCP; the official `@michaelhart/meshcore-decoder` runs via a Node helper for advert/location parsing, 1/2/3-byte path decoding, and conservative MQTT role extraction.
@@ -106,9 +107,11 @@ Current version: `1.9.1` (see `VERSIONS.md`).
 - LOS UI includes peak markers, a relay suggestion marker, elevation profile hover, and map-line hover sync.
 - LOS legend items (clear/blocked/peaks/relay) are hidden until the LOS tool is active.
 - Mobile LOS supports long-press on nodes (Shift+click on desktop); endpoints can be dragged or click-selected and moved via map click.
+- LOS also supports direct latitude/longitude pin entry in the panel, including a per-pin height field for above-ground-level input at that pin.
 - MQTT online status is derived from `/status` + `/internal` TTL windows; `/packets` is tracked as feed activity.
 - Devices that remain MQTT-online keep their last known coordinates on the map until MQTT presence expires, even if fresh location packets stop.
 - `MQTT_ONLINE_FORCE_NAMES` (comma-separated device names) forces selected nodes to always appear MQTT online.
+- Legend MQTT-only filter temporarily hides non-MQTT markers, trails, routes, hop markers, route details, and peer lines; it is not persisted and is not included in share links.
 - Service worker fetches navigations with `no-store` to avoid stale UI/env toggles (e.g., radius debug ring).
 - Node search + labels toggle (persisted in localStorage) and a GitHub link in the HUD.
 - Hide-nodes toggle hides markers, trails, heat, routes, and history layers.
@@ -122,8 +125,10 @@ Current version: `1.9.1` (see `VERSIONS.md`).
 - History records route modes from `ROUTE_HISTORY_ALLOWED_MODES` (default: `path`).
 - Propagation render stays visible until a new render; origin changes only mark it dirty.
 - Propagation now has an adjustable TX antenna gain (dBi) control, and Rx AGL defaults to 1m.
+- LOS and Propagation remain separate tools on the same map so route obstruction checks and RF coverage planning can be used together without sharing one combined panel state.
 - Preview image endpoint renders in-bounds device dots for shared links.
 - Peers tool opens a right-side panel showing incoming/outgoing neighbors (counts + %) based on rolling peer-history buckets; selecting a node draws peer lines on the map.
+- Peers panel title uses the selected node name, keeps `24h window` under the title, and compact Incoming/Outgoing headings show Rx/Tx packet totals, unique peer counts, and blue/purple line hints; `PEERS_DEFAULT_OPEN=true` starts the Peers tool active on page load.
 - Peer-history buckets are also updated from route `point_ids` when a hop cannot be drawn as a visible segment, so peer counts still reflect real adjacency for non-drawable hops.
 - Peers tool ignores nodes listed in `MQTT_ONLINE_FORCE_NAMES` (used for observer listeners).
 - Units toggle (km/mi) is stored in localStorage and defaults to `DISTANCE_UNITS`.
