@@ -1,5 +1,12 @@
 # Versions
 
+## v1.9.3 (06-06-2026)
+- Fixed issue #74: hardened frontend rendering against stored XSS from untrusted MeshCore/MQTT fields such as node names, peer names, route labels, and coverage metadata.
+- Node popups, permanent labels, search results, Peers rows, Route Details, History popups, and Coverage popups now escape display HTML before rendering user-supplied values.
+- Kept map behavior unchanged: device IDs, coordinates, QR payloads, copy actions, route resolution, peer selection, and filters continue to use the original data while only the displayed HTML is sanitized.
+- Updated backend dependencies to current tested pins: `fastapi==0.136.3`, `uvicorn[standard]==0.49.0`, and `httpx==0.28.1`.
+- Added `httpx2==2.3.0` to dev requirements so FastAPI/Starlette `TestClient` tests run without the deprecated-`httpx` warning.
+
 ## v1.9.2 (05-23-2026)
 - Fixed the remaining issue #68 Docker Compose gap by passing the Route History envs into the container: `ROUTE_HISTORY_ENABLED`, `ROUTE_HISTORY_HOURS`, `ROUTE_HISTORY_MAX_SEGMENTS`, `ROUTE_HISTORY_FILE`, `ROUTE_HISTORY_PAYLOAD_TYPES`, and `ROUTE_HISTORY_COMPACT_INTERVAL`.
 - Compose-based deployments can now actually disable Route History from `.env`; previous `1.9.1` installs could still behave as if history was enabled because the container was falling back to backend defaults.

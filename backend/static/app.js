@@ -24,6 +24,7 @@ const escapeHtmlAttr = (value) => String(value ?? '')
   .replaceAll("'", '&#39;')
   .replaceAll('<', '&lt;')
   .replaceAll('>', '&gt;');
+const escapeHtml = escapeHtmlAttr;
 const parseHistoryFilterParam = (value) => {
   if (value == null) return null;
   const str = String(value).trim().toLowerCase();
@@ -220,7 +221,7 @@ if (mapBoundaryMode === 'polygon' && activeBoundaryShow && mapBoundaryPoints.len
     interactive: false
   }).addTo(map);
   if (mapBoundaryName) {
-    mapBoundaryPolygon.bindTooltip(mapBoundaryName, {
+    mapBoundaryPolygon.bindTooltip(escapeHtml(mapBoundaryName), {
       permanent: false,
       direction: 'center',
       sticky: false,
@@ -1170,13 +1171,17 @@ function buildMeshMapperCoverageRect(square) {
     fillColor
   });
   const details = [];
-  if (square.coverage_type) details.push(`Type: ${square.coverage_type}`);
+  if (square.coverage_type) {
+    details.push(`Type: ${escapeHtml(square.coverage_type)}`);
+  }
   if (square.snr !== null && square.snr !== undefined) {
-    details.push(`SNR: ${square.snr} dB`);
+    details.push(`SNR: ${escapeHtml(square.snr)} dB`);
   }
   const when = coverageTimeLabel(square.timestamp);
-  if (when) details.push(`Updated: ${when}`);
-  if (square.__source_grid_id) details.push(`Source grid: ${square.__source_grid_id}`);
+  if (when) details.push(`Updated: ${escapeHtml(when)}`);
+  if (square.__source_grid_id) {
+    details.push(`Source grid: ${escapeHtml(square.__source_grid_id)}`);
+  }
   rect.bindPopup(details.join('<br/>'), { maxWidth: 320 });
   rect.__coverageBounds = { south, west, north, east };
   rect.__attached = false;
@@ -1280,14 +1285,16 @@ function renderCoverage(data) {
       });
       let details = `Heard: ${tile.heard} Lost: ${tile.lost} (${(100 * heardRatio).toFixed(0)}%)`;
       if (tile.paths.size > 0) {
-        const repeaters = Array.from(tile.paths).slice(0, 5).map(r => r.toUpperCase());
+        const repeaters = Array.from(tile.paths)
+          .slice(0, 5)
+          .map(r => escapeHtml(String(r).toUpperCase()));
         details += `<br/>Repeaters: ${repeaters.join(', ')}${tile.paths.size > 5 ? '...' : ''}`;
       }
       if (tile.snr !== null && tile.snr !== undefined) {
-        details += `<br/>SNR: ${tile.snr} dB`;
+        details += `<br/>SNR: ${escapeHtml(tile.snr)} dB`;
       }
       if (tile.rssi !== null && tile.rssi !== undefined) {
-        details += `<br/>RSSI: ${tile.rssi} dBm`;
+        details += `<br/>RSSI: ${escapeHtml(tile.rssi)} dBm`;
       }
       rect.bindPopup(details, { maxWidth: 320 });
       coverageLayer.addLayer(rect);
@@ -2685,12 +2692,17 @@ function showRouteDetails(meta) {
       let badgeContent = displayIdx;
       let badgeClass = 'hop-badge';
       let badgeStyle = `background-color: ${color}`;
+      const safeBadgeClass = escapeHtmlAttr(badgeClass);
+      const safeBadgeStyle = escapeHtmlAttr(badgeStyle);
+      const safeBadgeContent = escapeHtml(badgeContent);
+      const safeParamName = escapeHtml(paramName);
+      const safeMetaInfo = escapeHtml(metaInfo);
 
       row.innerHTML = `
-                   <div class="${badgeClass}" style="${badgeStyle}">${badgeContent}</div>
+                   <div class="${safeBadgeClass}" style="${safeBadgeStyle}">${safeBadgeContent}</div>
                    <div class="hop-info">
-                      <div class="hop-name" title="${paramName}">${paramName}</div>
-                      <div class="hop-meta">${metaInfo}</div>
+                      <div class="hop-name" title="${escapeHtmlAttr(paramName)}">${safeParamName}</div>
+                      <div class="hop-meta">${safeMetaInfo}</div>
                    </div>
                 `;
       routeDetailsContent.appendChild(row);
@@ -2872,12 +2884,12 @@ function renderPeerList(target, peers, total, label, origin = null) {
     const name = peer.name || (peer.peer_id ? `${peer.peer_id.slice(0, 8)}…` : 'Unknown');
     const percent = total > 0 ? `${peer.percent.toFixed(1)}%` : '0%';
     const distance = formatPeerDistanceUnits(getPeerDistanceMeters(origin, peer));
-    const metaParts = [`${peer.count}`, `${percent}`];
+    const metaParts = [`${peer.count}`, `${percent}`].map(escapeHtml);
     if (distance) {
-      metaParts.push(distance);
+      metaParts.push(escapeHtml(distance));
     }
     const meta = metaParts.join('<span class="peer-stat-separator" aria-hidden="true">•</span>');
-    item.innerHTML = `<span class="peer-name">${name}</span><span class="peer-count">${meta}</span>`;
+    item.innerHTML = `<span class="peer-name">${escapeHtml(name)}</span><span class="peer-count">${meta}</span>`;
     item.addEventListener('click', () => {
       if (peer.peer_id) {
         focusDevice(peer.peer_id);
@@ -3160,9 +3172,9 @@ function updateMarkerLabel(m, d) {
   const label = deviceDisplayName(d);
   if (!label) return;
   if (m.getTooltip()) {
-    m.setTooltipContent(label);
+    m.setTooltipContent(escapeHtml(label));
   } else {
-    m.bindTooltip(label, {
+    m.bindTooltip(escapeHtml(label), {
       permanent: true,
       direction: 'top',
       className: 'node-label',
@@ -3196,7 +3208,12 @@ function renderSearchResults(query) {
   searchMatches.forEach(({ id, d }) => {
     const item = document.createElement('div');
     item.className = 'node-search-item';
-    item.innerHTML = `<span>${deviceDisplayName(d)}</span><span class="node-search-id">${id.slice(0, 8)}…</span>`;
+    const name = document.createElement('span');
+    name.textContent = deviceDisplayName(d);
+    const shortId = document.createElement('span');
+    shortId.className = 'node-search-id';
+    shortId.textContent = `${id.slice(0, 8)}…`;
+    item.append(name, shortId);
     item.addEventListener('click', () => {
       if (peersActive) {
         selectPeerNode(id);
@@ -5310,11 +5327,11 @@ function makeHistoryPopup(entry) {
       const routeMode = sample.route_mode ? String(sample.route_mode) : 'path';
       return `
             <div class="popup-sample">
-              <strong>${label}</strong> • ${when}<br/>
-              Origin: ${origin}<br/>
-              Receiver: ${receiver}<br/>
-              Route: ${routeMode}<br/>
-              Hash: ${shortHash(sample.message_hash)}
+              <strong>${escapeHtml(label)}</strong> • ${escapeHtml(when)}<br/>
+              Origin: ${escapeHtml(origin)}<br/>
+              Receiver: ${escapeHtml(receiver)}<br/>
+              Route: ${escapeHtml(routeMode)}<br/>
+              Hash: ${escapeHtml(shortHash(sample.message_hash))}
             </div>
           `;
     }).join('')
@@ -5323,8 +5340,8 @@ function makeHistoryPopup(entry) {
   return `
         <span class="popup-title">History edge</span>
         <span class="small">
-          Count: ${count}<br/>
-          Last Seen: ${lastSeen}<br/>
+          Count: ${escapeHtml(count)}<br/>
+          Last Seen: ${escapeHtml(lastSeen)}<br/>
           ${sampleHtml}
         </span>
       `;
@@ -5725,12 +5742,12 @@ function makePopup(d) {
     ? `<button
         type="button"
         class="popup-id popup-copy-id popup-copy-trigger"
-        data-copy-text="${publicKey}"
-        title="${publicKeyCopyTitle}"
-      >${deviceLabel}</button>`
-    : `<span class="popup-id">${deviceLabel}</span>`;
+        data-copy-text="${escapeHtmlAttr(publicKey)}"
+        title="${escapeHtmlAttr(publicKeyCopyTitle)}"
+      >${escapeHtml(deviceLabel)}</button>`
+    : `<span class="popup-id">${escapeHtml(deviceLabel)}</span>`;
   const title = d.name
-    ? `<span class="popup-title">${d.name}</span>${popupId}`
+    ? `<span class="popup-title">${escapeHtml(d.name)}</span>${popupId}`
     : `<span class="popup-title">${popupId}</span>`;
   const role = resolveRole(d);
   const roleLabel = role === 'unknown' ? '' : role.charAt(0).toUpperCase() + role.slice(1);
@@ -5741,7 +5758,7 @@ function makePopup(d) {
       <button
         type="button"
         class="popup-action-button"
-        data-qr-url="${qrCodeUrl}"
+        data-qr-url="${escapeHtmlAttr(qrCodeUrl)}"
         data-qr-title="${escapeHtmlAttr(qrTitle)}"
         data-qr-key="${escapeHtmlAttr(publicKey)}"
       >Generate QR Code</button>
@@ -5754,23 +5771,23 @@ function makePopup(d) {
         type="button"
         class="popup-action-button"
         data-node-link-id="${escapeHtmlAttr(publicKey)}"
-      >${linkLabel}</button>
+      >${escapeHtml(linkLabel)}</button>
     `);
   }
   return `
         ${title}
         <span class="small">
-          ${roleLabel ? `Role: ${roleLabel}<br/>` : ``}
+          ${roleLabel ? `Role: ${escapeHtml(roleLabel)}<br/>` : ``}
           <button
             type="button"
             class="popup-copy-location popup-copy-trigger"
-            data-copy-text="${locationText}"
+            data-copy-text="${escapeHtmlAttr(locationText)}"
             title="Copy location"
-          >${locationText}</button><br/>
-          Last Contact: ${lastContact}<br/>
+          >${escapeHtml(locationText)}</button><br/>
+          Last Contact: ${escapeHtml(lastContact)}<br/>
           ${mqttOnline ? `MQTT: Online<br/>` : ``}
-          ${d.rssi != null ? `RSSI: ${d.rssi}<br/>` : ``}
-          ${d.snr != null ? `SNR: ${d.snr}<br/>` : ``}
+          ${d.rssi != null ? `RSSI: ${escapeHtml(d.rssi)}<br/>` : ``}
+          ${d.snr != null ? `SNR: ${escapeHtml(d.snr)}<br/>` : ``}
           ${popupActions.length ? `<div class="popup-actions">${popupActions.join('')}</div>` : ``}
         </span>
       `;

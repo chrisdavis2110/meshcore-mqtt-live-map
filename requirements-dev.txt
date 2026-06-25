@@ -1,2 +1,3 @@
 -r backend/requirements.txt
+httpx2==2.3.0
 pytest==9.0.3
