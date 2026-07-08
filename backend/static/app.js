@@ -266,7 +266,7 @@ const apiToken = config.prodToken || '';
 const qrCodeButtonEnabled =
   String(config.qrCodeButtonEnabled).toLowerCase() === 'true';
 const routeHistoryEnabled =
-  String(config.routeHistoryEnabled).toLowerCase() === 'true';
+  String(config.routeHistoryEnabled).trim().toLowerCase() === 'true';
 const publicPathPrefix = String(config.appBasePath || '').trim();
 const apiPath = (path) => {
   const p = path.startsWith('/') ? path : `/${path}`;

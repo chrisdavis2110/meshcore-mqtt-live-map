@@ -66,8 +66,9 @@ ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK = (
 )
 ROUTE_BYTE_FILTER_DEFAULT = os.getenv("ROUTE_BYTE_FILTER_DEFAULT", "all")
 HISTORY_BYTE_FILTER_DEFAULT = os.getenv("HISTORY_BYTE_FILTER_DEFAULT", "all")
-ROUTE_HISTORY_ENABLED = os.getenv("ROUTE_HISTORY_ENABLED",
-                                  "true").lower() == "true"
+ROUTE_HISTORY_ENABLED = os.getenv(
+  "ROUTE_HISTORY_ENABLED", "true"
+).strip().lower() == "true"
 ROUTE_HISTORY_HOURS = float(os.getenv("ROUTE_HISTORY_HOURS", "24"))
 ROUTE_HISTORY_MAX_SEGMENTS = int(
   os.getenv("ROUTE_HISTORY_MAX_SEGMENTS", "40000")
