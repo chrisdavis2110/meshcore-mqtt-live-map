@@ -19,7 +19,6 @@
       font-family: ui-sans-serif, system-ui, sans-serif;
       z-index: 999;
       box-shadow: 0 10px 28px rgba(0, 0, 0, .35);
-      backdrop-filter: blur(2px);
       width: min(340px, calc(100vw - 20px));
       max-width: 340px;
       max-height: 90vh;
@@ -717,6 +716,7 @@
       display: grid;
       gap: 4px;
       min-width: 128px;
+      box-sizing: border-box;
       padding: 6px;
       background: rgba(15, 23, 42, .96);
       border: 1px solid rgba(255, 255, 255, .22);

@@ -820,10 +820,20 @@ const positionByteDropdown = (root) => {
   if (!summary || !panel) return;
   const rect = summary.getBoundingClientRect();
   const width = Math.max(rect.width, 128);
-  const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
-  panel.style.minWidth = `${width}px`;
+  const panelHeight = Math.max(panel.offsetHeight, 1);
+  const viewportPad = 8;
+  const left = Math.min(
+    Math.max(viewportPad, rect.right - width),
+    Math.max(viewportPad, window.innerWidth - width - viewportPad)
+  );
+  const belowTop = rect.bottom + 4;
+  const aboveTop = rect.top - panelHeight - 4;
+  const top = belowTop + panelHeight + viewportPad <= window.innerHeight
+    ? belowTop
+    : Math.max(viewportPad, aboveTop);
+  panel.style.width = `${width}px`;
   panel.style.left = `${left}px`;
-  panel.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - 140)}px`;
+  panel.style.top = `${top}px`;
 };
 const setupByteDropdown = (root) => {
   if (!root) return;

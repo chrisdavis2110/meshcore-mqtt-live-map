@@ -18,6 +18,7 @@
 - Added a third `Satellite` base-map option. The existing Standard/Topo map button now cycles through Standard, Topo, and Satellite; Satellite uses open EOX Sentinel-2 cloudless imagery with OpenStreetMap/CARTO labels, borders, and road context overlaid.
 - Added a deployment privacy policy page and a `Privacy` link in the Leaflet attribution/footer area, keeping it out of the main HUD buttons.
 - Tightened HUD/header styling so long site titles and action buttons stay compact and legible over light, topo, and satellite map backgrounds.
+- Fixed the route/history byte dropdown positioning so multi-select menus stay contained in the HUD/tool panel instead of spilling off the edge after the HUD styling updates.
 
 ## v1.9.3 (06-06-2026)
 - Fixed issue #74: hardened frontend rendering against stored XSS from untrusted MeshCore/MQTT fields such as node names, peer names, route labels, and coverage metadata.
