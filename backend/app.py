@@ -126,6 +126,8 @@ from config import (
   MQTT_SEEN_BROADCAST_MIN_SECONDS,
   MQTT_ONLINE_FORCE_NAMES_SET,
   MQTT_STATUS_OFFLINE_VALUES_SET,
+  BLOCKED_NAME_SYMBOL_FILTER_ENABLED,
+  BLOCKED_NAME_SYMBOLS,
   PEERS_DEFAULT_LIMIT,
   PEERS_DEFAULT_OPEN,
   DEBUG_PAYLOAD,
@@ -144,6 +146,8 @@ from config import (
   DIRECT_COORDS_TOPIC_REGEX,
   DIRECT_COORDS_ALLOW_ZERO,
   ROUTE_HISTORY_ALLOWED_MODES_SET,
+  ROUTE_BYTE_FILTER_DEFAULT,
+  HISTORY_BYTE_FILTER_DEFAULT,
   SITE_TITLE,
   SITE_DESCRIPTION,
   SITE_OG_IMAGE,
@@ -152,6 +156,7 @@ from config import (
   SITE_FEED_NOTE,
   CUSTOM_LINK_URL,
   PACKET_ANALYZER_URL,
+  CORESCOPE_URL,
   QR_CODE_BUTTON_ENABLED,
   GIT_CHECK_ENABLED,
   GIT_CHECK_FETCH,
@@ -268,6 +273,77 @@ def _public_preview_png_url(request: Request, query: str) -> str:
   return f"{_http_site_origin(request)}{path}?{query}"
 
 
+def _map_preview_meta(
+  request: Request, page_path: str = "/"
+) -> Tuple[str, str, str]:
+  """Return OG image tags, Twitter image tag, and canonical map URL."""
+  query_params = request.query_params
+  lat_param = query_params.get("lat") or query_params.get("latitude")
+  lon_param = (
+    query_params.get("lon") or query_params.get("lng") or
+    query_params.get("long") or query_params.get("longitude")
+  )
+  zoom_param = query_params.get("zoom")
+
+  og_image_tag = ""
+  twitter_image_tag = ""
+  og_url = SITE_URL
+
+  if lat_param and lon_param:
+    try:
+      lat = float(lat_param)
+      lon = float(lon_param)
+      zoom = int(zoom_param) if zoom_param and zoom_param.isdigit() else 13
+      zoom = max(1, min(18, zoom))
+
+      preview_params = urlencode(
+        {
+          "lat": lat,
+          "lon": lon,
+          "zoom": zoom,
+          "marker": "blue",
+          "theme": "dark",
+        }
+      )
+      preview_url = _public_preview_png_url(request, preview_params)
+      safe_image = html.escape(preview_url, quote=True)
+      og_image_tag = (
+        f'<meta property="og:image" content="{safe_image}" />\n'
+        f'  <meta property="og:image:width" content="1200" />\n'
+        f'  <meta property="og:image:height" content="630" />\n'
+        f'  <meta property="og:image:type" content="image/png" />'
+      )
+      twitter_image_tag = (
+        f'<meta name="twitter:image" content="{safe_image}" />'
+      )
+      if SITE_OG_IMAGE:
+        safe_static_image = html.escape(str(SITE_OG_IMAGE), quote=True)
+        og_image_tag += (
+          f'\n  <meta property="og:image:secure_url" '
+          f'content="{safe_static_image}" />'
+        )
+
+      page_base = _http_site_origin(request) + public_app_path(page_path)
+      if page_path == "/":
+        page_base = page_base.rstrip("/")
+      og_url = f"{page_base}?lat={lat}&lon={lon}"
+      if zoom_param:
+        og_url += f"&zoom={zoom}"
+    except (ValueError, TypeError):
+      if SITE_OG_IMAGE:
+        safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
+        og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
+        twitter_image_tag = (
+          f'<meta name="twitter:image" content="{safe_image}" />'
+        )
+  elif SITE_OG_IMAGE:
+    safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
+    og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
+    twitter_image_tag = f'<meta name="twitter:image" content="{safe_image}" />'
+
+  return og_image_tag, twitter_image_tag, og_url
+
+
 def _client_los_proxy_url() -> str:
   p = (LOS_ELEVATION_PROXY_URL or "").strip()
   if p.startswith("/") and not p.startswith("//"):
@@ -285,7 +361,11 @@ def _client_weather_radar_lookup_url() -> str:
 def _history_edge_payloads() -> List[Dict[str, Any]]:
   if not ROUTE_HISTORY_ENABLED:
     return []
-  return [_history_edge_payload(e) for e in route_history_edges.values()]
+  return [
+    _history_edge_payload(e)
+    for e in route_history_edges.values()
+    if not _history_edge_hidden_by_blocked_name(e)
+  ]
 
 
 def _history_window_seconds_value() -> int:
@@ -837,7 +917,95 @@ def _snapshot_routes(now: Optional[float] = None) -> List[Dict[str, Any]]:
     _route_payload(route)
     for route in routes.values()
     if float(route.get("expires_at") or 0.0) > min_expires_at
+    and not _route_hidden_by_blocked_name(route)
   ]
+
+
+def _name_hidden_by_blocked_symbol(name: Any) -> bool:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED or not isinstance(name, str):
+    return False
+  return any(symbol in name for symbol in BLOCKED_NAME_SYMBOLS)
+
+
+def _device_hidden_by_blocked_name(device_id: Optional[str]) -> bool:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED or not device_id:
+    return False
+  state = devices.get(device_id)
+  name = None
+  if state:
+    name = state.name
+  if not name:
+    name = device_names.get(device_id)
+  return _name_hidden_by_blocked_symbol(name)
+
+
+def _route_hidden_by_blocked_name(route: Dict[str, Any]) -> bool:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED:
+    return False
+  if _name_hidden_by_blocked_symbol(route.get("sender_name")):
+    return True
+  device_ids = []
+  point_ids = route.get("point_ids")
+  if isinstance(point_ids, list):
+    device_ids.extend(pid for pid in point_ids if pid)
+  for key in ("origin_id", "receiver_id"):
+    value = route.get(key)
+    if value:
+      device_ids.append(value)
+  return any(_device_hidden_by_blocked_name(device_id) for device_id in device_ids)
+
+
+def _history_edge_hidden_by_blocked_name(edge: Dict[str, Any]) -> bool:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED:
+    return False
+  samples = edge.get("recent")
+  if not isinstance(samples, list):
+    return False
+  return any(
+    _route_hidden_by_blocked_name(sample)
+    for sample in samples if isinstance(sample, dict)
+  )
+
+
+def _blocked_name_remove_payloads(device_id: Any) -> List[Dict[str, Any]]:
+  route_ids = [
+    route_id for route_id, route in routes.items()
+    if _route_hidden_by_blocked_name(route)
+  ]
+  payloads = [{"type": "stale", "device_ids": [device_id]}]
+  if route_ids:
+    payloads.append({"type": "route_remove", "route_ids": route_ids})
+  return payloads
+
+
+async def _broadcast_payloads(payloads: List[Dict[str, Any]]) -> None:
+  dead = []
+  for ws in list(clients):
+    try:
+      for payload in payloads:
+        await ws.send_text(json.dumps(payload))
+    except Exception:
+      dead.append(ws)
+  for ws in dead:
+    clients.discard(ws)
+
+
+def _visible_device_payloads() -> Dict[str, Dict[str, Any]]:
+  return {
+    k: _device_payload(k, v)
+    for k, v in devices.items()
+    if not _device_hidden_by_blocked_name(k)
+  }
+
+
+def _visible_trails() -> Dict[str, Any]:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED:
+    return trails
+  return {
+    device_id: trail
+    for device_id, trail in trails.items()
+    if not _device_hidden_by_blocked_name(device_id)
+  }
 
 
 # =========================
@@ -1144,6 +1312,153 @@ def _normalize_device_name_for_dedupe(name: Any) -> str:
   return " ".join(name.strip().lower().split())
 
 
+def _device_dedupe_prefix(device_id: str) -> str:
+  value = str(device_id or "").strip().lower()
+  if value.startswith("0x"):
+    value = value[2:]
+  return value[:8] if len(value) >= 8 else ""
+
+
+def _peer_history_activity_score(device_id: str) -> Tuple[int, int]:
+  unique_peers: Set[str] = set()
+  total = 0
+  for entry in peer_history_pairs.values():
+    if not isinstance(entry, dict):
+      continue
+    a_id = entry.get("a_id")
+    b_id = entry.get("b_id")
+    if device_id not in (a_id, b_id):
+      continue
+    other_id = b_id if a_id == device_id else a_id
+    if isinstance(other_id, str) and other_id:
+      unique_peers.add(other_id)
+    buckets = entry.get("buckets")
+    if not isinstance(buckets, dict):
+      continue
+    for count in buckets.values():
+      try:
+        bucket_count = int(count)
+      except (TypeError, ValueError):
+        continue
+      if bucket_count > 0:
+        total += bucket_count
+  return (len(unique_peers), total)
+
+
+def _devices_are_duplicate_candidates(a_id: str, b_id: str) -> bool:
+  a_state = devices.get(a_id)
+  b_state = devices.get(b_id)
+  if not a_state or not b_state:
+    return False
+  a_name = _normalize_device_name_for_dedupe(
+    a_state.name or device_names.get(a_id)
+  )
+  b_name = _normalize_device_name_for_dedupe(
+    b_state.name or device_names.get(b_id)
+  )
+  if not a_name or a_name != b_name:
+    return False
+  a_prefix = _device_dedupe_prefix(a_id)
+  b_prefix = _device_dedupe_prefix(b_id)
+  if a_prefix and a_prefix == b_prefix:
+    return True
+  if _coords_are_zero(a_state.lat, a_state.lon) or _coords_are_zero(
+    b_state.lat, b_state.lon
+  ):
+    return False
+  try:
+    distance_m = _haversine_m(
+      float(a_state.lat),
+      float(a_state.lon),
+      float(b_state.lat),
+      float(b_state.lon),
+    )
+  except (TypeError, ValueError):
+    return False
+  return distance_m <= 30.0
+
+
+def _duplicate_device_groups() -> List[List[str]]:
+  by_name: Dict[str, List[str]] = {}
+  for device_id, dev_state in devices.items():
+    name = _normalize_device_name_for_dedupe(
+      dev_state.name or device_names.get(device_id)
+    )
+    if name:
+      by_name.setdefault(name, []).append(device_id)
+
+  groups: List[List[str]] = []
+  for ids in by_name.values():
+    if len(ids) < 2:
+      continue
+    remaining = set(ids)
+    while remaining:
+      seed = remaining.pop()
+      group = [seed]
+      changed = True
+      while changed:
+        changed = False
+        for candidate in list(remaining):
+          if any(
+            _devices_are_duplicate_candidates(candidate, existing)
+            for existing in group
+          ):
+            remaining.remove(candidate)
+            group.append(candidate)
+            changed = True
+      if len(group) > 1:
+        groups.append(group)
+  return groups
+
+
+def _merge_peer_history_device_id(old_id: str, new_id: str) -> None:
+  if old_id == new_id:
+    return
+  for pair_key, entry in list(peer_history_pairs.items()):
+    if not isinstance(entry, dict):
+      continue
+    a_id = entry.get("a_id")
+    b_id = entry.get("b_id")
+    if old_id not in (a_id, b_id):
+      continue
+    peer_history_pairs.pop(pair_key, None)
+    next_a = new_id if a_id == old_id else a_id
+    next_b = new_id if b_id == old_id else b_id
+    if not isinstance(next_a, str) or not isinstance(next_b, str):
+      continue
+    if next_a == next_b:
+      continue
+    next_key = f"{next_a}|{next_b}"
+    target = peer_history_pairs.setdefault(
+      next_key,
+      {
+        "a_id": next_a,
+        "b_id": next_b,
+        "buckets": {},
+        "last_ts": 0.0,
+      },
+    )
+    target_buckets = target.setdefault("buckets", {})
+    source_buckets = entry.get("buckets")
+    if isinstance(source_buckets, dict):
+      for bucket_key, count in source_buckets.items():
+        try:
+          bucket_count = int(count)
+        except (TypeError, ValueError):
+          continue
+        if bucket_count <= 0:
+          continue
+        key = str(bucket_key)
+        target_buckets[key] = int(target_buckets.get(key, 0)) + bucket_count
+    try:
+      target["last_ts"] = max(
+        float(target.get("last_ts") or 0),
+        float(entry.get("last_ts") or 0),
+      )
+    except (TypeError, ValueError):
+      pass
+
+
 def _drop_device_state(device_id: str) -> None:
   devices.pop(device_id, None)
   trails.pop(device_id, None)
@@ -1165,39 +1480,31 @@ def _drop_device_state(device_id: str) -> None:
 
 
 def _dedupe_loaded_devices() -> Set[str]:
-  groups: Dict[Tuple[str, int, int], List[str]] = {}
-  for device_id, dev_state in devices.items():
-    name = _normalize_device_name_for_dedupe(
-      dev_state.name or device_names.get(device_id)
-    )
-    if (not name or _coords_are_zero(dev_state.lat, dev_state.lon)):
-      continue
-    key = (
-      name,
-      int(round(float(dev_state.lat) * 100000)),
-      int(round(float(dev_state.lon) * 100000)),
-    )
-    groups.setdefault(key, []).append(device_id)
-
   dropped_ids: Set[str] = set()
-  for duplicate_ids in groups.values():
-    if len(duplicate_ids) < 2:
-      continue
+  for duplicate_ids in _duplicate_device_groups():
 
-    def _score(device_id: str) -> Tuple[float, float, str]:
-      last_seen = float(seen_devices.get(device_id) or devices[device_id].ts or 0.0)
+    def _score(device_id: str) -> Tuple[int, int, float, float, float, str]:
+      peer_unique, peer_total = _peer_history_activity_score(device_id)
+      advert_seen = float(last_seen_in_advert.get(device_id) or 0.0)
+      last_seen = float(
+        seen_devices.get(device_id) or devices[device_id].ts or 0.0
+      )
       first_seen = float(first_seen_devices.get(device_id) or last_seen or 0.0)
-      return (last_seen, -first_seen, device_id)
+      return (
+        peer_unique, peer_total, advert_seen, last_seen, -first_seen, device_id
+      )
 
     keep_id = max(duplicate_ids, key=_score)
     for device_id in duplicate_ids:
       if device_id == keep_id:
         continue
+      _merge_peer_history_device_id(device_id, keep_id)
       _drop_device_state(device_id)
       dropped_ids.add(device_id)
 
   if dropped_ids:
     state.state_dirty = True
+    _rebuild_node_hash_map()
     print(
       f"[state] Dropped {len(dropped_ids)} duplicate device entries: "
       f"{', '.join(sorted(dropped_ids))}"
@@ -1484,6 +1791,8 @@ def _history_edge_payload(edge: Dict[str, Any]) -> Dict[str, Any]:
       edge.get("count"),
     "last_ts":
       edge.get("last_ts"),
+    "byte_counts":
+      edge.get("byte_counts") if isinstance(edge.get("byte_counts"), dict) else {},
     "recent":
       edge.get("recent") if isinstance(edge.get("recent"), list) else [],
   }
@@ -2185,6 +2494,9 @@ async def broadcaster():
           device_state.name = device_names[device_id]
         if device_id in device_roles:
           device_state.role = device_roles[device_id]
+        if _device_hidden_by_blocked_name(device_id):
+          await _broadcast_payloads(_blocked_name_remove_payloads(device_id))
+          continue
         payload = {
           "type": "update",
           "device": _device_payload(device_id, device_state),
@@ -2302,6 +2614,15 @@ async def broadcaster():
             point_ids = [event.get("origin_id"), event.get("receiver_id")]
 
       if not points:
+        continue
+
+      route_name_probe = {
+        "point_ids": point_ids,
+        "origin_id": event.get("origin_id"),
+        "receiver_id": event.get("receiver_id"),
+        "sender_name": event.get("sender_name"),
+      }
+      if _route_hidden_by_blocked_name(route_name_probe):
         continue
 
       if MAP_RADIUS_KM > 0:
@@ -2453,6 +2774,24 @@ async def broadcaster():
     if device_state.role:
       device_roles[device_id] = device_state.role
 
+    if _device_hidden_by_blocked_name(device_id):
+      trails.pop(device_id, None)
+      await _broadcast_payloads(_blocked_name_remove_payloads(device_id))
+      continue
+
+    dropped_duplicate_ids = _dedupe_loaded_devices()
+    if dropped_duplicate_ids and device_id in dropped_duplicate_ids:
+      payload = {"type": "stale", "device_ids": sorted(dropped_duplicate_ids)}
+      dead = []
+      for ws in list(clients):
+        try:
+          await ws.send_text(json.dumps(payload))
+        except Exception:
+          dead.append(ws)
+      for ws in dead:
+        clients.discard(ws)
+      continue
+
     if TRAIL_LEN > 0 and not _coords_are_zero(
       device_state.lat, device_state.lon
     ):
@@ -2479,6 +2818,17 @@ async def broadcaster():
         dead.append(ws)
     for ws in dead:
       clients.discard(ws)
+
+    if dropped_duplicate_ids:
+      payload = {"type": "stale", "device_ids": sorted(dropped_duplicate_ids)}
+      dead = []
+      for ws in list(clients):
+        try:
+          await ws.send_text(json.dumps(payload))
+        except Exception:
+          dead.append(ws)
+      for ws in dead:
+        clients.discard(ws)
 
 
 async def reaper():
@@ -2685,6 +3035,79 @@ def _check_turnstile_auth(request: Request) -> bool:
 # =========================
 # FastAPI routes
 # =========================
+def _markdown_to_policy_html(markdown_text: str) -> str:
+  lines = markdown_text.splitlines()
+  output: List[str] = []
+  in_list = False
+
+  def close_list() -> None:
+    nonlocal in_list
+    if in_list:
+      output.append("</ul>")
+      in_list = False
+
+  for raw_line in lines:
+    line = raw_line.strip()
+    if not line:
+      close_list()
+      continue
+    if line.startswith("# "):
+      close_list()
+      output.append(f"<h1>{html.escape(line[2:])}</h1>")
+    elif line.startswith("## "):
+      close_list()
+      output.append(f"<h2>{html.escape(line[3:])}</h2>")
+    elif line.startswith("- "):
+      if not in_list:
+        output.append("<ul>")
+        in_list = True
+      output.append(f"<li>{html.escape(line[2:])}</li>")
+    else:
+      close_list()
+      output.append(f"<p>{html.escape(line)}</p>")
+  close_list()
+  return "\n".join(output)
+
+
+@app.get("/privacy")
+def privacy_policy():
+  privacy_path = os.path.join(APP_DIR, "static", "privacy.md")
+  try:
+    with open(privacy_path, "r", encoding="utf-8") as handle:
+      markdown_text = handle.read()
+  except Exception:
+    raise HTTPException(status_code=404, detail="Privacy policy not found")
+
+  body = _markdown_to_policy_html(markdown_text)
+  content = f"""<!doctype html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <title>Privacy Policy</title>
+  <style>
+    body {{
+      max-width: 760px;
+      margin: 32px auto;
+      padding: 0 18px 48px;
+      background: #0f172a;
+      color: #e5e7eb;
+      font: 16px/1.55 ui-sans-serif, system-ui, sans-serif;
+    }}
+    a {{ color: #93c5fd; }}
+    h1, h2 {{ color: #f8fafc; line-height: 1.2; }}
+    h1 {{ margin-bottom: 4px; }}
+    h2 {{ margin-top: 28px; }}
+    li {{ margin: 6px 0; }}
+  </style>
+</head>
+<body>
+{body}
+</body>
+</html>"""
+  return HTMLResponse(content, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/")
 def root(request: Request):
   # If Turnstile is enabled and user isn't authenticated, serve landing page
@@ -2710,7 +3133,7 @@ def root(request: Request):
       safe_value = html.escape(str(value), quote=True)
       content = content.replace(f"{{{{{key}}}}}", safe_value)
 
-    return HTMLResponse(content)
+    return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
   # Serve map page
   html_path = os.path.join(APP_DIR, "static", "index.html")
@@ -2718,78 +3141,11 @@ def root(request: Request):
     with open(html_path, "r", encoding="utf-8") as handle:
       content = handle.read()
   except Exception:
-    return FileResponse("static/index.html")
+    return FileResponse(
+      "static/index.html", headers={"Cache-Control": "no-store"}
+    )
 
-  # Check for lat/lon parameters for dynamic preview image
-  query_params = request.query_params
-  lat_param = query_params.get("lat") or query_params.get("latitude")
-  lon_param = (
-    query_params.get("lon") or query_params.get("lng") or
-    query_params.get("long") or query_params.get("longitude")
-  )
-  zoom_param = query_params.get("zoom")
-
-  og_image_tag = ""
-  twitter_image_tag = ""
-  og_url = SITE_URL
-
-  # Generate dynamic preview image if coordinates are provided
-  if lat_param and lon_param:
-    try:
-      lat = float(lat_param)
-      lon = float(lon_param)
-      zoom = int(zoom_param) if zoom_param and zoom_param.isdigit() else 13
-      zoom = max(1, min(18, zoom))  # Clamp zoom between 1-18
-
-      # Generate preview image URL pointing to our own server (must include
-      # APP_BASE_PATH when the map is not served at the site root).
-      preview_params = urlencode(
-        {
-          "lat": lat,
-          "lon": lon,
-          "zoom": zoom,
-          "marker": "blue",
-          "theme": "dark",
-        }
-      )
-      preview_url = _public_preview_png_url(request, preview_params)
-
-      safe_image = html.escape(preview_url, quote=True)
-      # Add image dimensions for better Discord/social media compatibility
-      # Note: Preview image may fail if container can't reach external services
-      # In that case, fall back to static SITE_OG_IMAGE if available
-      og_image_tag = (
-        f'<meta property="og:image" content="{safe_image}" />\n'
-        f'  <meta property="og:image:width" content="1200" />\n'
-        f'  <meta property="og:image:height" content="630" />\n'
-        f'  <meta property="og:image:type" content="image/png" />'
-      )
-      twitter_image_tag = f'<meta name="twitter:image" content="{safe_image}" />'
-
-      # If static image is configured, add it as a fallback
-      if SITE_OG_IMAGE:
-        safe_static_image = html.escape(str(SITE_OG_IMAGE), quote=True)
-        og_image_tag += f'\n  <meta property="og:image:secure_url" content="{safe_static_image}" />'
-
-      # Update og:url to include query parameters (same path prefix as map).
-      base_page = (
-        _http_site_origin(request) + public_app_path("/").rstrip("/")
-      )
-      og_url = f"{base_page}?lat={lat}&lon={lon}"
-      if zoom_param:
-        og_url += f"&zoom={zoom}"
-    except (ValueError, TypeError):
-      # Invalid coordinates, fall back to static image
-      if SITE_OG_IMAGE:
-        safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
-        og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
-        twitter_image_tag = (
-          f'<meta name="twitter:image" content="{safe_image}" />'
-        )
-  elif SITE_OG_IMAGE:
-    safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
-    og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
-    twitter_image_tag = f'<meta name="twitter:image" content="{safe_image}" />'
+  og_image_tag, twitter_image_tag, og_url = _map_preview_meta(request, "/")
 
   content = content.replace("{{OG_IMAGE_TAG}}", og_image_tag)
   content = content.replace("{{TWITTER_IMAGE_TAG}}", twitter_image_tag)
@@ -2799,8 +3155,8 @@ def root(request: Request):
     trail_info_suffix = f" Trails show last ~{TRAIL_LEN} points."
   boundary_json = json.dumps(get_map_boundary_points()).replace("</", "<\\/")
 
-  # Escape og_url for HTML
-  SAFE_OG_URL = html.escape(str(og_url), quote=True)
+  # Values are escaped by the replacement loop below.
+  SAFE_OG_URL = str(og_url)
   content = content.replace("{{MAP_BOUNDARY_JSON}}", boundary_json)
 
   replacements = {
@@ -2824,6 +3180,8 @@ def root(request: Request):
       CUSTOM_LINK_URL,
     "PACKET_ANALYZER_URL":
       PACKET_ANALYZER_URL,
+    "CORESCOPE_URL":
+      CORESCOPE_URL,
     "QR_CODE_BUTTON_ENABLED":
       str(QR_CODE_BUTTON_ENABLED).lower(),
     "APP_VERSION":
@@ -2836,6 +3194,10 @@ def root(request: Request):
       str(HEAT_DEFAULT_ON).lower(),
     "ROUTE_HISTORY_ENABLED":
       str(ROUTE_HISTORY_ENABLED).lower(),
+    "ROUTE_BYTE_FILTER_DEFAULT":
+      ROUTE_BYTE_FILTER_DEFAULT,
+    "HISTORY_BYTE_FILTER_DEFAULT":
+      HISTORY_BYTE_FILTER_DEFAULT,
     "PEERS_DEFAULT_OPEN":
       str(PEERS_DEFAULT_OPEN).lower(),
     "NODE_MARKER_RADIUS":
@@ -2923,7 +3285,7 @@ def root(request: Request):
     safe_value = html.escape(str(value), quote=True)
     content = content.replace(f"{{{{{key}}}}}", safe_value)
 
-  return HTMLResponse(content)
+  return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/preview.png")
@@ -3234,6 +3596,7 @@ def map_page(request: Request):
     return HTMLResponse(
       f"<script>window.location.href = '{home}';</script>",
       status_code=303,
+      headers={"Cache-Control": "no-store"},
     )
 
   # Otherwise serve the map page
@@ -3242,17 +3605,11 @@ def map_page(request: Request):
     with open(html_path, "r", encoding="utf-8") as handle:
       content = handle.read()
   except Exception:
-    return FileResponse("static/index.html")
+    return FileResponse(
+      "static/index.html", headers={"Cache-Control": "no-store"}
+    )
 
-  # Include all the template replacements (same as root endpoint)
-  # Generate OG image tags
-  og_image_tag = ""
-  twitter_image_tag = ""
-  if SITE_OG_IMAGE:
-    safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
-    og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
-    twitter_image_tag = f'<meta name="twitter:image" content="{safe_image}" />'
-
+  og_image_tag, twitter_image_tag, og_url = _map_preview_meta(request, "/map")
   content = content.replace("{{OG_IMAGE_TAG}}", og_image_tag)
   content = content.replace("{{TWITTER_IMAGE_TAG}}", twitter_image_tag)
 
@@ -3261,7 +3618,7 @@ def map_page(request: Request):
     trail_info_suffix = f" Trails show last ~{TRAIL_LEN} points."
   boundary_json = json.dumps(get_map_boundary_points()).replace("</", "<\\/")
 
-  SAFE_OG_URL = html.escape(SITE_URL, quote=True)
+  SAFE_OG_URL = str(og_url)
   content = content.replace("{{MAP_BOUNDARY_JSON}}", boundary_json)
 
   replacements = {
@@ -3275,12 +3632,15 @@ def map_page(request: Request):
     "SITE_FEED_NOTE": SITE_FEED_NOTE,
     "CUSTOM_LINK_URL": CUSTOM_LINK_URL,
     "PACKET_ANALYZER_URL": PACKET_ANALYZER_URL,
+    "CORESCOPE_URL": CORESCOPE_URL,
     "QR_CODE_BUTTON_ENABLED": str(QR_CODE_BUTTON_ENABLED).lower(),
     "APP_VERSION": APP_VERSION,
     "ASSET_VERSION": ASSET_VERSION,
     "DISTANCE_UNITS": DISTANCE_UNITS,
     "HEAT_DEFAULT_ON": str(HEAT_DEFAULT_ON).lower(),
     "ROUTE_HISTORY_ENABLED": str(ROUTE_HISTORY_ENABLED).lower(),
+    "ROUTE_BYTE_FILTER_DEFAULT": ROUTE_BYTE_FILTER_DEFAULT,
+    "HISTORY_BYTE_FILTER_DEFAULT": HISTORY_BYTE_FILTER_DEFAULT,
     "PEERS_DEFAULT_OPEN": str(PEERS_DEFAULT_OPEN).lower(),
     "NODE_MARKER_RADIUS": NODE_MARKER_RADIUS,
     "HISTORY_LINK_SCALE": HISTORY_LINK_SCALE,
@@ -3327,7 +3687,7 @@ def map_page(request: Request):
     safe_value = html.escape(str(value), quote=True)
     content = content.replace(f"{{{{{key}}}}}", safe_value)
 
-  return HTMLResponse(content)
+  return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/manifest.webmanifest")
@@ -3441,11 +3801,8 @@ def snapshot(request: Request):
   _require_prod_token(request)
   now = time.time()
   return {
-    "devices": {
-      k: _device_payload(k, v)
-      for k, v in devices.items()
-    },
-    "trails": trails,
+    "devices": _visible_device_payloads(),
+    "trails": _visible_trails(),
     "routes": _snapshot_routes(now),
     "history_edges": _history_edge_payloads(),
     "history_window_seconds": _history_window_seconds_value(),
@@ -4015,11 +4372,8 @@ async def ws_endpoint(ws: WebSocket):
     json.dumps(
       {
         "type": "snapshot",
-        "devices": {
-          k: _device_payload(k, v)
-          for k, v in devices.items()
-        },
-        "trails": trails,
+        "devices": _visible_device_payloads(),
+        "trails": _visible_trails(),
         "routes": _snapshot_routes(time.time()),
         "history_edges": _history_edge_payloads(),
         "history_window_seconds": _history_window_seconds_value(),

@@ -188,26 +188,76 @@ def test_load_state_dedupes_same_name_same_location_entries(
             "snr": None,
             "raw_topic": None,
           },
+          "025055A6AAAA": {
+            "device_id": "025055A6AAAA",
+            "lat": 33.821170,
+            "lon": -118.381010,
+            "ts": now - 100,
+            "name": "4422",
+            "role": "repeater",
+            "heading": None,
+            "speed": None,
+            "rssi": None,
+            "snr": None,
+            "raw_topic": None,
+          },
+          "025055A6BBBB": {
+            "device_id": "025055A6BBBB",
+            "lat": 33.823170,
+            "lon": -118.383010,
+            "ts": now - 50,
+            "name": "4422",
+            "role": "repeater",
+            "heading": None,
+            "speed": None,
+            "rssi": None,
+            "snr": None,
+            "raw_topic": None,
+          },
         },
         "seen_devices": {
           "REAL1111": now,
           "GHOST111": now - 300,
+          "025055A6AAAA": now - 100,
+          "025055A6BBBB": now - 50,
         },
         "first_seen_devices": {
           "REAL1111": now - 7200,
           "GHOST111": now - 600,
+          "025055A6AAAA": now - 7200,
+          "025055A6BBBB": now - 600,
         },
         "device_names": {
           "REAL1111": "Node A",
           "GHOST111": "Node A",
+          "025055A6AAAA": "4422",
+          "025055A6BBBB": "4422",
         },
         "device_roles": {
           "REAL1111": "repeater",
           "GHOST111": "repeater",
+          "025055A6AAAA": "repeater",
+          "025055A6BBBB": "repeater",
         },
         "device_role_sources": {
           "REAL1111": "explicit",
           "GHOST111": "explicit",
+          "025055A6AAAA": "explicit",
+          "025055A6BBBB": "explicit",
+        },
+        "last_seen_in_advert": {
+          "025055A6AAAA": now - 3600,
+          "025055A6BBBB": now,
+        },
+        "peer_history_pairs": {
+          "025055A6BBBB|PEER1111": {
+            "a_id": "025055A6BBBB",
+            "b_id": "PEER1111",
+            "buckets": {
+              str(int(now)): 3,
+            },
+            "last_ts": now,
+          },
         },
       }
     ),
@@ -232,6 +282,9 @@ def test_load_state_dedupes_same_name_same_location_entries(
   assert "GHOST111" not in state.devices
   assert "GHOST111" not in state.seen_devices
   assert "GHOST111" not in state.device_names
+  assert "025055A6BBBB" in state.devices
+  assert "025055A6AAAA" not in state.devices
+  assert "025055A6AAAA" not in state.last_seen_in_advert
 
 
 def test_route_history_load_skips_bad_lines_and_marks_compact(

@@ -1,5 +1,25 @@
 # Versions
 
+## v1.9.4 (07-07-2026)
+- Changed live and History `Path bytes` controls to checkbox selectors so users can keep `All` or combine specific byte widths such as `2-byte + 3-byte`.
+- Fixed Route Details prefix display for multibyte paths so 2-byte/3-byte route hops show the matching path-hash width instead of falling back to 1-byte node prefixes.
+- Added optional `CORESCOPE_URL` support so Route Details hop names can deep-link to CoreScope node pages (`#/nodes/<pubkey>`), with packet-hash fallback links to `#/packets/<hash>` when `PACKET_ANALYZER_URL` is not set.
+- Added `BLOCKED_NAME_SYMBOL_FILTER_ENABLED` so deployments can hide nodes whose names contain `⛔`, `🛑`, or `🚫` from map snapshots, trails, and routes.
+- Guarded CoreScope link generation against unreplaced template placeholders so routes never point at local `/%7B%7BCORESCOPE_URL%7D%7D/` paths, and added a New England map fallback to `https://analyzer.newenglandme.sh`.
+- Made `ROUTE_HISTORY_ENABLED` parsing tolerant of surrounding whitespace so a `true` value with deployment formatting does not accidentally hide the History button.
+- Marked the map HTML shell responses as `Cache-Control: no-store` so stale cached pages cannot keep unreplaced template placeholders such as `{{ROUTE_HISTORY_ENABLED}}` after an image update.
+- Fixed Discord/social embeds for `/map?lat=...&lon=...` links so they include the same generated map preview image as root `/?lat=...&lon=...` links.
+- Docker image publishing now runs on `dev` pushes as well as `main`; `dev` publishes the `dev` and short-SHA tags, while only `main` publishes the `latest` tag.
+- Added `ROUTE_BYTE_FILTER_DEFAULT` and `HISTORY_BYTE_FILTER_DEFAULT` env defaults. Browser selections persist locally, while share links can carry comma-separated byte filters such as `route_bytes=2b,3b` and `history_bytes=1b,2b`.
+- Updated dependency pins: `fastapi==0.139.0`, `uvicorn[standard]==0.50.2`, `Pillow==12.3.0`, `httpx2==2.5.0`, and `pytest==9.1.1`.
+- Route History now records path-hash byte-width metadata for newly ingested history samples and exposes per-edge byte counts to the frontend. Older history records remain visible in `All` after upgrade, while byte-specific filters start showing those links as new byte-aware traffic arrives.
+- Added a Peers panel filter box that live-filters incoming/outgoing peers by node name, public-key prefix, or role, and keeps the peer lines aligned with the visible filtered rows.
+- Fixed stale duplicate-node cleanup so older same-name/public-key-prefix records without peer activity no longer render in front of the newer connected node record.
+- Added a third `Satellite` base-map option. The existing Standard/Topo map button now cycles through Standard, Topo, and Satellite; Satellite uses open EOX Sentinel-2 cloudless imagery with OpenStreetMap/CARTO labels, borders, and road context overlaid.
+- Added a deployment privacy policy page and a `Privacy` link in the Leaflet attribution/footer area, keeping it out of the main HUD buttons.
+- Tightened HUD/header styling so long site titles and action buttons stay compact and legible over light, topo, and satellite map backgrounds.
+- Fixed the route/history byte dropdown positioning so multi-select menus stay contained in the HUD/tool panel instead of spilling off the edge after the HUD styling updates.
+
 ## v1.9.3 (06-06-2026)
 - Fixed issue #74: hardened frontend rendering against stored XSS from untrusted MeshCore/MQTT fields such as node names, peer names, route labels, and coverage metadata.
 - Node popups, permanent labels, search results, Peers rows, Route Details, History popups, and Coverage popups now escape display HTML before rendering user-supplied values.

@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.9.3` (see `VERSIONS.md`).
+Current version: `1.9.4` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.9.3`).
+- `VERSION.txt` holds the current version string (`1.9.4`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -43,7 +43,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## Env Notes (Recent Additions)
 - `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
 - `APP_BASE_PATH` lets the map live under a public subpath such as `/livemap`; when blank, the app behaves as a normal root-hosted site.
-- `PACKET_ANALYZER_URL` adds an external link on Route Details hashes; set it to a base such as `https://analyzer.letsmesh.net/packets?packet_hash=`.
+- `PACKET_ANALYZER_URL` adds a legacy external link on Route Details hashes; leave it blank when using `CORESCOPE_URL`.
+- `CORESCOPE_URL` adds CoreScope links in Route Details. Set it to a CoreScope site root such as `https://analyzer.newenglandme.sh`; route hashes use `#/packets/<hash>` when no packet analyzer URL is set, and hop names link to `#/nodes/<pubkey>`.
 - `QR_CODE_BUTTON_ENABLED` shows a `Generate QR Code` button in node popups; it opens a theme-aware MeshCore-compatible contact QR modal and defaults to `false`.
 - `PEERS_DEFAULT_LIMIT` controls the default number of peers returned by `/peers/{device_id}` when no `?limit=` is passed; default `8`.
 - `PEERS_DEFAULT_OPEN` controls whether the Peers tool starts active on page load; default `false`.
@@ -65,7 +66,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `ROUTE_MAX_HOP_DISTANCE` prunes hops longer than the configured km distance.
 - `ROUTE_INFRA_ONLY` limits route lines to repeaters/rooms (companions excluded from routes).
 - `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK` restores the legacy route fallback for colliding 1-byte prefixes when conservative routing is too strict; default is `false`.
-- The HUD `Path bytes` filter can limit live route rendering to `All`, `1-byte`, `2-byte`, or `3-byte` path hashes without affecting ingest; the selected view can be shared with `route_bytes=all|1b|2b|3b` and otherwise resets to `All` on reload.
+- The live and History `Path bytes` filters can limit route rendering to `All`, `1-byte`, `2-byte`, `3-byte`, or checkbox combinations without affecting ingest. Browser choices persist locally, env defaults are `ROUTE_BYTE_FILTER_DEFAULT` / `HISTORY_BYTE_FILTER_DEFAULT`, and share links use `route_bytes` / `history_bytes` values such as `all` or `2b,3b`.
 - `DEVICE_TTL_HOURS` controls advert/device staleness (default `96` hours).
 - `PATH_TTL_SECONDS` controls path staleness (default `172800` seconds / 48h).
 - `DEVICE_COORDS_FILE` points to optional coordinate overrides (`/data/device_coords.json` by default).
@@ -119,7 +120,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - HUD is capped to `90vh` and scrolls to avoid running off-screen.
 - Map start position is configurable with `MAP_START_LAT`, `MAP_START_LON`, `MAP_START_ZOOM`.
 - Radius filter: `MAP_RADIUS_KM=0` disables filtering; `.env.example` uses `241.4` km (150mi). `MAP_RADIUS_SHOW=true` draws a debug circle.
-- Default base layer can be set with `MAP_DEFAULT_LAYER` (localStorage overrides).
+- Default base layer can be set with `MAP_DEFAULT_LAYER` (`light`, `dark`, `topo`, or `satellite`; localStorage overrides).
+- The `satellite` layer uses open Sentinel-2 cloudless imagery from EOX with OpenStreetMap/CARTO labels and borders overlaid.
 - Units toggle (km/mi) is site-wide; default from `DISTANCE_UNITS` and stored in localStorage.
 - Heat toggle defaults from `HEAT_DEFAULT_ON` on first load before any browser-local override exists.
 - Node size slider defaults from `NODE_MARKER_RADIUS` and persists in localStorage.
@@ -168,7 +170,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Optional custom HUD link appears when `CUSTOM_LINK_URL` is set.
 - Update banner shows when `GIT_CHECK_ENABLED=true` and the repo is behind; users can dismiss it per remote SHA.
 - Update banner dismissal relies on `.hud-update[hidden]` to ensure the banner actually disappears.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, `history_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
 - Service worker uses `no-store` for navigation requests so env-driven UI toggles (like the radius ring) update without clearing site data.
 - HUD scrollbars are custom styled in Chromium for a cleaner look.
 

@@ -138,6 +138,25 @@ def test_peer_history_still_records_when_route_history_disabled(monkeypatch):
   assert inbound["incoming"][0]["peer_id"] == "AA001111"
 
 
+def test_route_history_tracks_path_hash_byte_counts(monkeypatch):
+  _clear_peer_state()
+  now = time.time()
+
+  monkeypatch.setattr(history, "ROUTE_HISTORY_ENABLED", True)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_HOURS", 24)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_MAX_SEGMENTS", 10)
+  monkeypatch.setattr(history, "ROUTE_HISTORY_ALLOWED_MODES_SET", {"path"})
+
+  route = _route(now)
+  route["hashes"] = ["aa", "bbbb", "cccccc"]
+  history._record_route_history(route)
+
+  assert len(state.route_history_edges) == 1
+  edge = next(iter(state.route_history_edges.values()))
+  assert edge["byte_counts"] == {"1": 1, "2": 1, "3": 1}
+  assert edge["recent"][0]["route_byte_widths"] == [1, 2, 3]
+
+
 def test_peer_stats_report_unique_counts_before_limit(monkeypatch):
   _clear_peer_state()
   now = time.time()

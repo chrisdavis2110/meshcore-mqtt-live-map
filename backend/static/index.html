@@ -44,10 +44,13 @@
   data-distance-units="{{DISTANCE_UNITS}}"
   data-heat-default-on="{{HEAT_DEFAULT_ON}}"
   data-route-history-enabled="{{ROUTE_HISTORY_ENABLED}}"
+  data-route-byte-filter-default="{{ROUTE_BYTE_FILTER_DEFAULT}}"
+  data-history-byte-filter-default="{{HISTORY_BYTE_FILTER_DEFAULT}}"
   data-peers-default-open="{{PEERS_DEFAULT_OPEN}}"
   data-node-radius="{{NODE_MARKER_RADIUS}}" data-history-link-scale="{{HISTORY_LINK_SCALE}}"
   data-coverage-api-url="{{COVERAGE_API_URL}}" data-custom-link-url="{{CUSTOM_LINK_URL}}"
   data-packet-analyzer-url="{{PACKET_ANALYZER_URL}}"
+  data-corescope-url="{{CORESCOPE_URL}}"
   data-qr-code-button-enabled="{{QR_CODE_BUTTON_ENABLED}}"
   data-app-version="{{APP_VERSION}}"
   data-weather-radar-enabled="{{WEATHER_RADAR_ENABLED}}"
@@ -148,12 +151,15 @@
       <button class="map-toggle" id="prop-toggle" type="button">Propagation</button>
       <div class="route-byte-control">
         <span class="route-byte-label">Path bytes</span>
-        <select class="route-byte-select" id="route-byte-filter" aria-label="Route path byte filter">
-          <option value="all">All</option>
-          <option value="1b">1-byte</option>
-          <option value="2b">2-byte</option>
-          <option value="3b">3-byte</option>
-        </select>
+        <details class="byte-dropdown" id="route-byte-filter">
+          <summary aria-label="Route path byte filter"><span class="byte-summary-label">All</span></summary>
+          <div class="byte-check-options">
+            <label><input type="checkbox" value="all" checked /> All</label>
+            <label><input type="checkbox" value="1b" /> 1-byte</label>
+            <label><input type="checkbox" value="2b" /> 2-byte</label>
+            <label><input type="checkbox" value="3b" /> 3-byte</label>
+          </div>
+        </details>
       </div>
       <div class="legend">
         <div class="legend-item"><span class="legend-line legend-trace"></span> Trace/path</div>
@@ -248,6 +254,18 @@
       <input id="history-filter" type="range" min="0" max="4" step="1" value="0" />
     </label>
     <div class="small" id="history-filter-label">All links</div>
+    <div class="history-field">
+      <span>Path bytes</span>
+      <details class="byte-dropdown history-byte-dropdown" id="history-byte-filter">
+        <summary><span class="byte-summary-label">All</span></summary>
+        <div class="byte-check-options">
+          <label><input type="checkbox" value="all" checked /> All</label>
+          <label><input type="checkbox" value="1b" /> 1-byte</label>
+          <label><input type="checkbox" value="2b" /> 2-byte</label>
+          <label><input type="checkbox" value="3b" /> 3-byte</label>
+        </div>
+      </details>
+    </div>
     <label class="history-field">
       <span>Link size</span>
       <input id="history-link-size" type="range" min="0" max="100" step="1" value="50" />
@@ -277,6 +295,9 @@
     </div>
     <div class="small" id="peers-status">Select a node to view peers.</div>
     <div class="small" id="peers-meta" hidden></div>
+    <label class="peer-filter-label" for="peers-filter">Filter peers</label>
+    <input id="peers-filter" class="peer-filter-input" type="search"
+      autocomplete="off" placeholder="Filter by name, key, or role...">
     <div class="peers-lists">
       <div class="peer-section">
         <div class="small peer-heading" id="peers-in-heading">Incoming (heard from)</div>

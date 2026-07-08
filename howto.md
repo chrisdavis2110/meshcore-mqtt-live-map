@@ -1,7 +1,7 @@
 # How-To: MQTT Broker + Live Map
 
 This guide covers two parts: stand up a MeshCore MQTT broker and point the live map at it.
-Current version: `1.9.3` (see `VERSIONS.md`).
+Current version: `1.9.4` (see `VERSIONS.md`).
 
 Useful UI defaults in the live map `.env`:
 - `HEAT_DEFAULT_ON=true|false` sets the default Heat toggle state for first load.
@@ -221,7 +221,8 @@ Notes:
 Optional packet analyzer link base (used for Route Details hashes):
 
 ```env
-PACKET_ANALYZER_URL=https://analyzer.letsmesh.net/packets?packet_hash=
+PACKET_ANALYZER_URL=
+CORESCOPE_URL=https://analyzer.newenglandme.sh
 QR_CODE_BUTTON_ENABLED=false
 PEERS_DEFAULT_LIMIT=8
 PEERS_DEFAULT_OPEN=false

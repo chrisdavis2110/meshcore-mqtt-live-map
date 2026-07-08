@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.9.3` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.9.4` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -163,7 +163,8 @@ Site metadata (page title + embeds):
 - `SITE_ICON`
 - `SITE_FEED_NOTE`
 - `CUSTOM_LINK_URL` (optional extra HUD link; hidden when blank)
-- `PACKET_ANALYZER_URL` (optional analyzer base URL for Route Details hashes; e.g. `https://analyzer.letsmesh.net/packets?packet_hash=`)
+- `PACKET_ANALYZER_URL` (optional legacy analyzer base URL for Route Details hashes; leave blank when using `CORESCOPE_URL`)
+- `CORESCOPE_URL` (optional CoreScope base URL; e.g. `https://analyzer.newenglandme.sh`; Route Details hashes link to `#/packets/<hash>` when `PACKET_ANALYZER_URL` is blank, and hop names link to `#/nodes/<pubkey>`)
 - `QR_CODE_BUTTON_ENABLED` (show a `Generate QR Code` button in node popups that opens a theme-aware MeshCore-compatible contact QR modal; default `false`)
 - `PEERS_DEFAULT_LIMIT` (optional default number of incoming/outgoing peers returned by `/peers/{device_id}`; default `8`)
 - `PEERS_DEFAULT_OPEN` (optional `true`/`false`; opens the Peers tool active on page load when `true`; default `false`)
@@ -226,6 +227,7 @@ Device + route tuning:
 - `ROUTE_PAYLOAD_TYPES` (packet types used for live routes)
 - `ROUTE_MAX_HOP_DISTANCE` (km; prunes unrealistic hops)
 - `ROUTE_INFRA_ONLY` (true = only repeaters/rooms in route lines)
+- `ROUTE_BYTE_FILTER_DEFAULT` (default live Path bytes checkbox state; `all`, `1b`, `2b`, `3b`, or comma combos)
 - `MESSAGE_ORIGIN_TTL_SECONDS`
 
 History overlay:
@@ -238,6 +240,7 @@ History overlay:
 - `ROUTE_HISTORY_FILE`
 - `ROUTE_HISTORY_PAYLOAD_TYPES`
 - `ROUTE_HISTORY_ALLOWED_MODES` (comma-separated route modes; default `path`)
+- `HISTORY_BYTE_FILTER_DEFAULT` (default History Path bytes checkbox state; `all`, `1b`, `2b`, `3b`, or comma combos)
 - `HISTORY_LINK_SCALE` (default history line weight multiplier)
 
 Heat + online status:
@@ -260,7 +263,8 @@ Update checks:
 
 Map + LOS:
 - `MAP_START_LAT` / `MAP_START_LON` / `MAP_START_ZOOM` (default map view)
-- `MAP_DEFAULT_LAYER` (`light`, `dark`, or `topo`; localStorage overrides)
+- `MAP_DEFAULT_LAYER` (`light`, `dark`, `topo`, or `satellite`; localStorage overrides)
+  - `satellite` uses open Sentinel-2 cloudless imagery from EOX with OpenStreetMap/CARTO labels and borders overlaid.
 - `MAP_RADIUS_KM` (`0` disables radius filtering; `.env.example` uses `241.4` km ≈ 150mi)
 - `MAP_RADIUS_SHOW` (`true` draws the radius debug circle)
 - `LOS_ELEVATION_URL` (elevation API for LOS tool)
@@ -336,7 +340,7 @@ Use it:
 - History tool always loads off (use the button or `history=on` in the URL).
 - Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, distances are shown in the selected km/mi units when both endpoints have coordinates, compact headings show Rx/Tx packet totals and unique peer counts, and forced MQTT listeners are excluded from peer lists.
 - Route History and Peers are now independent: `ROUTE_HISTORY_ENABLED=false` disables the History tool and history payloads, but peer counts continue updating from live routes.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, `history_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;

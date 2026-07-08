@@ -189,6 +189,7 @@ def _history_edge_key(
 
 def _history_sample_from_route(route: Dict[str, Any],
                                ts: float) -> Dict[str, Any]:
+  route_byte_widths = _route_hash_byte_widths(route)
   return {
     "ts": float(ts),
     "message_hash": route.get("message_hash"),
@@ -197,7 +198,66 @@ def _history_sample_from_route(route: Dict[str, Any],
     "receiver_id": route.get("receiver_id"),
     "route_mode": route.get("route_mode"),
     "topic": route.get("topic"),
+    "route_byte_widths": route_byte_widths,
   }
+
+
+def _route_hash_byte_widths(route: Dict[str, Any]) -> List[int]:
+  widths: Set[int] = set()
+  hashes = route.get("hashes")
+  if not isinstance(hashes, list):
+    return []
+  for value in hashes:
+    text = str(value or "").strip().lower()
+    if text.startswith("0x"):
+      text = text[2:]
+    width = len(text) // 2 if len(text) in (2, 4, 6) else 0
+    if width in (1, 2, 3):
+      widths.add(width)
+  return sorted(widths)
+
+
+def _clean_route_byte_widths(value: Any) -> List[int]:
+  if not isinstance(value, list):
+    return []
+  widths: Set[int] = set()
+  for item in value:
+    try:
+      width = int(item)
+    except (TypeError, ValueError):
+      continue
+    if width in (1, 2, 3):
+      widths.add(width)
+  return sorted(widths)
+
+
+def _increment_history_byte_counts(edge: Dict[str, Any], widths: List[int]) -> None:
+  if not widths:
+    return
+  byte_counts = edge.get("byte_counts")
+  if not isinstance(byte_counts, dict):
+    byte_counts = {}
+  for width in widths:
+    key = str(width)
+    byte_counts[key] = int(byte_counts.get(key, 0)) + 1
+  edge["byte_counts"] = byte_counts
+
+
+def _decrement_history_byte_counts(edge: Dict[str, Any], widths: List[int]) -> None:
+  byte_counts = edge.get("byte_counts")
+  if not widths or not isinstance(byte_counts, dict):
+    return
+  for width in widths:
+    key = str(width)
+    next_count = int(byte_counts.get(key, 0)) - 1
+    if next_count > 0:
+      byte_counts[key] = next_count
+    else:
+      byte_counts.pop(key, None)
+  if byte_counts:
+    edge["byte_counts"] = byte_counts
+  else:
+    edge.pop("byte_counts", None)
 
 
 def _update_history_edge_recent(
@@ -285,6 +345,7 @@ def _record_route_history(
         "receiver_id": sample.get("receiver_id"),
         "route_mode": sample.get("route_mode"),
         "topic": sample.get("topic"),
+        "route_byte_widths": sample.get("route_byte_widths"),
       }
     )
     edge = state.route_history_edges.get(key)
@@ -299,6 +360,7 @@ def _record_route_history(
       state.route_history_edges[key] = edge
     edge["count"] = int(edge.get("count", 0)) + 1
     edge["last_ts"] = max(edge.get("last_ts", float(ts)), float(ts))
+    _increment_history_byte_counts(edge, sample.get("route_byte_widths") or [])
     _update_history_edge_recent(edge, sample)
     updated_keys.add(key)
 
@@ -369,6 +431,9 @@ def _prune_route_history(
       state.route_history_compact = True
       continue
     edge["count"] = int(edge.get("count", 0)) - 1
+    _decrement_history_byte_counts(
+      edge, _clean_route_byte_widths(entry.get("route_byte_widths"))
+    )
     recent = edge.get("recent")
     if isinstance(recent, list):
       edge["recent"] = [s for s in recent if (s.get("ts") or 0) >= cutoff]
@@ -438,6 +503,9 @@ def _load_route_history() -> None:
           "receiver_id": entry.get("receiver_id"),
           "route_mode": entry.get("route_mode"),
           "topic": entry.get("topic"),
+          "route_byte_widths": _clean_route_byte_widths(
+            entry.get("route_byte_widths")
+          ),
         }
         key, first, second = _history_edge_key(a_point, b_point)
         state.route_history_segments.append(
@@ -453,6 +521,7 @@ def _load_route_history() -> None:
             "receiver_id": sample.get("receiver_id"),
             "route_mode": sample.get("route_mode"),
             "topic": sample.get("topic"),
+            "route_byte_widths": sample.get("route_byte_widths"),
           }
         )
         edge = state.route_history_edges.get(key)
@@ -467,6 +536,7 @@ def _load_route_history() -> None:
           state.route_history_edges[key] = edge
         edge["count"] = int(edge.get("count", 0)) + 1
         edge["last_ts"] = max(edge.get("last_ts", float(ts)), float(ts))
+        _increment_history_byte_counts(edge, sample.get("route_byte_widths") or [])
         _update_history_edge_recent(edge, sample)
         loaded_any = True
   except Exception as exc:

@@ -64,8 +64,11 @@ ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK = (
   os.getenv("ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK", "false").lower() ==
   "true"
 )
-ROUTE_HISTORY_ENABLED = os.getenv("ROUTE_HISTORY_ENABLED",
-                                  "true").lower() == "true"
+ROUTE_BYTE_FILTER_DEFAULT = os.getenv("ROUTE_BYTE_FILTER_DEFAULT", "all")
+HISTORY_BYTE_FILTER_DEFAULT = os.getenv("HISTORY_BYTE_FILTER_DEFAULT", "all")
+ROUTE_HISTORY_ENABLED = os.getenv(
+  "ROUTE_HISTORY_ENABLED", "true"
+).strip().lower() == "true"
 ROUTE_HISTORY_HOURS = float(os.getenv("ROUTE_HISTORY_HOURS", "24"))
 ROUTE_HISTORY_MAX_SEGMENTS = int(
   os.getenv("ROUTE_HISTORY_MAX_SEGMENTS", "40000")
@@ -113,6 +116,11 @@ MQTT_STATUS_OFFLINE_VALUES = tuple(
   ).split(",") if s.strip()
 )
 MQTT_STATUS_OFFLINE_VALUES_SET = set(MQTT_STATUS_OFFLINE_VALUES)
+BLOCKED_NAME_SYMBOL_FILTER_ENABLED = (
+  os.getenv("BLOCKED_NAME_SYMBOL_FILTER_ENABLED", "false").strip().lower() ==
+  "true"
+)
+BLOCKED_NAME_SYMBOLS = ("⛔", "🛑", "🚫")
 try:
   PEERS_DEFAULT_LIMIT = int(os.getenv("PEERS_DEFAULT_LIMIT", "8"))
 except ValueError:
@@ -179,6 +187,7 @@ SITE_ICON = os.getenv("SITE_ICON", "/static/logo.png")
 SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "Feed: Boston MQTT.")
 CUSTOM_LINK_URL = os.getenv("CUSTOM_LINK_URL", "").strip()
 PACKET_ANALYZER_URL = os.getenv("PACKET_ANALYZER_URL", "").strip()
+CORESCOPE_URL = os.getenv("CORESCOPE_URL", "").strip()
 QR_CODE_BUTTON_ENABLED = (
   os.getenv("QR_CODE_BUTTON_ENABLED", "false").lower() == "true"
 )
