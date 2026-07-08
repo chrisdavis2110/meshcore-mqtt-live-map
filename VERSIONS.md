@@ -5,6 +5,7 @@
 - Fixed Route Details prefix display for multibyte paths so 2-byte/3-byte route hops show the matching path-hash width instead of falling back to 1-byte node prefixes.
 - Added optional `CORESCOPE_URL` support so Route Details hop names can deep-link to CoreScope node pages (`#/nodes/<pubkey>`), with packet-hash fallback links to `#/packets/<hash>` when `PACKET_ANALYZER_URL` is not set.
 - Made `ROUTE_HISTORY_ENABLED` parsing tolerant of surrounding whitespace so a `true` value with deployment formatting does not accidentally hide the History button.
+- Docker image publishing now runs on `dev` pushes as well as `main`, so dev deployments can pick up frontend/backend fixes without waiting for a main merge.
 - Added `ROUTE_BYTE_FILTER_DEFAULT` and `HISTORY_BYTE_FILTER_DEFAULT` env defaults. Browser selections persist locally, while share links can carry comma-separated byte filters such as `route_bytes=2b,3b` and `history_bytes=1b,2b`.
 - Updated dependency pins: `fastapi==0.139.0`, `uvicorn[standard]==0.50.2`, `Pillow==12.3.0`, `httpx2==2.5.0`, and `pytest==9.1.1`.
 - Route History now records path-hash byte-width metadata for newly ingested history samples and exposes per-edge byte counts to the frontend. Older history records remain visible in `All` after upgrade, while byte-specific filters start showing those links as new byte-aware traffic arrives.
