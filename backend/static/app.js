@@ -441,6 +441,7 @@ const losPointIcon = L.divIcon({
 const coverageApiUrl = (config.coverageApiUrl || '').trim();
 const customLinkUrl = (config.customLinkUrl || '').trim();
 const packetAnalyzerUrl = (config.packetAnalyzerUrl || '').trim();
+const coreScopeUrl = (config.corescopeUrl || '').trim();
 const coverageEnabled = Boolean(coverageApiUrl);
 const coverageLayer = L.layerGroup();
 let coverageVisible = false;
@@ -2703,6 +2704,22 @@ function renderHopMarkers(routeId, meta) {
   hopMarkers.set(routeId, markersList);
 }
 
+function normalizeCoreScopeBaseUrl() {
+  if (!coreScopeUrl) return '';
+  return coreScopeUrl.replace(/#\/?$/, '').replace(/\/+$/, '');
+}
+
+function buildCoreScopeLink(kind, value) {
+  const base = normalizeCoreScopeBaseUrl();
+  const target = String(value || '').trim();
+  if (!base || !target) return '';
+  const normalizedTarget = /^[0-9a-f]+$/i.test(target) ? target.toLowerCase() : target;
+  const encoded = encodeURIComponent(normalizedTarget);
+  if (kind === 'node') return `${base}/#/nodes/${encoded}`;
+  if (kind === 'trace') return `${base}/#/traces/${encoded}`;
+  return `${base}/#/packets/${encoded}`;
+}
+
 function showRouteDetails(meta) {
   if (!meta || !routeMatchesByteFilter(meta)) {
     hideRouteDetailsPanel();
@@ -2726,9 +2743,12 @@ function showRouteDetails(meta) {
     const routeLabel = routeHash || 'unknown';
     routeDetailsTitle.innerHTML = '';
     routeDetailsTitle.append(document.createTextNode('Route: '));
-    if (packetAnalyzerUrl && routeHash) {
+    const coreScopePacketUrl = buildCoreScopeLink('packet', routeHash);
+    if ((packetAnalyzerUrl || coreScopePacketUrl) && routeHash) {
       const link = document.createElement('a');
-      link.href = `${packetAnalyzerUrl}${encodeURIComponent(routeHash)}`;
+      link.href = packetAnalyzerUrl
+        ? `${packetAnalyzerUrl}${encodeURIComponent(routeHash)}`
+        : coreScopePacketUrl;
       link.target = '_blank';
       link.rel = 'noopener';
       link.className = 'route-hash-link';
@@ -2813,12 +2833,16 @@ function showRouteDetails(meta) {
       const safeBadgeStyle = escapeHtmlAttr(badgeStyle);
       const safeBadgeContent = escapeHtml(badgeContent);
       const safeParamName = escapeHtml(paramName);
+      const nodeLink = buildCoreScopeLink('node', pt.point_id);
+      const nameHtml = nodeLink
+        ? `<a class="hop-node-link" href="${escapeHtmlAttr(nodeLink)}" target="_blank" rel="noopener" title="Open ${escapeHtmlAttr(paramName)} in CoreScope">${safeParamName}</a>`
+        : safeParamName;
       const safeMetaInfo = escapeHtml(metaInfo);
 
       row.innerHTML = `
                    <div class="${safeBadgeClass}" style="${safeBadgeStyle}">${safeBadgeContent}</div>
                    <div class="hop-info">
-                      <div class="hop-name" title="${escapeHtmlAttr(paramName)}">${safeParamName}</div>
+                      <div class="hop-name" title="${escapeHtmlAttr(paramName)}">${nameHtml}</div>
                       <div class="hop-meta">${safeMetaInfo}</div>
                    </div>
                 `;

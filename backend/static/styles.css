@@ -1222,6 +1222,17 @@
       opacity: 0.9;
     }
 
+    .hop-node-link {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .hop-node-link:hover,
+    .hop-node-link:focus-visible {
+      color: #bfdbfe;
+    }
+
     .hop-meta {
       opacity: 0.7;
       font-size: 11px;

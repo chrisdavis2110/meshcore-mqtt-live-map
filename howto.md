@@ -221,7 +221,8 @@ Notes:
 Optional packet analyzer link base (used for Route Details hashes):
 
 ```env
-PACKET_ANALYZER_URL=https://analyzer.letsmesh.net/packets?packet_hash=
+PACKET_ANALYZER_URL=
+CORESCOPE_URL=https://analyzer.newenglandme.sh
 QR_CODE_BUTTON_ENABLED=false
 PEERS_DEFAULT_LIMIT=8
 PEERS_DEFAULT_OPEN=false

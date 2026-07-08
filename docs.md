@@ -43,7 +43,8 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 ## Env Notes (Recent Additions)
 - `CUSTOM_LINK_URL` adds a HUD link button; blank hides it.
 - `APP_BASE_PATH` lets the map live under a public subpath such as `/livemap`; when blank, the app behaves as a normal root-hosted site.
-- `PACKET_ANALYZER_URL` adds an external link on Route Details hashes; set it to a base such as `https://analyzer.letsmesh.net/packets?packet_hash=`.
+- `PACKET_ANALYZER_URL` adds a legacy external link on Route Details hashes; leave it blank when using `CORESCOPE_URL`.
+- `CORESCOPE_URL` adds CoreScope links in Route Details. Set it to a CoreScope site root such as `https://analyzer.newenglandme.sh`; route hashes use `#/packets/<hash>` when no packet analyzer URL is set, and hop names link to `#/nodes/<pubkey>`.
 - `QR_CODE_BUTTON_ENABLED` shows a `Generate QR Code` button in node popups; it opens a theme-aware MeshCore-compatible contact QR modal and defaults to `false`.
 - `PEERS_DEFAULT_LIMIT` controls the default number of peers returned by `/peers/{device_id}` when no `?limit=` is passed; default `8`.
 - `PEERS_DEFAULT_OPEN` controls whether the Peers tool starts active on page load; default `false`.

@@ -163,7 +163,8 @@ Site metadata (page title + embeds):
 - `SITE_ICON`
 - `SITE_FEED_NOTE`
 - `CUSTOM_LINK_URL` (optional extra HUD link; hidden when blank)
-- `PACKET_ANALYZER_URL` (optional analyzer base URL for Route Details hashes; e.g. `https://analyzer.letsmesh.net/packets?packet_hash=`)
+- `PACKET_ANALYZER_URL` (optional legacy analyzer base URL for Route Details hashes; leave blank when using `CORESCOPE_URL`)
+- `CORESCOPE_URL` (optional CoreScope base URL; e.g. `https://analyzer.newenglandme.sh`; Route Details hashes link to `#/packets/<hash>` when `PACKET_ANALYZER_URL` is blank, and hop names link to `#/nodes/<pubkey>`)
 - `QR_CODE_BUTTON_ENABLED` (show a `Generate QR Code` button in node popups that opens a theme-aware MeshCore-compatible contact QR modal; default `false`)
 - `PEERS_DEFAULT_LIMIT` (optional default number of incoming/outgoing peers returned by `/peers/{device_id}`; default `8`)
 - `PEERS_DEFAULT_OPEN` (optional `true`/`false`; opens the Peers tool active on page load when `true`; default `false`)
