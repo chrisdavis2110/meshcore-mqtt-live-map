@@ -4,6 +4,7 @@
 - Changed live and History `Path bytes` controls to checkbox selectors so users can keep `All` or combine specific byte widths such as `2-byte + 3-byte`.
 - Fixed Route Details prefix display for multibyte paths so 2-byte/3-byte route hops show the matching path-hash width instead of falling back to 1-byte node prefixes.
 - Added optional `CORESCOPE_URL` support so Route Details hop names can deep-link to CoreScope node pages (`#/nodes/<pubkey>`), with packet-hash fallback links to `#/packets/<hash>` when `PACKET_ANALYZER_URL` is not set.
+- Guarded CoreScope link generation against unreplaced template placeholders so routes never point at local `/%7B%7BCORESCOPE_URL%7D%7D/` paths.
 - Made `ROUTE_HISTORY_ENABLED` parsing tolerant of surrounding whitespace so a `true` value with deployment formatting does not accidentally hide the History button.
 - Docker image publishing now runs on `dev` pushes as well as `main`, so dev deployments can pick up frontend/backend fixes without waiting for a main merge.
 - Added `ROUTE_BYTE_FILTER_DEFAULT` and `HISTORY_BYTE_FILTER_DEFAULT` env defaults. Browser selections persist locally, while share links can carry comma-separated byte filters such as `route_bytes=2b,3b` and `history_bytes=1b,2b`.

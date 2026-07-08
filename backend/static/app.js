@@ -1,6 +1,10 @@
 window.__meshmapStarted = true;
 const config = document.body ? document.body.dataset : {};
 const queryParams = new URLSearchParams(window.location.search);
+const cleanConfigValue = (value) => {
+  const str = String(value || '').trim();
+  return /^\{\{[^{}]+\}\}$/.test(str) ? '' : str;
+};
 const parseNumberParam = (value) => {
   if (value == null) return null;
   const str = String(value).trim();
@@ -438,10 +442,10 @@ const losPointIcon = L.divIcon({
   iconSize: [14, 14],
   iconAnchor: [7, 7]
 });
-const coverageApiUrl = (config.coverageApiUrl || '').trim();
-const customLinkUrl = (config.customLinkUrl || '').trim();
-const packetAnalyzerUrl = (config.packetAnalyzerUrl || '').trim();
-const coreScopeUrl = (config.corescopeUrl || '').trim();
+const coverageApiUrl = cleanConfigValue(config.coverageApiUrl);
+const customLinkUrl = cleanConfigValue(config.customLinkUrl);
+const packetAnalyzerUrl = cleanConfigValue(config.packetAnalyzerUrl);
+const coreScopeUrl = cleanConfigValue(config.corescopeUrl);
 const coverageEnabled = Boolean(coverageApiUrl);
 const coverageLayer = L.layerGroup();
 let coverageVisible = false;
@@ -2706,7 +2710,8 @@ function renderHopMarkers(routeId, meta) {
 
 function normalizeCoreScopeBaseUrl() {
   if (!coreScopeUrl) return '';
-  return coreScopeUrl.replace(/#\/?$/, '').replace(/\/+$/, '');
+  const base = coreScopeUrl.replace(/#\/?$/, '').replace(/\/+$/, '');
+  return /^https?:\/\//i.test(base) ? base : '';
 }
 
 function buildCoreScopeLink(kind, value) {
