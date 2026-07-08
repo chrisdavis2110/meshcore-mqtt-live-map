@@ -273,6 +273,77 @@ def _public_preview_png_url(request: Request, query: str) -> str:
   return f"{_http_site_origin(request)}{path}?{query}"
 
 
+def _map_preview_meta(
+  request: Request, page_path: str = "/"
+) -> Tuple[str, str, str]:
+  """Return OG image tags, Twitter image tag, and canonical map URL."""
+  query_params = request.query_params
+  lat_param = query_params.get("lat") or query_params.get("latitude")
+  lon_param = (
+    query_params.get("lon") or query_params.get("lng") or
+    query_params.get("long") or query_params.get("longitude")
+  )
+  zoom_param = query_params.get("zoom")
+
+  og_image_tag = ""
+  twitter_image_tag = ""
+  og_url = SITE_URL
+
+  if lat_param and lon_param:
+    try:
+      lat = float(lat_param)
+      lon = float(lon_param)
+      zoom = int(zoom_param) if zoom_param and zoom_param.isdigit() else 13
+      zoom = max(1, min(18, zoom))
+
+      preview_params = urlencode(
+        {
+          "lat": lat,
+          "lon": lon,
+          "zoom": zoom,
+          "marker": "blue",
+          "theme": "dark",
+        }
+      )
+      preview_url = _public_preview_png_url(request, preview_params)
+      safe_image = html.escape(preview_url, quote=True)
+      og_image_tag = (
+        f'<meta property="og:image" content="{safe_image}" />\n'
+        f'  <meta property="og:image:width" content="1200" />\n'
+        f'  <meta property="og:image:height" content="630" />\n'
+        f'  <meta property="og:image:type" content="image/png" />'
+      )
+      twitter_image_tag = (
+        f'<meta name="twitter:image" content="{safe_image}" />'
+      )
+      if SITE_OG_IMAGE:
+        safe_static_image = html.escape(str(SITE_OG_IMAGE), quote=True)
+        og_image_tag += (
+          f'\n  <meta property="og:image:secure_url" '
+          f'content="{safe_static_image}" />'
+        )
+
+      page_base = _http_site_origin(request) + public_app_path(page_path)
+      if page_path == "/":
+        page_base = page_base.rstrip("/")
+      og_url = f"{page_base}?lat={lat}&lon={lon}"
+      if zoom_param:
+        og_url += f"&zoom={zoom}"
+    except (ValueError, TypeError):
+      if SITE_OG_IMAGE:
+        safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
+        og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
+        twitter_image_tag = (
+          f'<meta name="twitter:image" content="{safe_image}" />'
+        )
+  elif SITE_OG_IMAGE:
+    safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
+    og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
+    twitter_image_tag = f'<meta name="twitter:image" content="{safe_image}" />'
+
+  return og_image_tag, twitter_image_tag, og_url
+
+
 def _client_los_proxy_url() -> str:
   p = (LOS_ELEVATION_PROXY_URL or "").strip()
   if p.startswith("/") and not p.startswith("//"):
@@ -3001,76 +3072,7 @@ def root(request: Request):
       "static/index.html", headers={"Cache-Control": "no-store"}
     )
 
-  # Check for lat/lon parameters for dynamic preview image
-  query_params = request.query_params
-  lat_param = query_params.get("lat") or query_params.get("latitude")
-  lon_param = (
-    query_params.get("lon") or query_params.get("lng") or
-    query_params.get("long") or query_params.get("longitude")
-  )
-  zoom_param = query_params.get("zoom")
-
-  og_image_tag = ""
-  twitter_image_tag = ""
-  og_url = SITE_URL
-
-  # Generate dynamic preview image if coordinates are provided
-  if lat_param and lon_param:
-    try:
-      lat = float(lat_param)
-      lon = float(lon_param)
-      zoom = int(zoom_param) if zoom_param and zoom_param.isdigit() else 13
-      zoom = max(1, min(18, zoom))  # Clamp zoom between 1-18
-
-      # Generate preview image URL pointing to our own server (must include
-      # APP_BASE_PATH when the map is not served at the site root).
-      preview_params = urlencode(
-        {
-          "lat": lat,
-          "lon": lon,
-          "zoom": zoom,
-          "marker": "blue",
-          "theme": "dark",
-        }
-      )
-      preview_url = _public_preview_png_url(request, preview_params)
-
-      safe_image = html.escape(preview_url, quote=True)
-      # Add image dimensions for better Discord/social media compatibility
-      # Note: Preview image may fail if container can't reach external services
-      # In that case, fall back to static SITE_OG_IMAGE if available
-      og_image_tag = (
-        f'<meta property="og:image" content="{safe_image}" />\n'
-        f'  <meta property="og:image:width" content="1200" />\n'
-        f'  <meta property="og:image:height" content="630" />\n'
-        f'  <meta property="og:image:type" content="image/png" />'
-      )
-      twitter_image_tag = f'<meta name="twitter:image" content="{safe_image}" />'
-
-      # If static image is configured, add it as a fallback
-      if SITE_OG_IMAGE:
-        safe_static_image = html.escape(str(SITE_OG_IMAGE), quote=True)
-        og_image_tag += f'\n  <meta property="og:image:secure_url" content="{safe_static_image}" />'
-
-      # Update og:url to include query parameters (same path prefix as map).
-      base_page = (
-        _http_site_origin(request) + public_app_path("/").rstrip("/")
-      )
-      og_url = f"{base_page}?lat={lat}&lon={lon}"
-      if zoom_param:
-        og_url += f"&zoom={zoom}"
-    except (ValueError, TypeError):
-      # Invalid coordinates, fall back to static image
-      if SITE_OG_IMAGE:
-        safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
-        og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
-        twitter_image_tag = (
-          f'<meta name="twitter:image" content="{safe_image}" />'
-        )
-  elif SITE_OG_IMAGE:
-    safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
-    og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
-    twitter_image_tag = f'<meta name="twitter:image" content="{safe_image}" />'
+  og_image_tag, twitter_image_tag, og_url = _map_preview_meta(request, "/")
 
   content = content.replace("{{OG_IMAGE_TAG}}", og_image_tag)
   content = content.replace("{{TWITTER_IMAGE_TAG}}", twitter_image_tag)
@@ -3080,8 +3082,8 @@ def root(request: Request):
     trail_info_suffix = f" Trails show last ~{TRAIL_LEN} points."
   boundary_json = json.dumps(get_map_boundary_points()).replace("</", "<\\/")
 
-  # Escape og_url for HTML
-  SAFE_OG_URL = html.escape(str(og_url), quote=True)
+  # Values are escaped by the replacement loop below.
+  SAFE_OG_URL = str(og_url)
   content = content.replace("{{MAP_BOUNDARY_JSON}}", boundary_json)
 
   replacements = {
@@ -3534,15 +3536,7 @@ def map_page(request: Request):
       "static/index.html", headers={"Cache-Control": "no-store"}
     )
 
-  # Include all the template replacements (same as root endpoint)
-  # Generate OG image tags
-  og_image_tag = ""
-  twitter_image_tag = ""
-  if SITE_OG_IMAGE:
-    safe_image = html.escape(str(SITE_OG_IMAGE), quote=True)
-    og_image_tag = f'<meta property="og:image" content="{safe_image}" />'
-    twitter_image_tag = f'<meta name="twitter:image" content="{safe_image}" />'
-
+  og_image_tag, twitter_image_tag, og_url = _map_preview_meta(request, "/map")
   content = content.replace("{{OG_IMAGE_TAG}}", og_image_tag)
   content = content.replace("{{TWITTER_IMAGE_TAG}}", twitter_image_tag)
 
@@ -3551,7 +3545,7 @@ def map_page(request: Request):
     trail_info_suffix = f" Trails show last ~{TRAIL_LEN} points."
   boundary_json = json.dumps(get_map_boundary_points()).replace("</", "<\\/")
 
-  SAFE_OG_URL = html.escape(SITE_URL, quote=True)
+  SAFE_OG_URL = str(og_url)
   content = content.replace("{{MAP_BOUNDARY_JSON}}", boundary_json)
 
   replacements = {
