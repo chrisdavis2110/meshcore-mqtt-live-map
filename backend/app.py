@@ -126,6 +126,8 @@ from config import (
   MQTT_SEEN_BROADCAST_MIN_SECONDS,
   MQTT_ONLINE_FORCE_NAMES_SET,
   MQTT_STATUS_OFFLINE_VALUES_SET,
+  BLOCKED_NAME_SYMBOL_FILTER_ENABLED,
+  BLOCKED_NAME_SYMBOLS,
   PEERS_DEFAULT_LIMIT,
   PEERS_DEFAULT_OPEN,
   DEBUG_PAYLOAD,
@@ -288,7 +290,11 @@ def _client_weather_radar_lookup_url() -> str:
 def _history_edge_payloads() -> List[Dict[str, Any]]:
   if not ROUTE_HISTORY_ENABLED:
     return []
-  return [_history_edge_payload(e) for e in route_history_edges.values()]
+  return [
+    _history_edge_payload(e)
+    for e in route_history_edges.values()
+    if not _history_edge_hidden_by_blocked_name(e)
+  ]
 
 
 def _history_window_seconds_value() -> int:
@@ -840,7 +846,95 @@ def _snapshot_routes(now: Optional[float] = None) -> List[Dict[str, Any]]:
     _route_payload(route)
     for route in routes.values()
     if float(route.get("expires_at") or 0.0) > min_expires_at
+    and not _route_hidden_by_blocked_name(route)
   ]
+
+
+def _name_hidden_by_blocked_symbol(name: Any) -> bool:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED or not isinstance(name, str):
+    return False
+  return any(symbol in name for symbol in BLOCKED_NAME_SYMBOLS)
+
+
+def _device_hidden_by_blocked_name(device_id: Optional[str]) -> bool:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED or not device_id:
+    return False
+  state = devices.get(device_id)
+  name = None
+  if state:
+    name = state.name
+  if not name:
+    name = device_names.get(device_id)
+  return _name_hidden_by_blocked_symbol(name)
+
+
+def _route_hidden_by_blocked_name(route: Dict[str, Any]) -> bool:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED:
+    return False
+  if _name_hidden_by_blocked_symbol(route.get("sender_name")):
+    return True
+  device_ids = []
+  point_ids = route.get("point_ids")
+  if isinstance(point_ids, list):
+    device_ids.extend(pid for pid in point_ids if pid)
+  for key in ("origin_id", "receiver_id"):
+    value = route.get(key)
+    if value:
+      device_ids.append(value)
+  return any(_device_hidden_by_blocked_name(device_id) for device_id in device_ids)
+
+
+def _history_edge_hidden_by_blocked_name(edge: Dict[str, Any]) -> bool:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED:
+    return False
+  samples = edge.get("recent")
+  if not isinstance(samples, list):
+    return False
+  return any(
+    _route_hidden_by_blocked_name(sample)
+    for sample in samples if isinstance(sample, dict)
+  )
+
+
+def _blocked_name_remove_payloads(device_id: Any) -> List[Dict[str, Any]]:
+  route_ids = [
+    route_id for route_id, route in routes.items()
+    if _route_hidden_by_blocked_name(route)
+  ]
+  payloads = [{"type": "stale", "device_ids": [device_id]}]
+  if route_ids:
+    payloads.append({"type": "route_remove", "route_ids": route_ids})
+  return payloads
+
+
+async def _broadcast_payloads(payloads: List[Dict[str, Any]]) -> None:
+  dead = []
+  for ws in list(clients):
+    try:
+      for payload in payloads:
+        await ws.send_text(json.dumps(payload))
+    except Exception:
+      dead.append(ws)
+  for ws in dead:
+    clients.discard(ws)
+
+
+def _visible_device_payloads() -> Dict[str, Dict[str, Any]]:
+  return {
+    k: _device_payload(k, v)
+    for k, v in devices.items()
+    if not _device_hidden_by_blocked_name(k)
+  }
+
+
+def _visible_trails() -> Dict[str, Any]:
+  if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED:
+    return trails
+  return {
+    device_id: trail
+    for device_id, trail in trails.items()
+    if not _device_hidden_by_blocked_name(device_id)
+  }
 
 
 # =========================
@@ -2329,6 +2423,9 @@ async def broadcaster():
           device_state.name = device_names[device_id]
         if device_id in device_roles:
           device_state.role = device_roles[device_id]
+        if _device_hidden_by_blocked_name(device_id):
+          await _broadcast_payloads(_blocked_name_remove_payloads(device_id))
+          continue
         payload = {
           "type": "update",
           "device": _device_payload(device_id, device_state),
@@ -2446,6 +2543,15 @@ async def broadcaster():
             point_ids = [event.get("origin_id"), event.get("receiver_id")]
 
       if not points:
+        continue
+
+      route_name_probe = {
+        "point_ids": point_ids,
+        "origin_id": event.get("origin_id"),
+        "receiver_id": event.get("receiver_id"),
+        "sender_name": event.get("sender_name"),
+      }
+      if _route_hidden_by_blocked_name(route_name_probe):
         continue
 
       if MAP_RADIUS_KM > 0:
@@ -2596,6 +2702,11 @@ async def broadcaster():
       device_names[device_id] = device_state.name
     if device_state.role:
       device_roles[device_id] = device_state.role
+
+    if _device_hidden_by_blocked_name(device_id):
+      trails.pop(device_id, None)
+      await _broadcast_payloads(_blocked_name_remove_payloads(device_id))
+      continue
 
     dropped_duplicate_ids = _dedupe_loaded_devices()
     if dropped_duplicate_ids and device_id in dropped_duplicate_ids:
@@ -3618,11 +3729,8 @@ def snapshot(request: Request):
   _require_prod_token(request)
   now = time.time()
   return {
-    "devices": {
-      k: _device_payload(k, v)
-      for k, v in devices.items()
-    },
-    "trails": trails,
+    "devices": _visible_device_payloads(),
+    "trails": _visible_trails(),
     "routes": _snapshot_routes(now),
     "history_edges": _history_edge_payloads(),
     "history_window_seconds": _history_window_seconds_value(),
@@ -4192,11 +4300,8 @@ async def ws_endpoint(ws: WebSocket):
     json.dumps(
       {
         "type": "snapshot",
-        "devices": {
-          k: _device_payload(k, v)
-          for k, v in devices.items()
-        },
-        "trails": trails,
+        "devices": _visible_device_payloads(),
+        "trails": _visible_trails(),
         "routes": _snapshot_routes(time.time()),
         "history_edges": _history_edge_payloads(),
         "history_window_seconds": _history_window_seconds_value(),

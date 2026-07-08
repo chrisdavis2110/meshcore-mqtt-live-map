@@ -4,6 +4,7 @@
 - Changed live and History `Path bytes` controls to checkbox selectors so users can keep `All` or combine specific byte widths such as `2-byte + 3-byte`.
 - Fixed Route Details prefix display for multibyte paths so 2-byte/3-byte route hops show the matching path-hash width instead of falling back to 1-byte node prefixes.
 - Added optional `CORESCOPE_URL` support so Route Details hop names can deep-link to CoreScope node pages (`#/nodes/<pubkey>`), with packet-hash fallback links to `#/packets/<hash>` when `PACKET_ANALYZER_URL` is not set.
+- Added `BLOCKED_NAME_SYMBOL_FILTER_ENABLED` so deployments can hide nodes whose names contain `⛔`, `🛑`, or `🚫` from map snapshots, trails, and routes.
 - Guarded CoreScope link generation against unreplaced template placeholders so routes never point at local `/%7B%7BCORESCOPE_URL%7D%7D/` paths, and added a New England map fallback to `https://analyzer.newenglandme.sh`.
 - Made `ROUTE_HISTORY_ENABLED` parsing tolerant of surrounding whitespace so a `true` value with deployment formatting does not accidentally hide the History button.
 - Docker image publishing now runs on `dev` pushes as well as `main`, including the `latest` tag, so dev deployments can pick up frontend/backend fixes without waiting for a main merge.

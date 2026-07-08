@@ -116,6 +116,11 @@ MQTT_STATUS_OFFLINE_VALUES = tuple(
   ).split(",") if s.strip()
 )
 MQTT_STATUS_OFFLINE_VALUES_SET = set(MQTT_STATUS_OFFLINE_VALUES)
+BLOCKED_NAME_SYMBOL_FILTER_ENABLED = (
+  os.getenv("BLOCKED_NAME_SYMBOL_FILTER_ENABLED", "false").strip().lower() ==
+  "true"
+)
+BLOCKED_NAME_SYMBOLS = ("⛔", "🛑", "🚫")
 try:
   PEERS_DEFAULT_LIMIT = int(os.getenv("PEERS_DEFAULT_LIMIT", "8"))
 except ValueError:
