@@ -2989,7 +2989,7 @@ def root(request: Request):
       safe_value = html.escape(str(value), quote=True)
       content = content.replace(f"{{{{{key}}}}}", safe_value)
 
-    return HTMLResponse(content)
+    return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
   # Serve map page
   html_path = os.path.join(APP_DIR, "static", "index.html")
@@ -2997,7 +2997,9 @@ def root(request: Request):
     with open(html_path, "r", encoding="utf-8") as handle:
       content = handle.read()
   except Exception:
-    return FileResponse("static/index.html")
+    return FileResponse(
+      "static/index.html", headers={"Cache-Control": "no-store"}
+    )
 
   # Check for lat/lon parameters for dynamic preview image
   query_params = request.query_params
@@ -3208,7 +3210,7 @@ def root(request: Request):
     safe_value = html.escape(str(value), quote=True)
     content = content.replace(f"{{{{{key}}}}}", safe_value)
 
-  return HTMLResponse(content)
+  return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/preview.png")
@@ -3519,6 +3521,7 @@ def map_page(request: Request):
     return HTMLResponse(
       f"<script>window.location.href = '{home}';</script>",
       status_code=303,
+      headers={"Cache-Control": "no-store"},
     )
 
   # Otherwise serve the map page
@@ -3527,7 +3530,9 @@ def map_page(request: Request):
     with open(html_path, "r", encoding="utf-8") as handle:
       content = handle.read()
   except Exception:
-    return FileResponse("static/index.html")
+    return FileResponse(
+      "static/index.html", headers={"Cache-Control": "no-store"}
+    )
 
   # Include all the template replacements (same as root endpoint)
   # Generate OG image tags
@@ -3615,7 +3620,7 @@ def map_page(request: Request):
     safe_value = html.escape(str(value), quote=True)
     content = content.replace(f"{{{{{key}}}}}", safe_value)
 
-  return HTMLResponse(content)
+  return HTMLResponse(content, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/manifest.webmanifest")

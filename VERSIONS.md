@@ -7,6 +7,7 @@
 - Added `BLOCKED_NAME_SYMBOL_FILTER_ENABLED` so deployments can hide nodes whose names contain `⛔`, `🛑`, or `🚫` from map snapshots, trails, and routes.
 - Guarded CoreScope link generation against unreplaced template placeholders so routes never point at local `/%7B%7BCORESCOPE_URL%7D%7D/` paths, and added a New England map fallback to `https://analyzer.newenglandme.sh`.
 - Made `ROUTE_HISTORY_ENABLED` parsing tolerant of surrounding whitespace so a `true` value with deployment formatting does not accidentally hide the History button.
+- Marked the map HTML shell responses as `Cache-Control: no-store` so stale cached pages cannot keep unreplaced template placeholders such as `{{ROUTE_HISTORY_ENABLED}}` after an image update.
 - Docker image publishing now runs on `dev` pushes as well as `main`, including the `latest` tag, so dev deployments can pick up frontend/backend fixes without waiting for a main merge.
 - Added `ROUTE_BYTE_FILTER_DEFAULT` and `HISTORY_BYTE_FILTER_DEFAULT` env defaults. Browser selections persist locally, while share links can carry comma-separated byte filters such as `route_bytes=2b,3b` and `history_bytes=1b,2b`.
 - Updated dependency pins: `fastapi==0.139.0`, `uvicorn[standard]==0.50.2`, `Pillow==12.3.0`, `httpx2==2.5.0`, and `pytest==9.1.1`.
