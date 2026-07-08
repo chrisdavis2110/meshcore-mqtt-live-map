@@ -6685,7 +6685,7 @@ function hopPrefixDetailLabel(hash) {
 }
 
 
-function pointIdNodePrefix(pointId, hopHash = null) {
+function pointIdNodePrefix(pointId, hopHash = null, fallbackByteWidth = null) {
   if (!pointId) return null;
   const rawPoint = String(pointId).trim();
   if (!/^[0-9a-fA-F]+$/.test(rawPoint)) return null;
@@ -6694,11 +6694,14 @@ function pointIdNodePrefix(pointId, hopHash = null) {
   if (normalizedHop && normalizedPoint.startsWith(normalizedHop)) {
     return normalizedHop;
   }
-  return normalizedPoint.slice(0, 2) || null;
+  const fallbackChars = Number.isFinite(fallbackByteWidth) && fallbackByteWidth > 0
+    ? Math.max(2, Math.min(6, Math.round(fallbackByteWidth) * 2))
+    : 2;
+  return normalizedPoint.slice(0, fallbackChars) || null;
 }
 
-function pointIdNodePrefixDetail(pointId, hopHash = null) {
-  const prefix = pointIdNodePrefix(pointId, hopHash);
+function pointIdNodePrefixDetail(pointId, hopHash = null, fallbackByteWidth = null) {
+  const prefix = pointIdNodePrefix(pointId, hopHash, fallbackByteWidth);
   if (!prefix) return null;
   const bits = prefix.length * 4;
   const decVal = Number.parseInt(prefix, 16);
@@ -6781,6 +6784,24 @@ function buildRouteLogMeta(route) {
     : null;
   let cumulative = 0;
   const hashes = Array.isArray(route.hashes) ? route.hashes : null;
+  const normalizedHashes = hashes
+    ? hashes.map((hash) => normalizeHopHashPrefix(hash)).filter(Boolean)
+    : [];
+  const hashWidths = [
+    ...new Set(normalizedHashes.map((hash) => routeHashByteWidth(hash)).filter(Number.isFinite))
+  ];
+  const fallbackByteWidth = hashWidths.length === 1 ? hashWidths[0] : null;
+  const hashForPoint = (pointId, routeIndex) => {
+    if (!pointId || !normalizedHashes.length || routeIndex == null) return null;
+    const normalizedPoint = String(pointId).trim().toUpperCase();
+    const candidateIndexes = [routeIndex, routeIndex - 1, routeIndex + 1]
+      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < normalizedHashes.length);
+    for (const idx of candidateIndexes) {
+      const hash = normalizedHashes[idx];
+      if (hash && normalizedPoint.startsWith(hash)) return hash;
+    }
+    return normalizedHashes.find((hash) => normalizedPoint.startsWith(hash)) || null;
+  };
   const pointRows = displayPoints.map((entry, idx) => {
     const coords = Array.isArray(entry.coords) ? entry.coords : [];
     const lat = Number(coords[0]);
@@ -6799,8 +6820,8 @@ function buildRouteLogMeta(route) {
       }
     }
     const routeIndex = Number.isInteger(entry.route_index) ? entry.route_index : null;
-    const hopHash = hashes && routeIndex != null && routeIndex > 0 ? hashes[routeIndex - 1] : null;
     const pointId = entry.point_id || null;
+    const hopHash = hashForPoint(pointId, routeIndex);
     return {
       index: idx,
       lat,
@@ -6810,8 +6831,8 @@ function buildRouteLogMeta(route) {
       role_label: entry.role_label || pointIdRoleLabel(pointId),
       endpoint_only: !!entry.endpoint_only,
       endpoint_kind: entry.endpoint_kind || null,
-      node_prefix: pointIdNodePrefix(pointId, hopHash),
-      node_prefix_detail: pointIdNodePrefixDetail(pointId, hopHash),
+      node_prefix: pointIdNodePrefix(pointId, hopHash, fallbackByteWidth),
+      node_prefix_detail: pointIdNodePrefixDetail(pointId, hopHash, fallbackByteWidth),
       hop_distance_m: hopDistance,
       hop_distance_label: Number.isFinite(hopDistance) ? formatDistanceUnits(hopDistance) : null,
       cumulative_m: cumulative,
