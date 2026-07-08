@@ -9,7 +9,7 @@
 - Made `ROUTE_HISTORY_ENABLED` parsing tolerant of surrounding whitespace so a `true` value with deployment formatting does not accidentally hide the History button.
 - Marked the map HTML shell responses as `Cache-Control: no-store` so stale cached pages cannot keep unreplaced template placeholders such as `{{ROUTE_HISTORY_ENABLED}}` after an image update.
 - Fixed Discord/social embeds for `/map?lat=...&lon=...` links so they include the same generated map preview image as root `/?lat=...&lon=...` links.
-- Docker image publishing now runs on `dev` pushes as well as `main`, including the `latest` tag, so dev deployments can pick up frontend/backend fixes without waiting for a main merge.
+- Docker image publishing now runs on `dev` pushes as well as `main`; `dev` publishes the `dev` and short-SHA tags, while only `main` publishes the `latest` tag.
 - Added `ROUTE_BYTE_FILTER_DEFAULT` and `HISTORY_BYTE_FILTER_DEFAULT` env defaults. Browser selections persist locally, while share links can carry comma-separated byte filters such as `route_bytes=2b,3b` and `history_bytes=1b,2b`.
 - Updated dependency pins: `fastapi==0.139.0`, `uvicorn[standard]==0.50.2`, `Pillow==12.3.0`, `httpx2==2.5.0`, and `pytest==9.1.1`.
 - Route History now records path-hash byte-width metadata for newly ingested history samples and exposes per-edge byte counts to the frontend. Older history records remain visible in `All` after upgrade, while byte-specific filters start showing those links as new byte-aware traffic arrives.
