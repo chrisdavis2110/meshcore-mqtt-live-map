@@ -44,7 +44,7 @@ jobs:
         with:
           images: yellowcooln/meshcore-mqtt-live-map
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' || github.ref_name == 'dev' }}
             type=ref,event=branch
             type=ref,event=tag
             type=sha,format=short
