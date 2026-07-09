@@ -176,15 +176,15 @@ def public_app_path(path: str) -> str:
   return APP_BASE_PATH + path
 
 
-SITE_TITLE = os.getenv("SITE_TITLE", "Greater Boston Mesh Live Map")
+SITE_TITLE = os.getenv("SITE_TITLE", "MeshCore Live Map")
 SITE_DESCRIPTION = os.getenv(
   "SITE_DESCRIPTION",
-  "Live view of Greater Boston Mesh nodes, message routes, and advert paths.",
+  "Live view of MeshCore nodes, message routes, and advert paths.",
 )
 SITE_OG_IMAGE = os.getenv("SITE_OG_IMAGE", "")
 SITE_URL = os.getenv("SITE_URL", "/")
 SITE_ICON = os.getenv("SITE_ICON", "/static/logo.png")
-SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "Feed: Boston MQTT.")
+SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "")
 CUSTOM_LINK_URL = os.getenv("CUSTOM_LINK_URL", "").strip()
 PACKET_ANALYZER_URL = os.getenv("PACKET_ANALYZER_URL", "").strip()
 CORESCOPE_URL = os.getenv("CORESCOPE_URL", "").strip()
