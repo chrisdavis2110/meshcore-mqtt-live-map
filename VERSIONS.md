@@ -1,6 +1,6 @@
 # Versions
 
-## v1.9.4 (07-07-2026)
+## v1.9.4.1 (07-09-2026)
 - Changed live and History `Path bytes` controls to checkbox selectors so users can keep `All` or combine specific byte widths such as `2-byte + 3-byte`.
 - Fixed Route Details prefix display for multibyte paths so 2-byte/3-byte route hops show the matching path-hash width instead of falling back to 1-byte node prefixes.
 - Added optional `CORESCOPE_URL` support so Route Details hop names can deep-link to CoreScope node pages (`#/nodes/<pubkey>`), with packet-hash fallback links to `#/packets/<hash>` when `PACKET_ANALYZER_URL` is not set.
@@ -19,6 +19,7 @@
 - Added a deployment privacy policy page and a `Privacy` link in the Leaflet attribution/footer area, keeping it out of the main HUD buttons.
 - Tightened HUD/header styling so long site titles and action buttons stay compact and legible over light, topo, and satellite map backgrounds.
 - Fixed the route/history byte dropdown positioning so multi-select menus stay contained in the HUD/tool panel instead of spilling off the edge after the HUD styling updates.
+- Added `ROUTE_HISTORY_HIDE_MOVED_DEVICES` and `ROUTE_HISTORY_MOVED_DEVICE_DISTANCE_KM` so deployments can suppress stale Route History edges for repeaters/mobile nodes that have moved away from both stored historical endpoints.
 
 ## v1.9.3 (06-06-2026)
 - Fixed issue #74: hardened frontend rendering against stored XSS from untrusted MeshCore/MQTT fields such as node names, peer names, route labels, and coverage metadata.
