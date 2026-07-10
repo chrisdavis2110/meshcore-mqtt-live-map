@@ -106,6 +106,7 @@ from config import (
   DEVICE_TTL_WINDOW_SECONDS,
   PATH_TTL_SECONDS,
   TRAIL_LEN,
+  TRAIL_MAX_SEGMENT_KM,
   ROUTE_TTL_SECONDS,
   ROUTE_PAYLOAD_TYPES,
   ROUTE_PATH_MAX_LEN,
@@ -116,8 +117,6 @@ from config import (
   ROUTE_HISTORY_PAYLOAD_TYPES,
   ROUTE_HISTORY_ALLOWED_MODES,
   ROUTE_HISTORY_COMPACT_INTERVAL,
-  ROUTE_HISTORY_HIDE_MOVED_DEVICES,
-  ROUTE_HISTORY_MOVED_DEVICE_DISTANCE_KM,
   HISTORY_EDGE_SAMPLE_LIMIT,
   MESSAGE_ORIGIN_TTL_SECONDS,
   HEAT_TTL_SECONDS,
@@ -360,56 +359,6 @@ def _client_weather_radar_lookup_url() -> str:
   return p
 
 
-def _history_edge_device_ids(edge: Dict[str, Any]) -> Set[str]:
-  device_ids: Set[str] = set()
-  for key in ("a_id", "b_id"):
-    value = edge.get(key)
-    if isinstance(value, str) and value.strip():
-      device_ids.add(value.strip())
-  samples = edge.get("recent")
-  if isinstance(samples, list):
-    for sample in samples:
-      if not isinstance(sample, dict):
-        continue
-      for key in ("origin_id", "receiver_id"):
-        value = sample.get(key)
-        if isinstance(value, str) and value.strip():
-          device_ids.add(value.strip())
-  return device_ids
-
-
-def _history_edge_hidden_by_moved_device(edge: Dict[str, Any]) -> bool:
-  if not ROUTE_HISTORY_HIDE_MOVED_DEVICES:
-    return False
-  threshold_m = max(0.0, ROUTE_HISTORY_MOVED_DEVICE_DISTANCE_KM) * 1000.0
-  if threshold_m <= 0:
-    return False
-  points = []
-  for key in ("a", "b"):
-    point = edge.get(key)
-    if not isinstance(point, (list, tuple)) or len(point) < 2:
-      continue
-    try:
-      points.append((float(point[0]), float(point[1])))
-    except (TypeError, ValueError):
-      continue
-  if len(points) < 2:
-    return False
-  for device_id in _history_edge_device_ids(edge):
-    device = devices.get(device_id)
-    if not device:
-      continue
-    try:
-      lat = float(device.lat)
-      lon = float(device.lon)
-    except (TypeError, ValueError):
-      continue
-    distances = [_haversine_m(lat, lon, p[0], p[1]) for p in points]
-    if distances and min(distances) > threshold_m:
-      return True
-  return False
-
-
 def _history_edge_payloads() -> List[Dict[str, Any]]:
   if not ROUTE_HISTORY_ENABLED:
     return []
@@ -417,7 +366,6 @@ def _history_edge_payloads() -> List[Dict[str, Any]]:
     _history_edge_payload(e)
     for e in route_history_edges.values()
     if not _history_edge_hidden_by_blocked_name(e)
-    and not _history_edge_hidden_by_moved_device(e)
   ]
 
 
@@ -3255,6 +3203,8 @@ def root(request: Request):
       str(PEERS_DEFAULT_OPEN).lower(),
     "NODE_MARKER_RADIUS":
       NODE_MARKER_RADIUS,
+    "TRAIL_MAX_SEGMENT_KM":
+      TRAIL_MAX_SEGMENT_KM,
     "HISTORY_LINK_SCALE":
       HISTORY_LINK_SCALE,
     "TRAIL_INFO_SUFFIX":
@@ -3696,6 +3646,7 @@ def map_page(request: Request):
     "HISTORY_BYTE_FILTER_DEFAULT": HISTORY_BYTE_FILTER_DEFAULT,
     "PEERS_DEFAULT_OPEN": str(PEERS_DEFAULT_OPEN).lower(),
     "NODE_MARKER_RADIUS": NODE_MARKER_RADIUS,
+    "TRAIL_MAX_SEGMENT_KM": TRAIL_MAX_SEGMENT_KM,
     "HISTORY_LINK_SCALE": HISTORY_LINK_SCALE,
     "TRAIL_INFO_SUFFIX": trail_info_suffix,
     "PROD_MODE": str(PROD_MODE).lower(),

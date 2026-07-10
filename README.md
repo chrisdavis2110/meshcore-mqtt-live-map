@@ -222,6 +222,7 @@ Device + route tuning:
 - `DEVICE_TTL_HOURS` (advert/device stale window; default `96`)
 - `PATH_TTL_SECONDS` (path stale window; default `172800`)
 - `TRAIL_LEN` (points per device trail; `0` disables trails)
+- `TRAIL_MAX_SEGMENT_KM` (max drawn distance between consecutive trail points; default `10`, `0` disables splitting)
 - `ROUTE_TTL_SECONDS`
 - `ROUTE_PATH_MAX_LEN` (skip oversized path-hash lists)
 - `ROUTE_PAYLOAD_TYPES` (packet types used for live routes)
@@ -240,8 +241,6 @@ History overlay:
 - `ROUTE_HISTORY_FILE`
 - `ROUTE_HISTORY_PAYLOAD_TYPES`
 - `ROUTE_HISTORY_ALLOWED_MODES` (comma-separated route modes; default `path`)
-- `ROUTE_HISTORY_HIDE_MOVED_DEVICES` (hide historical edges when any referenced current device has moved farther than the threshold from both stored endpoints)
-- `ROUTE_HISTORY_MOVED_DEVICE_DISTANCE_KM` (distance threshold for moved-device history suppression; default `5`)
 - `HISTORY_BYTE_FILTER_DEFAULT` (default History Path bytes checkbox state; `all`, `1b`, `2b`, `3b`, or comma combos)
 - `HISTORY_LINK_SCALE` (default history line weight multiplier)
 

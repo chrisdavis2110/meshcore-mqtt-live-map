@@ -157,6 +157,7 @@ const mapStartLat = Number.isFinite(queryLat) ? queryLat : defaultLat;
 const mapStartLon = Number.isFinite(queryLon) ? queryLon : defaultLon;
 const mapStartZoom = Number.isFinite(queryZoom) && queryZoom > 0 ? queryZoom : defaultZoom;
 const mapRadiusKm = Number(config.mapRadiusKm) || 0;
+const trailMaxSegmentKm = Math.max(0, Number(config.trailMaxSegmentKm) || 0);
 const mapRadiusShow = String(config.mapRadiusShow).toLowerCase() === 'true';
 const mapBoundaryMode = String(config.mapBoundaryMode || 'radius').toLowerCase();
 const mapBoundaryShow = String(config.mapBoundaryShow).toLowerCase() === 'true';
@@ -5584,6 +5585,41 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function trailDistanceKm(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) {
+    return 0;
+  }
+  const lat1 = Number(a[0]);
+  const lon1 = Number(a[1]);
+  const lat2 = Number(b[0]);
+  const lon2 = Number(b[1]);
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return 0;
+  return haversineMeters(lat1, lon1, lat2, lon2) / 1000;
+}
+
+function splitTrailPoints(trail) {
+  const points = Array.isArray(trail)
+    ? trail
+      .map(p => [Number(p[0]), Number(p[1])])
+      .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]))
+    : [];
+  if (points.length < 2 || trailMaxSegmentKm <= 0) return points;
+  const segments = [];
+  let segment = [points[0]];
+  for (let idx = 1; idx < points.length; idx += 1) {
+    const point = points[idx];
+    const previous = points[idx - 1];
+    if (trailDistanceKm(previous, point) > trailMaxSegmentKm) {
+      if (segment.length >= 2) segments.push(segment);
+      segment = [point];
+    } else {
+      segment.push(point);
+    }
+  }
+  if (segment.length >= 2) segments.push(segment);
+  return segments;
+}
+
 function sampleLosPoints(lat1, lon1, lat2, lon2) {
   const distance = haversineMeters(lat1, lon1, lat2, lon2);
   if (distance <= 0) {
@@ -6231,8 +6267,14 @@ function upsertDevice(d, trail) {
 
   // trail polyline (skip companions)
   if (role !== 'companion' && Array.isArray(trail) && trail.length >= 2) {
-    const points = trail.map(p => [p[0], p[1]]);
-    if (!polylines.has(id)) {
+    const points = splitTrailPoints(trail);
+    if (!Array.isArray(points) || points.length < 1) {
+      if (polylines.has(id)) {
+        trailLayer.removeLayer(polylines.get(id));
+        polylines.get(id).__attached = false;
+        polylines.delete(id);
+      }
+    } else if (!polylines.has(id)) {
       const pl = L.polyline(points, {
         renderer: animatedLineRenderer,
         color: '#38bdf8',

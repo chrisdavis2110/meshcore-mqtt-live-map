@@ -358,10 +358,6 @@ def _record_route_history(
         "last_ts": float(ts),
       }
       state.route_history_edges[key] = edge
-    if a_id and not edge.get("a_id"):
-      edge["a_id"] = a_id
-    if b_id and not edge.get("b_id"):
-      edge["b_id"] = b_id
     edge["count"] = int(edge.get("count", 0)) + 1
     edge["last_ts"] = max(edge.get("last_ts", float(ts)), float(ts))
     _increment_history_byte_counts(edge, sample.get("route_byte_widths") or [])
@@ -538,12 +534,6 @@ def _load_route_history() -> None:
             "last_ts": float(ts),
           }
           state.route_history_edges[key] = edge
-        a_id = entry.get("a_id")
-        b_id = entry.get("b_id")
-        if a_id and not edge.get("a_id"):
-          edge["a_id"] = a_id
-        if b_id and not edge.get("b_id"):
-          edge["b_id"] = b_id
         edge["count"] = int(edge.get("count", 0)) + 1
         edge["last_ts"] = max(edge.get("last_ts", float(ts)), float(ts))
         _increment_history_byte_counts(edge, sample.get("route_byte_widths") or [])

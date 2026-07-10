@@ -2,7 +2,7 @@
 
 ## v1.9.4.1 (07-09-2026)
 - Replaced Boston/New England-specific fallback site metadata with generic MeshCore defaults for the site title, description, and feed note so fresh deployments start neutral.
-- Added `ROUTE_HISTORY_HIDE_MOVED_DEVICES` and `ROUTE_HISTORY_MOVED_DEVICE_DISTANCE_KM` so deployments can suppress stale Route History edges for repeaters/mobile nodes that have moved away from both stored historical endpoints.
+- Added `TRAIL_MAX_SEGMENT_KM` with a 10 km default so visual device trails split across large coordinate jumps without hiding legitimate long route/hop links.
 
 ## v1.9.4 (07-07-2026)
 - Changed live and History `Path bytes` controls to checkbox selectors so users can keep `All` or combine specific byte widths such as `2-byte + 3-byte`.

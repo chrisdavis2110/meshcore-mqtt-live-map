@@ -149,7 +149,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
   - Radar toggle controls RainViewer tile layer visibility.
   - Wind toggle controls arrow sampling/rendering and refresh polling.
   - If both radar and wind are disabled by env (`WEATHER_RADAR_ENABLED=false` and `WEATHER_WIND_ENABLED=false`), the Weather button is hidden.
-- Trail text in the HUD is only shown when `TRAIL_LEN > 0`; `TRAIL_LEN=0` disables trails entirely.
+- Trail text in the HUD is only shown when `TRAIL_LEN > 0`; `TRAIL_LEN=0` disables trails entirely. `TRAIL_MAX_SEGMENT_KM` splits visual trails across large coordinate jumps so moved repeaters do not draw stale cross-map lines.
 - Hide Nodes toggle hides markers, trails, heat, routes, and history layers.
 - Heat toggle can hide the heatmap; it defaults on and the button turns green when heat is off.
 - HUD logo uses `SITE_ICON`; if unset or broken it falls back to a small “Map” badge so the toggle still works.
@@ -209,7 +209,6 @@ All route hops enforce `ROUTE_MAX_HOP_DISTANCE` to prevent cross‑region jumps.
 - History is hidden by default; the History tool opens a right panel with a slider to filter by heat band.
 - The History tool also includes a link size slider; it scales line weight without changing counts.
 - History records route modes from `ROUTE_HISTORY_ALLOWED_MODES` (default: `path`).
-- `ROUTE_HISTORY_HIDE_MOVED_DEVICES=true` hides historical edges when any referenced current device has moved farther than `ROUTE_HISTORY_MOVED_DEVICE_DISTANCE_KM` from both stored endpoints, which helps mobile/repositioned repeaters avoid phantom old-location links.
 
 If routes aren’t visible:
 - The packet may only include a single hop (`path: ["24"]`).

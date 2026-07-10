@@ -134,63 +134,6 @@ def test_route_history_round_trip_file_load(tmp_path, monkeypatch):
   assert loaded["b_id"] == "BB001111"
 
 
-def test_history_edge_payloads_hide_edges_for_moved_devices(monkeypatch):
-  state.devices.clear()
-  state.route_history_edges.clear()
-  state.devices["MOVED111"] = state.DeviceState(
-    device_id="MOVED111",
-    lat=43.0,
-    lon=-71.0,
-    ts=time.time(),
-    role="repeater",
-  )
-  state.route_history_edges["old-edge"] = {
-    "id": "old-edge",
-    "a": [42.0, -71.0],
-    "b": [42.1, -71.0],
-    "a_id": "MOVED111",
-    "b_id": "STATIC11",
-    "count": 1,
-    "last_ts": time.time(),
-    "recent": [{"origin_id": "MOVED111", "receiver_id": "STATIC11"}],
-  }
-
-  monkeypatch.setattr(app, "ROUTE_HISTORY_ENABLED", True)
-  monkeypatch.setattr(app, "ROUTE_HISTORY_HIDE_MOVED_DEVICES", True)
-  monkeypatch.setattr(app, "ROUTE_HISTORY_MOVED_DEVICE_DISTANCE_KM", 5.0)
-
-  assert app._history_edge_payloads() == []
-
-
-def test_history_edge_payloads_keep_nearby_moved_device_edges(monkeypatch):
-  state.devices.clear()
-  state.route_history_edges.clear()
-  state.devices["NEAR1111"] = state.DeviceState(
-    device_id="NEAR1111",
-    lat=42.0005,
-    lon=-71.0005,
-    ts=time.time(),
-    role="repeater",
-  )
-  state.route_history_edges["near-edge"] = {
-    "id": "near-edge",
-    "a": [42.0, -71.0],
-    "b": [42.1, -71.0],
-    "a_id": "NEAR1111",
-    "b_id": "STATIC11",
-    "count": 1,
-    "last_ts": time.time(),
-  }
-
-  monkeypatch.setattr(app, "ROUTE_HISTORY_ENABLED", True)
-  monkeypatch.setattr(app, "ROUTE_HISTORY_HIDE_MOVED_DEVICES", True)
-  monkeypatch.setattr(app, "ROUTE_HISTORY_MOVED_DEVICE_DISTANCE_KM", 5.0)
-
-  payloads = app._history_edge_payloads()
-  assert len(payloads) == 1
-  assert payloads[0]["id"] == "near-edge"
-
-
 def test_load_state_ignores_corrupt_json_file(tmp_path, monkeypatch):
   state_file = tmp_path / "state.json"
   state_file.write_text("{not-valid-json", encoding="utf-8")
