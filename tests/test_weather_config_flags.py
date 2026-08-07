@@ -77,6 +77,10 @@ def test_map_injects_route_history_and_peer_defaults(monkeypatch):
   monkeypatch.setattr(app, "ROUTE_HISTORY_ENABLED", True)
   monkeypatch.setattr(app, "ROUTE_BYTE_FILTER_DEFAULT", "2b,3b")
   monkeypatch.setattr(app, "HISTORY_BYTE_FILTER_DEFAULT", "1b")
+  monkeypatch.setattr(app, "SHOW_REPEATERS_DEFAULT", True)
+  monkeypatch.setattr(app, "SHOW_COMPANIONS_DEFAULT", False)
+  monkeypatch.setattr(app, "SHOW_ROOM_SERVERS_DEFAULT", False)
+  monkeypatch.setattr(app, "SHOW_UNKNOWN_DEFAULT", True)
   monkeypatch.setattr(app, "PEERS_DEFAULT_OPEN", True)
 
   client = TestClient(app.app)
@@ -87,10 +91,16 @@ def test_map_injects_route_history_and_peer_defaults(monkeypatch):
   assert 'data-route-history-enabled="true"' in response.text
   assert 'data-route-byte-filter-default="2b,3b"' in response.text
   assert 'data-history-byte-filter-default="1b"' in response.text
+  assert 'data-show-repeaters-default="true"' in response.text
+  assert 'data-show-companions-default="false"' in response.text
+  assert 'data-show-room-servers-default="false"' in response.text
+  assert 'data-show-unknown-default="true"' in response.text
   assert 'data-peers-default-open="true"' in response.text
   assert "{{ROUTE_HISTORY_ENABLED}}" not in response.text
   assert "{{ROUTE_BYTE_FILTER_DEFAULT}}" not in response.text
   assert "{{HISTORY_BYTE_FILTER_DEFAULT}}" not in response.text
+  assert "{{SHOW_COMPANIONS_DEFAULT}}" not in response.text
+  assert "{{SHOW_ROOM_SERVERS_DEFAULT}}" not in response.text
   assert "{{PEERS_DEFAULT_OPEN}}" not in response.text
 
 

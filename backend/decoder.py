@@ -358,7 +358,8 @@ def _node_hashes_from_device_id(device_id: str) -> List[str]:
 def _rebuild_node_hash_map() -> None:
   candidates: Dict[str, List[str]] = {}
   collisions: Set[str] = set()
-  for device_id in devices.keys():
+  device_ids = devices.copy()
+  for device_id in device_ids:
     node_hashes = _node_hashes_from_device_id(device_id)
     if not node_hashes:
       continue

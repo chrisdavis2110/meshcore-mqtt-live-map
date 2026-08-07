@@ -1,5 +1,7 @@
 import asyncio
+import copy
 import json
+import logging
 import os
 import html
 import time
@@ -80,6 +82,9 @@ from los import (
   _los_max_obstruction,
   _sample_los_points,
 )
+
+
+logger = logging.getLogger(__name__)
 from config import (
   MQTT_HOST,
   MQTT_PORT,
@@ -149,6 +154,10 @@ from config import (
   ROUTE_HISTORY_ALLOWED_MODES_SET,
   ROUTE_BYTE_FILTER_DEFAULT,
   HISTORY_BYTE_FILTER_DEFAULT,
+  SHOW_REPEATERS_DEFAULT,
+  SHOW_COMPANIONS_DEFAULT,
+  SHOW_ROOM_SERVERS_DEFAULT,
+  SHOW_UNKNOWN_DEFAULT,
   SITE_TITLE,
   SITE_DESCRIPTION,
   SITE_OG_IMAGE,
@@ -362,9 +371,10 @@ def _client_weather_radar_lookup_url() -> str:
 def _history_edge_payloads() -> List[Dict[str, Any]]:
   if not ROUTE_HISTORY_ENABLED:
     return []
+  edges_snapshot = copy.deepcopy(_stable_dict_copy(route_history_edges))
   return [
     _history_edge_payload(e)
-    for e in route_history_edges.values()
+    for e in edges_snapshot.values()
     if not _history_edge_hidden_by_blocked_name(e)
   ]
 
@@ -379,6 +389,11 @@ mqtt_client: Optional[mqtt.Client] = None
 background_tasks: Set[asyncio.Task[Any]] = set()
 clients: Set[WebSocket] = set()
 update_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+
+
+def _stable_dict_copy(mapping: Dict[Any, Any]) -> Dict[Any, Any]:
+  """Copy a shared dictionary before iterating or serializing it."""
+  return mapping.copy()
 git_update_info = {
   "available": False,
   "local": None,
@@ -914,9 +929,10 @@ ROUTE_SNAPSHOT_MIN_TTL_SECONDS = 10.0
 def _snapshot_routes(now: Optional[float] = None) -> List[Dict[str, Any]]:
   current = time.time() if now is None else float(now)
   min_expires_at = current + ROUTE_SNAPSHOT_MIN_TTL_SECONDS
+  routes_snapshot = copy.deepcopy(_stable_dict_copy(routes))
   return [
     _route_payload(route)
-    for route in routes.values()
+    for route in routes_snapshot.values()
     if float(route.get("expires_at") or 0.0) > min_expires_at
     and not _route_hidden_by_blocked_name(route)
   ]
@@ -969,8 +985,9 @@ def _history_edge_hidden_by_blocked_name(edge: Dict[str, Any]) -> bool:
 
 
 def _blocked_name_remove_payloads(device_id: Any) -> List[Dict[str, Any]]:
+  routes_snapshot = _stable_dict_copy(routes)
   route_ids = [
-    route_id for route_id, route in routes.items()
+    route_id for route_id, route in routes_snapshot.items()
     if _route_hidden_by_blocked_name(route)
   ]
   payloads = [{"type": "stale", "device_ids": [device_id]}]
@@ -992,19 +1009,21 @@ async def _broadcast_payloads(payloads: List[Dict[str, Any]]) -> None:
 
 
 def _visible_device_payloads() -> Dict[str, Dict[str, Any]]:
+  devices_snapshot = _stable_dict_copy(devices)
   return {
     k: _device_payload(k, v)
-    for k, v in devices.items()
+    for k, v in devices_snapshot.items()
     if not _device_hidden_by_blocked_name(k)
   }
 
 
 def _visible_trails() -> Dict[str, Any]:
+  trails_snapshot = copy.deepcopy(_stable_dict_copy(trails))
   if not BLOCKED_NAME_SYMBOL_FILTER_ENABLED:
-    return trails
+    return trails_snapshot
   return {
     device_id: trail
-    for device_id, trail in trails.items()
+    for device_id, trail in trails_snapshot.items()
     if not _device_hidden_by_blocked_name(device_id)
   }
 
@@ -1174,23 +1193,25 @@ def _prune_neighbors(now: float) -> None:
 
 
 def _serialize_state() -> Dict[str, Any]:
-  return {
+  devices_snapshot = _stable_dict_copy(devices)
+  payload = {
     "version": 1,
     "saved_at": time.time(),
     "devices": {
       k: asdict(v)
-      for k, v in devices.items()
+      for k, v in devices_snapshot.items()
     },
-    "trails": trails,
-    "seen_devices": seen_devices,
-    "device_names": device_names,
-    "device_roles": device_roles,
-    "device_role_sources": device_role_sources,
-    "last_seen_in_path": state.last_seen_in_path,
-    "first_seen_devices": first_seen_devices,
-    "last_seen_in_advert": last_seen_in_advert,
-    "peer_history_pairs": peer_history_pairs,
+    "trails": _stable_dict_copy(trails),
+    "seen_devices": _stable_dict_copy(seen_devices),
+    "device_names": _stable_dict_copy(device_names),
+    "device_roles": _stable_dict_copy(device_roles),
+    "device_role_sources": _stable_dict_copy(device_role_sources),
+    "last_seen_in_path": _stable_dict_copy(state.last_seen_in_path),
+    "first_seen_devices": _stable_dict_copy(first_seen_devices),
+    "last_seen_in_advert": _stable_dict_copy(last_seen_in_advert),
+    "peer_history_pairs": _stable_dict_copy(peer_history_pairs),
   }
+  return copy.deepcopy(payload)
 
 
 def _check_git_updates() -> None:
@@ -1323,7 +1344,8 @@ def _device_dedupe_prefix(device_id: str) -> str:
 def _peer_history_activity_score(device_id: str) -> Tuple[int, int]:
   unique_peers: Set[str] = set()
   total = 0
-  for entry in peer_history_pairs.values():
+  peer_history_snapshot = copy.deepcopy(_stable_dict_copy(peer_history_pairs))
+  for entry in peer_history_snapshot.values():
     if not isinstance(entry, dict):
       continue
     a_id = entry.get("a_id")
@@ -1381,7 +1403,8 @@ def _devices_are_duplicate_candidates(a_id: str, b_id: str) -> bool:
 
 def _duplicate_device_groups() -> List[List[str]]:
   by_name: Dict[str, List[str]] = {}
-  for device_id, dev_state in devices.items():
+  devices_snapshot = _stable_dict_copy(devices)
+  for device_id, dev_state in devices_snapshot.items():
     name = _normalize_device_name_for_dedupe(
       dev_state.name or device_names.get(device_id)
     )
@@ -1604,11 +1627,15 @@ def _is_packets_active(ts: Optional[float], now: float) -> bool:
 
 def _refresh_mqtt_presence(now: Optional[float] = None) -> None:
   now = now or time.time()
+  mqtt_seen_snapshot = _stable_dict_copy(mqtt_seen)
+  online_source_snapshot = _stable_dict_copy(mqtt_online_source)
+  status_seen_snapshot = _stable_dict_copy(mqtt_status_seen)
+  internal_seen_snapshot = _stable_dict_copy(mqtt_internal_seen)
   candidate_ids = (
-    set(mqtt_seen.keys()) |
-    set(mqtt_online_source.keys()) |
-    set(mqtt_status_seen.keys()) |
-    set(mqtt_internal_seen.keys())
+    set(mqtt_seen_snapshot) |
+    set(online_source_snapshot) |
+    set(status_seen_snapshot) |
+    set(internal_seen_snapshot)
   )
   for device_id in list(candidate_ids):
     source, source_ts = _select_mqtt_online_source(device_id, now)
@@ -1623,15 +1650,20 @@ def _refresh_mqtt_presence(now: Optional[float] = None) -> None:
 def _mqtt_presence_summary(now: Optional[float] = None) -> Dict[str, int]:
   now = now or time.time()
   _refresh_mqtt_presence(now)
-  connected_total = len(mqtt_seen)
-  connected_on_map = sum(1 for device_id in mqtt_seen if device_id in devices)
+  mqtt_seen_snapshot = _stable_dict_copy(mqtt_seen)
+  packets_snapshot = _stable_dict_copy(mqtt_packets_seen)
+  device_ids = set(_stable_dict_copy(devices))
+  connected_total = len(mqtt_seen_snapshot)
+  connected_on_map = sum(
+    1 for device_id in mqtt_seen_snapshot if device_id in device_ids
+  )
   feeding_total = sum(
-    1 for ts in mqtt_packets_seen.values() if _is_packets_active(ts, now)
+    1 for ts in packets_snapshot.values() if _is_packets_active(ts, now)
   )
   feeding_on_map = sum(
     1
-    for device_id, ts in mqtt_packets_seen.items()
-    if device_id in devices and _is_packets_active(ts, now)
+    for device_id, ts in packets_snapshot.items()
+    if device_id in device_ids and _is_packets_active(ts, now)
   )
   return {
     "connected_total": connected_total,
@@ -2106,6 +2138,20 @@ def mqtt_on_disconnect(
 
 
 def mqtt_on_message(client, userdata, msg: mqtt.MQTTMessage):
+  try:
+    _handle_mqtt_message(client, userdata, msg)
+  except Exception:
+    stats["callback_errors_total"] = (
+      int(stats.get("callback_errors_total") or 0) + 1
+    )
+    stats["last_callback_error_ts"] = time.time()
+    logger.exception(
+      "Unhandled MQTT callback error for topic %s",
+      getattr(msg, "topic", "<unknown>"),
+    )
+
+
+def _handle_mqtt_message(client, userdata, msg: mqtt.MQTTMessage):
   stats["received_total"] += 1
   stats["last_rx_ts"] = time.time()
   stats["last_rx_topic"] = msg.topic
@@ -2840,7 +2886,7 @@ async def reaper():
 
     if DEVICE_TTL_WINDOW_SECONDS > 0 or PATH_TTL_SECONDS > 0:
       stale = []
-      for dev_id, st in list(devices.items()):
+      for dev_id, st in _stable_dict_copy(devices).items():
         if dev_id in mqtt_seen:
           continue
         device_stale = (
@@ -2881,7 +2927,7 @@ async def reaper():
 
     if routes:
       bad_routes = []
-      for route_id, route in list(routes.items()):
+      for route_id, route in _stable_dict_copy(routes).items():
         points = route.get("points") if isinstance(route, dict) else None
         if not isinstance(points, list):
           continue
@@ -2904,7 +2950,7 @@ async def reaper():
           routes.pop(route_id, None)
 
     stale_routes = [
-      route_id for route_id, route in list(routes.items())
+      route_id for route_id, route in _stable_dict_copy(routes).items()
       if now > route.get("expires_at", 0)
     ]
     if stale_routes:
@@ -2977,7 +3023,7 @@ async def reaper():
       PATH_TTL_SECONDS if PATH_TTL_SECONDS > 0 else 0,
     )
     prune_after = max(retention_window * 3, 900) if retention_window > 0 else 86400
-    for dev_id, last in list(seen_devices.items()):
+    for dev_id, last in _stable_dict_copy(seen_devices).items():
       if now - last > prune_after:
         seen_devices.pop(dev_id, None)
         first_seen_devices.pop(dev_id, None)
@@ -3199,6 +3245,14 @@ def root(request: Request):
       ROUTE_BYTE_FILTER_DEFAULT,
     "HISTORY_BYTE_FILTER_DEFAULT":
       HISTORY_BYTE_FILTER_DEFAULT,
+    "SHOW_REPEATERS_DEFAULT":
+      str(SHOW_REPEATERS_DEFAULT).lower(),
+    "SHOW_COMPANIONS_DEFAULT":
+      str(SHOW_COMPANIONS_DEFAULT).lower(),
+    "SHOW_ROOM_SERVERS_DEFAULT":
+      str(SHOW_ROOM_SERVERS_DEFAULT).lower(),
+    "SHOW_UNKNOWN_DEFAULT":
+      str(SHOW_UNKNOWN_DEFAULT).lower(),
     "PEERS_DEFAULT_OPEN":
       str(PEERS_DEFAULT_OPEN).lower(),
     "NODE_MARKER_RADIUS":
@@ -3439,7 +3493,7 @@ async def preview_image(
       node_radius = 5
       node_color = (86, 198, 255) if theme_str == "dark" else (25, 83, 170)
       node_outline = (15, 15, 15) if theme_str == "dark" else (255, 255, 255)
-      for state in list(devices.values()):
+      for state in _stable_dict_copy(devices).values():
         try:
           dev_lat = float(state.lat)
           dev_lon = float(state.lon)
@@ -3644,6 +3698,10 @@ def map_page(request: Request):
     "ROUTE_HISTORY_ENABLED": str(ROUTE_HISTORY_ENABLED).lower(),
     "ROUTE_BYTE_FILTER_DEFAULT": ROUTE_BYTE_FILTER_DEFAULT,
     "HISTORY_BYTE_FILTER_DEFAULT": HISTORY_BYTE_FILTER_DEFAULT,
+    "SHOW_REPEATERS_DEFAULT": str(SHOW_REPEATERS_DEFAULT).lower(),
+    "SHOW_COMPANIONS_DEFAULT": str(SHOW_COMPANIONS_DEFAULT).lower(),
+    "SHOW_ROOM_SERVERS_DEFAULT": str(SHOW_ROOM_SERVERS_DEFAULT).lower(),
+    "SHOW_UNKNOWN_DEFAULT": str(SHOW_UNKNOWN_DEFAULT).lower(),
     "PEERS_DEFAULT_OPEN": str(PEERS_DEFAULT_OPEN).lower(),
     "NODE_MARKER_RADIUS": NODE_MARKER_RADIUS,
     "TRAIL_MAX_SEGMENT_KM": TRAIL_MAX_SEGMENT_KM,
@@ -3800,6 +3858,42 @@ def service_worker():
   )
 
 
+def _mqtt_listener_health() -> Dict[str, Any]:
+  client = mqtt_client
+  connected = False
+  if client is not None:
+    try:
+      connected = bool(client.is_connected())
+    except Exception:
+      connected = False
+  thread = getattr(client, "_thread", None) if client is not None else None
+  network_loop_alive = bool(thread and thread.is_alive())
+  if connected and network_loop_alive:
+    status_value = "ok"
+  elif connected:
+    status_value = "unhealthy"
+  else:
+    status_value = "degraded"
+  return {
+    "status": status_value,
+    "connected": connected,
+    "network_loop_alive": network_loop_alive,
+    "last_rx_ts": stats.get("last_rx_ts"),
+    "callback_errors_total": int(stats.get("callback_errors_total") or 0),
+    "last_callback_error_ts": stats.get("last_callback_error_ts"),
+  }
+
+
+@app.get("/health")
+def health():
+  mqtt_health = _mqtt_listener_health()
+  status_code = 200 if mqtt_health["status"] == "ok" else 503
+  return JSONResponse(
+    status_code=status_code,
+    content={"status": mqtt_health["status"], "mqtt": mqtt_health},
+  )
+
+
 @app.get("/snapshot")
 def snapshot(request: Request):
   _require_prod_token(request)
@@ -3820,33 +3914,39 @@ def snapshot(request: Request):
 @app.get("/stats")
 def get_stats():
   presence_summary = _mqtt_presence_summary()
+  mqtt_health = _mqtt_listener_health()
+  stats_snapshot = _stable_dict_copy(stats)
+  result_counts_snapshot = _stable_dict_copy(result_counts)
+  seen_devices_snapshot = _stable_dict_copy(seen_devices)
+  topic_counts_snapshot = _stable_dict_copy(topic_counts)
   if PROD_MODE:
     return {
       "stats":
         {
-          "received_total": stats.get("received_total"),
-          "parsed_total": stats.get("parsed_total"),
-          "unparsed_total": stats.get("unparsed_total"),
-          "last_rx_ts": stats.get("last_rx_ts"),
-          "last_parsed_ts": stats.get("last_parsed_ts"),
+          "received_total": stats_snapshot.get("received_total"),
+          "parsed_total": stats_snapshot.get("parsed_total"),
+          "unparsed_total": stats_snapshot.get("unparsed_total"),
+          "last_rx_ts": stats_snapshot.get("last_rx_ts"),
+          "last_parsed_ts": stats_snapshot.get("last_parsed_ts"),
         },
-      "result_counts": result_counts,
+      "result_counts": result_counts_snapshot,
       "mapped_devices": len(devices),
       "route_count": len(routes),
       "history_edge_count":
         len(route_history_edges) if ROUTE_HISTORY_ENABLED else 0,
-      "seen_devices": len(seen_devices),
+      "seen_devices": len(seen_devices_snapshot),
       "mqtt_presence": presence_summary,
+      "mqtt_health": mqtt_health,
       "server_time": time.time(),
     }
 
-  top_topics = sorted(topic_counts.items(), key=lambda kv: kv[1],
+  top_topics = sorted(topic_counts_snapshot.items(), key=lambda kv: kv[1],
                       reverse=True)[:20]
   return {
     "stats":
-      stats,
+      stats_snapshot,
     "result_counts":
-      result_counts,
+      result_counts_snapshot,
     "mapped_devices":
       len(devices),
     "route_count":
@@ -3856,11 +3956,15 @@ def get_stats():
     "history_segments":
       len(route_history_segments) if ROUTE_HISTORY_ENABLED else 0,
     "seen_devices":
-      len(seen_devices),
+      len(seen_devices_snapshot),
     "seen_recent":
-      sorted(seen_devices.items(), key=lambda kv: kv[1], reverse=True)[:20],
+      sorted(
+        seen_devices_snapshot.items(), key=lambda kv: kv[1], reverse=True
+      )[:20],
     "mqtt_presence":
       presence_summary,
+    "mqtt_health":
+      mqtt_health,
     "top_topics":
       top_topics,
     "decoder":
@@ -3900,7 +4004,7 @@ def api_nodes(
   nodes: List[Dict[str, Any]] = []
   all_nodes: List[Dict[str, Any]] = []
   max_last_seen = 0.0
-  for device_id, state in devices.items():
+  for device_id, state in _stable_dict_copy(devices).items():
     payload = _node_api_payload(device_id, state)
     last_seen = payload.get("last_seen_ts") or 0
     if float(last_seen) > max_last_seen:
@@ -4031,7 +4135,8 @@ def _peer_stats_for_device(device_id: str, limit: int) -> Dict[str, Any]:
   cutoff = _peer_history_cutoff()
   if not peer_history_pairs and route_history_segments:
     _rebuild_peer_history_from_segments()
-  for entry in peer_history_pairs.values():
+  peer_history_snapshot = copy.deepcopy(_stable_dict_copy(peer_history_pairs))
+  for entry in peer_history_snapshot.values():
     if not isinstance(entry, dict):
       continue
     a_id = entry.get("a_id")

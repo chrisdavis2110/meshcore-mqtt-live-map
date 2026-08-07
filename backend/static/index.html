@@ -47,6 +47,10 @@
   data-route-history-enabled="{{ROUTE_HISTORY_ENABLED}}"
   data-route-byte-filter-default="{{ROUTE_BYTE_FILTER_DEFAULT}}"
   data-history-byte-filter-default="{{HISTORY_BYTE_FILTER_DEFAULT}}"
+  data-show-repeaters-default="{{SHOW_REPEATERS_DEFAULT}}"
+  data-show-companions-default="{{SHOW_COMPANIONS_DEFAULT}}"
+  data-show-room-servers-default="{{SHOW_ROOM_SERVERS_DEFAULT}}"
+  data-show-unknown-default="{{SHOW_UNKNOWN_DEFAULT}}"
   data-peers-default-open="{{PEERS_DEFAULT_OPEN}}"
   data-node-radius="{{NODE_MARKER_RADIUS}}" data-history-link-scale="{{HISTORY_LINK_SCALE}}"
   data-coverage-api-url="{{COVERAGE_API_URL}}" data-custom-link-url="{{CUSTOM_LINK_URL}}"
@@ -162,6 +166,13 @@
           </div>
         </details>
       </div>
+      <div class="route-node-filter">
+        <label for="route-node-filter">Filter Live Routes</label>
+        <input id="route-node-filter" type="search" autocomplete="off"
+          placeholder="Node name or key, comma separated..." />
+        <div class="node-search-results route-node-filter-results"
+          id="route-node-filter-results" hidden></div>
+      </div>
       <div class="legend">
         <div class="legend-item"><span class="legend-line legend-trace"></span> Trace/path</div>
         <div class="legend-item"><span class="legend-line legend-message"></span> Message</div>
@@ -192,10 +203,18 @@
           <button class="legend-filter-button" id="mqtt-only-toggle" type="button" aria-pressed="false"
             title="Only show MQTT online nodes">Only</button>
         </div>
-        <div class="legend-item"><span class="legend-dot legend-repeater"></span> Repeater</div>
-        <div class="legend-item"><span class="legend-dot legend-companion"></span> Companion</div>
-        <div class="legend-item"><span class="legend-dot legend-room"></span> Room server</div>
-        <div class="legend-item"><span class="legend-dot legend-unknown"></span> Unknown</div>
+        <div class="legend-item legend-item-filter"><span class="legend-dot legend-repeater"></span> Repeater
+          <button class="legend-filter-button role-filter-button" data-role-filter="repeater" type="button">Shown</button>
+        </div>
+        <div class="legend-item legend-item-filter"><span class="legend-dot legend-companion"></span> Companion
+          <button class="legend-filter-button role-filter-button" data-role-filter="companion" type="button">Shown</button>
+        </div>
+        <div class="legend-item legend-item-filter"><span class="legend-dot legend-room"></span> Room Server
+          <button class="legend-filter-button role-filter-button" data-role-filter="room" type="button">Shown</button>
+        </div>
+        <div class="legend-item legend-item-filter"><span class="legend-dot legend-unknown"></span> Unknown
+          <button class="legend-filter-button role-filter-button" data-role-filter="unknown" type="button">Shown</button>
+        </div>
       </div>
     </div>
   </div>

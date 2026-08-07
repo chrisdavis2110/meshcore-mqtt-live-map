@@ -81,8 +81,8 @@ def _prune_peer_history(now: Optional[float] = None) -> bool:
     return False
   cutoff = _peer_history_cutoff(now)
   changed = False
-  for pair_key in list(state.peer_history_pairs.keys()):
-    entry = state.peer_history_pairs.get(pair_key)
+  pairs_snapshot = state.peer_history_pairs.copy()
+  for pair_key, entry in pairs_snapshot.items():
     if not isinstance(entry, dict):
       state.peer_history_pairs.pop(pair_key, None)
       changed = True
@@ -92,9 +92,10 @@ def _prune_peer_history(now: Optional[float] = None) -> bool:
       state.peer_history_pairs.pop(pair_key, None)
       changed = True
       continue
+    buckets_snapshot = buckets.copy()
     new_buckets: Dict[str, int] = {}
     last_ts = 0.0
-    for bucket_key, count in buckets.items():
+    for bucket_key, count in buckets_snapshot.items():
       try:
         bucket_start = float(bucket_key)
         bucket_count = int(count)

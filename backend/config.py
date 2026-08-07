@@ -67,6 +67,18 @@ ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK = (
 )
 ROUTE_BYTE_FILTER_DEFAULT = os.getenv("ROUTE_BYTE_FILTER_DEFAULT", "all")
 HISTORY_BYTE_FILTER_DEFAULT = os.getenv("HISTORY_BYTE_FILTER_DEFAULT", "all")
+SHOW_REPEATERS_DEFAULT = os.getenv(
+  "SHOW_REPEATERS_DEFAULT", "true"
+).strip().lower() == "true"
+SHOW_COMPANIONS_DEFAULT = os.getenv(
+  "SHOW_COMPANIONS_DEFAULT", "true"
+).strip().lower() == "true"
+SHOW_ROOM_SERVERS_DEFAULT = os.getenv(
+  "SHOW_ROOM_SERVERS_DEFAULT", "true"
+).strip().lower() == "true"
+SHOW_UNKNOWN_DEFAULT = os.getenv(
+  "SHOW_UNKNOWN_DEFAULT", "true"
+).strip().lower() == "true"
 ROUTE_HISTORY_ENABLED = os.getenv(
   "ROUTE_HISTORY_ENABLED", "true"
 ).strip().lower() == "true"

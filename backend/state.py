@@ -28,6 +28,8 @@ stats = {
   "last_rx_topic": None,
   "last_parsed_ts": None,
   "last_parsed_topic": None,
+  "callback_errors_total": 0,
+  "last_callback_error_ts": None,
 }
 result_counts: Dict[str, int] = {}
 seen_devices: Dict[str, float] = {}

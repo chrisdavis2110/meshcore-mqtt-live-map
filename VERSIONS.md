@@ -1,5 +1,16 @@
 # Versions
 
+## v1.9.4.3 (08-07-2026)
+- Fixed issue #79: MQTT presence, snapshot, stats, peer-history, route-hash, and persisted-state readers now iterate stable copies of shared dictionaries instead of racing Paho's network thread. Unexpected message-handler exceptions are logged and counted without terminating MQTT processing, while `/health` and `/stats` expose MQTT connection and network-loop health.
+- Fixed role visibility filtering so hiding Companion or Room Server removes only route sections connected through those hidden roles while preserving contiguous Repeater-to-Repeater sections; also corrected the `Room Server` label capitalization.
+- Renamed `Route Nodes` to `Filter Live Routes` so the control clearly describes its scope. Fixed its autocomplete so the menu stays inside the viewport without expanding the scrollable HUD, current device names match routes whose cached labels are stale, and typing updates existing route layers without destroying and recreating them. The menu now also closes on Escape or outside clicks.
+- Added independent fixed ranks to the Peers panel Incoming/Rx and Outgoing/Tx lists. Filtering preserves each peer's position from the complete sorted list instead of renumbering matching rows, and changing distance units no longer clears an active peer filter.
+
+## v1.9.4.2 (07-11-2026)
+- Added a live route node filter below `Path bytes`. Clicking the empty/current entry opens an alphabetical list of nodes participating in current live routes; typing narrows that list, and choosing a node inserts it with comma separation before reopening the remaining choices. Route lines, hop markers, Route Details, and visible route counts stay aligned.
+- Added `Shown`/`Hidden` controls beside Repeater, Companion, Room server, and Unknown legend entries. Hiding a role also hides live route, hop, trail, and peer lines connected to those nodes; role choices persist in the browser and are included in share URLs.
+- Added `SHOW_REPEATERS_DEFAULT`, `SHOW_COMPANIONS_DEFAULT`, `SHOW_ROOM_SERVERS_DEFAULT`, and `SHOW_UNKNOWN_DEFAULT` so deployments can hide selected node roles for first-time visitors while keeping every role enabled by default.
+
 ## v1.9.4.1 (07-09-2026)
 - Replaced Boston/New England-specific fallback site metadata with generic MeshCore defaults for the site title, description, and feed note so fresh deployments start neutral.
 - Added `TRAIL_MAX_SEGMENT_KM` with a 10 km default so visual device trails split across large coordinate jumps without hiding legitimate long route/hop links.
