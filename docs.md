@@ -1,13 +1,13 @@
 # Mesh Map Live: Implementation Notes
 
 This document captures the state of the project and the key changes made so far, so a new Codex session can pick up without losing context.
-Current version: `1.9.4` (see `VERSIONS.md`).
+Current version: `1.9.5` (see `VERSIONS.md`).
 
 ## Overview
 This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A FastAPI backend subscribes to MQTT (WSS/TLS or TCP), decodes MeshCore packets using the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and broadcasts device updates and routes over WebSockets to the frontend. Core logic is split into config/state/decoder/LOS/history modules so changes are localized. The UI includes heatmap, LOS tools, map mode toggles, and a 24-hour route history layer.
 
 ## Versioning
-- `VERSION.txt` holds the current version string (`1.9.4`).
+- `VERSION.txt` holds the current version string (`1.9.5`).
 - `VERSIONS.md` is an append-only changelog by version.
 
 ## Key Paths
@@ -37,6 +37,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - DockerHub publishing is handled by `.github/workflows/docker-publish.yml`.
 - `curl -s http://localhost:8080/snapshot` (current device map).
 - `curl -s http://localhost:8080/stats` (counters, route types).
+- `curl -s http://localhost:8080/health` (HTTP and MQTT listener health).
 - `curl -s http://localhost:8080/debug/last` (recent MQTT decode/debug entries).
 - `curl -s http://localhost:8080/peers/<device_id>` (peer counts/distances for a node; uses route history).
 
@@ -66,6 +67,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `ROUTE_MAX_HOP_DISTANCE` prunes hops longer than the configured km distance.
 - `ROUTE_INFRA_ONLY` limits route lines to repeaters/rooms (companions excluded from routes).
 - `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK` restores the legacy route fallback for colliding 1-byte prefixes when conservative routing is too strict; default is `false`.
+- `ROUTE_NEIGHBOR_DEBUG=true` logs collided-neighbor route selections for route-resolution diagnostics. It defaults to `false` to prevent high-volume MQTT feeds from flooding stdout.
 - The live and History `Path bytes` filters can limit route rendering to `All`, `1-byte`, `2-byte`, `3-byte`, or checkbox combinations without affecting ingest. Browser choices persist locally, env defaults are `ROUTE_BYTE_FILTER_DEFAULT` / `HISTORY_BYTE_FILTER_DEFAULT`, and share links use `route_bytes` / `history_bytes` values such as `all` or `2b,3b`.
 - `DEVICE_TTL_HOURS` controls advert/device staleness (default `96` hours).
 - `PATH_TTL_SECONDS` controls path staleness (default `172800` seconds / 48h).
@@ -149,7 +151,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
   - Radar toggle controls RainViewer tile layer visibility.
   - Wind toggle controls arrow sampling/rendering and refresh polling.
   - If both radar and wind are disabled by env (`WEATHER_RADAR_ENABLED=false` and `WEATHER_WIND_ENABLED=false`), the Weather button is hidden.
-- Trail text in the HUD is only shown when `TRAIL_LEN > 0`; `TRAIL_LEN=0` disables trails entirely.
+- Trail text in the HUD is only shown when `TRAIL_LEN > 0`; `TRAIL_LEN=0` disables trails entirely. `TRAIL_MAX_SEGMENT_KM` splits visual trails across large coordinate jumps so moved repeaters do not draw stale cross-map lines.
 - Hide Nodes toggle hides markers, trails, heat, routes, and history layers.
 - Heat toggle can hide the heatmap; it defaults on and the button turns green when heat is off.
 - HUD logo uses `SITE_ICON`; if unset or broken it falls back to a small “Map” badge so the toggle still works.

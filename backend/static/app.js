@@ -122,6 +122,10 @@ const queryHistoryByteFilter = parseByteFilterSet(
   queryParams.get('historyBytes') ||
   queryParams.get('historybytes')
 );
+const queryRouteNodeFilter = String(
+  queryParams.get('route_nodes') || queryParams.get('routeNodes') || ''
+).trim();
+const queryVisibleRoles = String(queryParams.get('roles') || '').trim();
 const queryPeersActive = parseBoolParam(
   queryParams.get('peers') ||
   queryParams.get('peer_tool') ||
@@ -157,6 +161,7 @@ const mapStartLat = Number.isFinite(queryLat) ? queryLat : defaultLat;
 const mapStartLon = Number.isFinite(queryLon) ? queryLon : defaultLon;
 const mapStartZoom = Number.isFinite(queryZoom) && queryZoom > 0 ? queryZoom : defaultZoom;
 const mapRadiusKm = Number(config.mapRadiusKm) || 0;
+const trailMaxSegmentKm = Math.max(0, Number(config.trailMaxSegmentKm) || 0);
 const mapRadiusShow = String(config.mapRadiusShow).toLowerCase() === 'true';
 const mapBoundaryMode = String(config.mapBoundaryMode || 'radius').toLowerCase();
 const mapBoundaryShow = String(config.mapBoundaryShow).toLowerCase() === 'true';
@@ -730,6 +735,9 @@ const historyByteFilterSelect = document.getElementById('history-byte-filter');
 const historyLinkSizeInput = document.getElementById('history-link-size');
 const historyLinkSizeValue = document.getElementById('history-link-size-value');
 const routeByteFilterSelect = document.getElementById('route-byte-filter');
+const routeNodeFilterInput = document.getElementById('route-node-filter');
+const routeNodeFilterResults = document.getElementById('route-node-filter-results');
+const roleFilterButtons = [...document.querySelectorAll('[data-role-filter]')];
 let historyWindowSeconds = null;
 if (!routeHistoryEnabled) {
   historyWindowSeconds = 0;
@@ -776,6 +784,32 @@ let historyByteFilter = normalizeByteFilterSet(
   parseByteFilterSet(localStorage.getItem('meshmapHistoryByteFilter')) ||
   defaultHistoryByteFilter
 );
+let routeNodeFilterText = queryRouteNodeFilter ||
+  localStorage.getItem('meshmapRouteNodeFilter') || '';
+let routeNodeMatches = [];
+const roleDefaultConfig = {
+  repeater: parseBoolParam(config.showRepeatersDefault) !== false,
+  companion: parseBoolParam(config.showCompanionsDefault) !== false,
+  room: parseBoolParam(config.showRoomServersDefault) !== false,
+  unknown: parseBoolParam(config.showUnknownDefault) !== false
+};
+const parseVisibleRoles = (raw) => {
+  const values = new Set(
+    String(raw || '').toLowerCase().split(',').map(value => value.trim()).filter(Boolean)
+  );
+  return new Set(
+    ['repeater', 'companion', 'room', 'unknown'].filter(role => values.has(role))
+  );
+};
+const storedVisibleRoles = localStorage.getItem('meshmapVisibleRoles');
+let visibleRoles = storedVisibleRoles === null
+  ? new Set(Object.keys(roleDefaultConfig).filter(role => roleDefaultConfig[role]))
+  : parseVisibleRoles(storedVisibleRoles);
+if (queryParams.has('roles')) {
+  visibleRoles = parseVisibleRoles(queryVisibleRoles);
+  localStorage.setItem('meshmapVisibleRoles', [...visibleRoles].join(','));
+}
+if (routeNodeFilterInput) routeNodeFilterInput.value = routeNodeFilterText;
 const setByteFilterChecks = (root, selected) => {
   if (!root) return;
   const normalized = normalizeByteFilterSet(selected);
@@ -1036,7 +1070,9 @@ function setStats() {
   const onlineTotal = mqttPresenceKnown ? mqttConnectedTotal : onlineOnMap;
   const totalRoutes = routeLines.size;
   const visibleRoutes = getVisibleRouteCount();
-  const routeLabel = routeByteFilter.has('all') || visibleRoutes === totalRoutes
+  const routeFiltersInactive = routeByteFilter.has('all') &&
+    !routeNodeFilterText.trim();
+  const routeLabel = routeFiltersInactive || visibleRoutes === totalRoutes
     ? `${visibleRoutes} routes`
     : `${visibleRoutes}/${totalRoutes} routes`;
   document.getElementById('stats').textContent = `${markers.size} active devices • ${onlineTotal} MQTT online • ${routeLabel} • ${historyLines.size} history`;
@@ -2644,8 +2680,87 @@ function routeMatchesByteFilter(meta) {
   return hashes.some((hash) => routeByteFilter.has(`${routeHashByteWidth(hash)}b`));
 }
 
+function routeMatchesNodeFilter(meta) {
+  const terms = routeNodeFilterText.toLowerCase().split(',')
+    .map(term => term.trim()).filter(Boolean);
+  if (!terms.length) return true;
+  if (!meta) return false;
+  const routeDeviceIds = new Set([
+    meta.origin_id,
+    meta.receiver_id,
+    ...(Array.isArray(meta.points)
+      ? meta.points.map(point => point && point.point_id)
+      : [])
+  ].filter(Boolean));
+  const currentDeviceValues = [];
+  routeDeviceIds.forEach((id) => {
+    const device = deviceData.get(id);
+    if (!device) return;
+    currentDeviceValues.push(device.name, deviceDisplayName(device));
+  });
+  const pointValues = Array.isArray(meta.points)
+    ? meta.points.flatMap(point => [
+      point.point_id,
+      point.point_label,
+      point.node_prefix,
+      point.hop_hash
+    ])
+    : [];
+  const values = [
+    meta.origin_id,
+    meta.origin_label,
+    meta.receiver_id,
+    meta.receiver_label,
+    meta.sender_name,
+    ...currentDeviceValues,
+    ...(Array.isArray(meta.hashes) ? meta.hashes : []),
+    ...pointValues
+  ].filter(Boolean).map(value => String(value).toLowerCase());
+  return terms.some(term => values.some(value => value.includes(term)));
+}
+
+function routePointRole(point) {
+  const device = point && point.point_id ? deviceData.get(point.point_id) : null;
+  if (device) return resolveRole(device);
+  const label = String(point && point.role_label || '').toLowerCase();
+  if (label.includes('repeater')) return 'repeater';
+  if (label.includes('companion')) return 'companion';
+  if (label.includes('room')) return 'room';
+  return 'unknown';
+}
+
+function visibleRouteSegments(meta) {
+  if (!meta || !Array.isArray(meta.points)) return [];
+  const segments = [];
+  let current = [];
+  const finishSegment = () => {
+    if (current.length >= 2) segments.push(current);
+    current = [];
+  };
+  meta.points.forEach((point) => {
+    if (point && point.endpoint_only) return;
+    if (!Number.isFinite(point && point.lat) || !Number.isFinite(point && point.lon)) {
+      finishSegment();
+      return;
+    }
+    if (visibleRoles.has(routePointRole(point))) {
+      current.push(point);
+    } else {
+      finishSegment();
+    }
+  });
+  finishSegment();
+  return segments;
+}
+
+function routeMatchesRoleFilter(meta) {
+  return visibleRouteSegments(meta).length > 0;
+}
+
 function routeVisibleForCurrentFilters(meta) {
-  return nodesVisible && !mqttOnlyVisible && routeMatchesByteFilter(meta);
+  return nodesVisible && !mqttOnlyVisible &&
+    routeMatchesByteFilter(meta) && routeMatchesNodeFilter(meta) &&
+    routeMatchesRoleFilter(meta);
 }
 
 function getVisibleRouteCount() {
@@ -2660,12 +2775,21 @@ function getVisibleRouteCount() {
 
 function syncRouteEntryDisplay(routeId, entry) {
   if (!entry || !entry.line) return;
+  const roleSegments = visibleRouteSegments(entry.meta);
   const visible = routeVisibleForCurrentFilters(entry.meta);
   const style = routeStyleForDisplay(
     entry.payloadType,
     entry.routeMode,
     arcadeModeEnabled
   );
+  if (visible) {
+    const latLngSegments = roleSegments.map(segment =>
+      segment.map(point => [point.lat, point.lon])
+    );
+    entry.line.setLatLngs(
+      latLngSegments.length === 1 ? latLngSegments[0] : latLngSegments
+    );
+  }
   entry.line.setStyle({
     ...style,
     opacity: visible ? style.opacity : 0,
@@ -2675,8 +2799,14 @@ function syncRouteEntryDisplay(routeId, entry) {
     if (entry.line.bringToFront) {
       entry.line.bringToFront();
     }
-    if (arcadeModeEnabled && Array.isArray(entry.routePoints)) {
-      syncArcadeForRoute(routeId, entry.routePoints);
+    if (arcadeModeEnabled && roleSegments.length) {
+      const arcadeSegment = roleSegments.reduce((longest, segment) =>
+        segment.length > longest.length ? segment : longest
+      );
+      syncArcadeForRoute(
+        routeId,
+        arcadeSegment.map(point => [point.lat, point.lon])
+      );
     }
   } else {
     removeArcadeMarker(routeId);
@@ -2701,17 +2831,26 @@ function syncAllRouteDisplays() {
   refreshStats();
 }
 
+function syncRouteFilterDisplays() {
+  routeLines.forEach((entry, routeId) => {
+    syncRouteEntryDisplay(routeId, entry);
+  });
+  refreshStats();
+}
+
 function renderHopMarkers(routeId, meta) {
   clearHopMarkersForRoute(routeId);
   if (!hopsVisible || !meta || !meta.points || !routeVisibleForCurrentFilters(meta)) {
     return;
   }
+  const visibleRoutePoints = new Set(visibleRouteSegments(meta).flat());
 
   // Generate color
   const color = stringHashColor(routeId);
   const markersList = [];
 
   meta.points.forEach((pt, index) => {
+    if (!visibleRoutePoints.has(pt)) return;
     // Skip 0 (origin) and last (destination) if we only want hops?
     // "displays the hop number" - usually means 1, 2, 3...
     // The request says "route path on the map".
@@ -2762,7 +2901,7 @@ function buildCoreScopeLink(kind, value) {
 }
 
 function showRouteDetails(meta) {
-  if (!meta || !routeMatchesByteFilter(meta)) {
+  if (!meta || !routeMatchesByteFilter(meta) || !routeMatchesNodeFilter(meta)) {
     hideRouteDetailsPanel();
     return;
   }
@@ -3005,14 +3144,22 @@ function renderPeerLines(origin, incoming, outgoing) {
     const selectedDevice = deviceData.get(peersSelectedId);
     if (selectedDevice && !devicePassesMqttOnlyFilter(selectedDevice)) return;
   }
+  if (peersSelectedId) {
+    const selectedDevice = deviceData.get(peersSelectedId);
+    if (selectedDevice && !visibleRoles.has(resolveRole(selectedDevice))) return;
+  }
   if (!map.hasLayer(peerLayer)) {
     peerLayer.addTo(map);
   }
   const originLatLng = [origin.lat, origin.lon];
   const drawLine = (peer, color, dash, direction) => {
     if (peer.lat == null || peer.lon == null) return;
+    const peerDevice = peer.peer_id ? deviceData.get(peer.peer_id) : null;
+    const peerRole = peerDevice
+      ? resolveRole(peerDevice)
+      : resolveRole({ role: peer.role });
+    if (!visibleRoles.has(peerRole)) return;
     if (mqttOnlyVisible && peer.peer_id) {
-      const peerDevice = deviceData.get(peer.peer_id);
       if (peerDevice && !devicePassesMqttOnlyFilter(peerDevice)) return;
     }
     const line = L.polyline([originLatLng, [peer.lat, peer.lon]], {
@@ -3049,8 +3196,16 @@ function peerMatchesFilter(peer, query) {
   return values.some(value => String(value || '').toLowerCase().includes(query));
 }
 
-function filteredPeers(peers) {
+function rankedPeers(peers) {
   const peerItems = Array.isArray(peers) ? peers : [];
+  return peerItems.map((peer, index) => ({
+    ...peer,
+    rank: index + 1,
+  }));
+}
+
+function filteredPeers(peers) {
+  const peerItems = rankedPeers(peers);
   const query = normalizedPeerFilter();
   if (!query) return peerItems;
   return peerItems.filter(peer => peerMatchesFilter(peer, query));
@@ -3110,10 +3265,15 @@ function renderPeerList(target, peers, total, label, origin = null, unfilteredCo
     target.appendChild(empty);
     return;
   }
-  peerItems.forEach(peer => {
+  peerItems.forEach((peer, index) => {
     const item = document.createElement('div');
     item.className = 'peer-item';
     const name = peer.name || (peer.peer_id ? `${peer.peer_id.slice(0, 8)}…` : 'Unknown');
+    const parsedRank = Number(peer.rank);
+    const rank = Number.isFinite(parsedRank) && parsedRank > 0
+      ? Math.trunc(parsedRank)
+      : index + 1;
+    const rankDirection = label === 'incoming' ? 'Rx' : 'Tx';
     const percent = total > 0 ? `${peer.percent.toFixed(1)}%` : '0%';
     const distance = formatPeerDistanceUnits(getPeerDistanceMeters(origin, peer));
     const metaParts = [`${peer.count}`, `${percent}`].map(escapeHtml);
@@ -3121,10 +3281,15 @@ function renderPeerList(target, peers, total, label, origin = null, unfilteredCo
       metaParts.push(escapeHtml(distance));
     }
     const meta = metaParts.join('<span class="peer-stat-separator" aria-hidden="true">•</span>');
-    item.innerHTML = `<span class="peer-name">${escapeHtml(name)}</span><span class="peer-count">${meta}</span>`;
-    if (peer.peer_id) {
-      item.title = `${name} (${peer.peer_id.slice(0, 8)}…)`;
-    }
+    item.innerHTML = `
+      <span class="peer-identity">
+        <span class="peer-rank" aria-label="${rankDirection} rank ${rank}">${rank}</span>
+        <span class="peer-name">${escapeHtml(name)}</span>
+      </span>
+      <span class="peer-count">${meta}</span>
+    `;
+    const peerKey = peer.peer_id ? ` (${peer.peer_id.slice(0, 8)}…)` : '';
+    item.title = `${rankDirection} rank ${rank} • ${name}${peerKey}`;
     item.addEventListener('click', () => {
       if (peer.peer_id) {
         focusDevice(peer.peer_id);
@@ -3363,8 +3528,31 @@ function devicePassesMqttOnlyFilter(d) {
 function shouldShowDeviceOnMap(d) {
   return Boolean(d) &&
     nodesVisible &&
+    visibleRoles.has(resolveRole(d)) &&
     devicePassesMqttOnlyFilter(d) &&
     latLngInViewport(d.lat, d.lon);
+}
+
+function updateRoleFilterUi() {
+  roleFilterButtons.forEach((button) => {
+    const shown = visibleRoles.has(button.dataset.roleFilter);
+    button.textContent = shown ? 'Shown' : 'Hidden';
+    button.classList.toggle('active', shown);
+    button.setAttribute('aria-pressed', shown ? 'true' : 'false');
+  });
+}
+
+function setRoleVisible(role, shown) {
+  if (shown) visibleRoles.add(role);
+  else visibleRoles.delete(role);
+  localStorage.setItem('meshmapVisibleRoles', [...visibleRoles].join(','));
+  updateRoleFilterUi();
+  refreshViewportLayers();
+  routeLines.forEach((entry, routeId) => {
+    syncRouteEntryDisplay(routeId, entry);
+  });
+  if (peersActive && peersData) renderCurrentPeers();
+  refreshStats();
 }
 
 function setMqttOnlyVisible(visible) {
@@ -3445,6 +3633,123 @@ function renderSearchResults(query) {
     searchResults.appendChild(item);
   });
   searchResults.hidden = false;
+}
+
+function routeNodeCurrentQuery() {
+  const value = routeNodeFilterInput ? routeNodeFilterInput.value : '';
+  const parts = String(value || '').split(',');
+  return String(parts[parts.length - 1] || '').trim().toLowerCase();
+}
+
+function positionRouteNodeFilterResults() {
+  if (!routeNodeFilterInput || !routeNodeFilterResults ||
+      routeNodeFilterResults.hidden) return;
+  const inputRect = routeNodeFilterInput.getBoundingClientRect();
+  const viewportPad = 8;
+  const gap = 4;
+  const width = Math.min(
+    inputRect.width,
+    Math.max(1, window.innerWidth - viewportPad * 2)
+  );
+  const panelHeight = Math.max(routeNodeFilterResults.offsetHeight, 1);
+  const left = Math.min(
+    Math.max(viewportPad, inputRect.left),
+    Math.max(viewportPad, window.innerWidth - width - viewportPad)
+  );
+  const belowTop = inputRect.bottom + gap;
+  const aboveTop = inputRect.top - panelHeight - gap;
+  const top = belowTop + panelHeight + viewportPad <= window.innerHeight
+    ? belowTop
+    : Math.max(viewportPad, aboveTop);
+  routeNodeFilterResults.style.width = `${width}px`;
+  routeNodeFilterResults.style.left = `${left}px`;
+  routeNodeFilterResults.style.right = 'auto';
+  routeNodeFilterResults.style.top = `${top}px`;
+}
+
+function hideRouteNodeFilterResults() {
+  if (!routeNodeFilterResults) return;
+  routeNodeFilterResults.hidden = true;
+}
+
+function selectRouteNodeFilterMatch(match) {
+  if (!routeNodeFilterInput || !routeNodeFilterResults || !match) return;
+  const parts = routeNodeFilterInput.value.split(',');
+  parts.pop();
+  const selected = String(match.d.name || match.id).trim();
+  const existing = parts.map(value => value.trim()).filter(Boolean);
+  if (!existing.some(value => value.toLowerCase() === selected.toLowerCase())) {
+    existing.push(selected);
+  }
+  routeNodeFilterInput.value = `${existing.join(', ')}, `;
+  routeNodeFilterText = routeNodeFilterInput.value;
+  localStorage.setItem('meshmapRouteNodeFilter', routeNodeFilterText);
+  routeNodeMatches = [];
+  routeNodeFilterResults.hidden = true;
+  routeNodeFilterResults.innerHTML = '';
+  syncRouteFilterDisplays();
+  routeNodeFilterInput.focus();
+  renderRouteNodeFilterResults();
+}
+
+function currentRouteDeviceIds() {
+  const ids = new Set();
+  routeLines.forEach((entry) => {
+    const meta = entry && entry.meta;
+    if (!meta) return;
+    [meta.origin_id, meta.receiver_id].filter(Boolean).forEach(id => ids.add(id));
+    if (Array.isArray(meta.points)) {
+      meta.points.forEach((point) => {
+        if (point && point.point_id) ids.add(point.point_id);
+      });
+    }
+  });
+  return ids;
+}
+
+function renderRouteNodeFilterResults() {
+  if (!routeNodeFilterResults) return;
+  const query = routeNodeCurrentQuery();
+  routeNodeMatches = [];
+  routeNodeFilterResults.innerHTML = '';
+  const parts = String(routeNodeFilterInput && routeNodeFilterInput.value || '').split(',');
+  parts.pop();
+  const selectedNames = new Set(
+    parts.map(value => value.trim().toLowerCase()).filter(Boolean)
+  );
+  const routeDeviceIds = currentRouteDeviceIds();
+  for (const id of routeDeviceIds) {
+    const d = deviceData.get(id);
+    if (!d) continue;
+    const name = String(d.name || '').toLowerCase();
+    const displayName = String(d.name || id).trim().toLowerCase();
+    const matchesQuery = !query || name.includes(query) ||
+      id.toLowerCase().includes(query);
+    if (matchesQuery && !selectedNames.has(displayName)) {
+      routeNodeMatches.push({ id, d });
+    }
+  }
+  routeNodeMatches.sort((a, b) =>
+    deviceDisplayName(a.d).localeCompare(deviceDisplayName(b.d))
+  );
+  routeNodeMatches = routeNodeMatches.slice(0, 8);
+  routeNodeMatches.forEach((match) => {
+    const item = document.createElement('div');
+    item.className = 'node-search-item';
+    const name = document.createElement('span');
+    name.textContent = deviceDisplayName(match.d);
+    const shortId = document.createElement('span');
+    shortId.className = 'node-search-id';
+    shortId.textContent = `${match.id.slice(0, 8)}…`;
+    item.append(name, shortId);
+    item.addEventListener('mousedown', (ev) => ev.preventDefault());
+    item.addEventListener('click', () => selectRouteNodeFilterMatch(match));
+    routeNodeFilterResults.appendChild(item);
+  });
+  routeNodeFilterResults.hidden = routeNodeMatches.length === 0;
+  if (!routeNodeFilterResults.hidden) {
+    window.requestAnimationFrame(positionRouteNodeFilterResults);
+  }
 }
 
 function focusDevice(id, options = {}) {
@@ -5584,6 +5889,41 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function trailDistanceKm(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length < 2 || b.length < 2) {
+    return 0;
+  }
+  const lat1 = Number(a[0]);
+  const lon1 = Number(a[1]);
+  const lat2 = Number(b[0]);
+  const lon2 = Number(b[1]);
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return 0;
+  return haversineMeters(lat1, lon1, lat2, lon2) / 1000;
+}
+
+function splitTrailPoints(trail) {
+  const points = Array.isArray(trail)
+    ? trail
+      .map(p => [Number(p[0]), Number(p[1])])
+      .filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]))
+    : [];
+  if (points.length < 2 || trailMaxSegmentKm <= 0) return points;
+  const segments = [];
+  let segment = [points[0]];
+  for (let idx = 1; idx < points.length; idx += 1) {
+    const point = points[idx];
+    const previous = points[idx - 1];
+    if (trailDistanceKm(previous, point) > trailMaxSegmentKm) {
+      if (segment.length >= 2) segments.push(segment);
+      segment = [point];
+    } else {
+      segment.push(point);
+    }
+  }
+  if (segment.length >= 2) segments.push(segment);
+  return segments;
+}
+
 function sampleLosPoints(lat1, lon1, lat2, lon2) {
   const distance = haversineMeters(lat1, lon1, lat2, lon2);
   if (distance <= 0) {
@@ -6231,8 +6571,14 @@ function upsertDevice(d, trail) {
 
   // trail polyline (skip companions)
   if (role !== 'companion' && Array.isArray(trail) && trail.length >= 2) {
-    const points = trail.map(p => [p[0], p[1]]);
-    if (!polylines.has(id)) {
+    const points = splitTrailPoints(trail);
+    if (!Array.isArray(points) || points.length < 1) {
+      if (polylines.has(id)) {
+        trailLayer.removeLayer(polylines.get(id));
+        polylines.get(id).__attached = false;
+        polylines.delete(id);
+      }
+    } else if (!polylines.has(id)) {
       const pl = L.polyline(points, {
         renderer: animatedLineRenderer,
         color: '#38bdf8',
@@ -7519,6 +7865,12 @@ function buildMapShareUrl(options = {}) {
   url.searchParams.set('history_filter', String(historyFilterMode));
   url.searchParams.set('history_bytes', serializeByteFilterSet(historyByteFilter));
   url.searchParams.set('route_bytes', serializeByteFilterSet(routeByteFilter));
+  if (routeNodeFilterText.trim()) {
+    url.searchParams.set('route_nodes', routeNodeFilterText.trim());
+  } else {
+    url.searchParams.delete('route_nodes');
+  }
+  url.searchParams.set('roles', [...visibleRoles].join(','));
   if (options.deviceId) {
     url.searchParams.set('node', options.deviceId);
     url.searchParams.set('nodes', 'on');
@@ -7677,11 +8029,7 @@ function setDistanceUnits(units, persist = true) {
     showRouteDetails(activeRouteDetailsMeta);
   }
   if (peersData) {
-    const inboundTotal = peersData.incoming_total || 0;
-    const outboundTotal = peersData.outgoing_total || 0;
-    const origin = { lat: peersData.lat, lon: peersData.lon };
-    renderPeerList(peersIn, peersData.incoming || [], inboundTotal, 'incoming', origin);
-    renderPeerList(peersOut, peersData.outgoing || [], outboundTotal, 'outgoing', origin);
+    renderCurrentPeers();
   }
   if (radarVisible && weatherWindEnabled && weatherWindLayerEnabled) {
     refreshWeatherWindLayer({ silent: true, background: true });
@@ -7703,6 +8051,50 @@ if (routeByteFilterSelect) {
     syncAllRouteDisplays();
   });
 }
+
+if (routeNodeFilterInput) {
+  routeNodeFilterInput.addEventListener('input', (ev) => {
+    routeNodeFilterText = String(ev.target.value || '');
+    localStorage.setItem('meshmapRouteNodeFilter', routeNodeFilterText);
+    syncRouteFilterDisplays();
+    renderRouteNodeFilterResults();
+  });
+  routeNodeFilterInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      hideRouteNodeFilterResults();
+      return;
+    }
+    if (ev.key === 'Enter' && routeNodeMatches.length) {
+      ev.preventDefault();
+      selectRouteNodeFilterMatch(routeNodeMatches[0]);
+    }
+  });
+  routeNodeFilterInput.addEventListener('focus', renderRouteNodeFilterResults);
+  routeNodeFilterInput.addEventListener('blur', () => {
+    window.setTimeout(() => {
+      hideRouteNodeFilterResults();
+    }, 100);
+  });
+  if (hud) {
+    hud.addEventListener('scroll', positionRouteNodeFilterResults);
+  }
+}
+
+document.addEventListener('click', (ev) => {
+  if (!routeNodeFilterInput || !routeNodeFilterResults) return;
+  if (routeNodeFilterInput.contains(ev.target) ||
+      routeNodeFilterResults.contains(ev.target)) return;
+  hideRouteNodeFilterResults();
+});
+
+roleFilterButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const role = button.dataset.roleFilter;
+    setRoleVisible(role, !visibleRoles.has(role));
+  });
+});
+updateRoleFilterUi();
 
 const labelsToggle = document.getElementById('labels-toggle');
 if (labelsToggle) {
@@ -7742,6 +8134,7 @@ document.addEventListener('click', (ev) => {
   searchResults.innerHTML = '';
 });
 window.addEventListener('resize', () => {
+  positionRouteNodeFilterResults();
   layoutSidePanels();
 });
 

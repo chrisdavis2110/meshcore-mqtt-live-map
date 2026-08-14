@@ -55,6 +55,7 @@ DEVICE_TTL_HOURS = float(os.getenv("DEVICE_TTL_HOURS", "96"))  # 4 days default
 DEVICE_TTL_WINDOW_SECONDS = int(DEVICE_TTL_HOURS * 3600)
 PATH_TTL_SECONDS = int(os.getenv("PATH_TTL_SECONDS", "172800"))  # 48 hours
 TRAIL_LEN = int(os.getenv("TRAIL_LEN", "30"))
+TRAIL_MAX_SEGMENT_KM = float(os.getenv("TRAIL_MAX_SEGMENT_KM", "10"))
 ROUTE_TTL_SECONDS = int(os.getenv("ROUTE_TTL_SECONDS", "120"))
 ROUTE_PAYLOAD_TYPES = os.getenv("ROUTE_PAYLOAD_TYPES", "8,9,2,5,4")
 ROUTE_PATH_MAX_LEN = int(os.getenv("ROUTE_PATH_MAX_LEN", "16"))
@@ -64,8 +65,23 @@ ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK = (
   os.getenv("ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK", "false").lower() ==
   "true"
 )
+ROUTE_NEIGHBOR_DEBUG = (
+  os.getenv("ROUTE_NEIGHBOR_DEBUG", "false").strip().lower() == "true"
+)
 ROUTE_BYTE_FILTER_DEFAULT = os.getenv("ROUTE_BYTE_FILTER_DEFAULT", "all")
 HISTORY_BYTE_FILTER_DEFAULT = os.getenv("HISTORY_BYTE_FILTER_DEFAULT", "all")
+SHOW_REPEATERS_DEFAULT = os.getenv(
+  "SHOW_REPEATERS_DEFAULT", "true"
+).strip().lower() == "true"
+SHOW_COMPANIONS_DEFAULT = os.getenv(
+  "SHOW_COMPANIONS_DEFAULT", "true"
+).strip().lower() == "true"
+SHOW_ROOM_SERVERS_DEFAULT = os.getenv(
+  "SHOW_ROOM_SERVERS_DEFAULT", "true"
+).strip().lower() == "true"
+SHOW_UNKNOWN_DEFAULT = os.getenv(
+  "SHOW_UNKNOWN_DEFAULT", "true"
+).strip().lower() == "true"
 ROUTE_HISTORY_ENABLED = os.getenv(
   "ROUTE_HISTORY_ENABLED", "true"
 ).strip().lower() == "true"
@@ -176,15 +192,15 @@ def public_app_path(path: str) -> str:
   return APP_BASE_PATH + path
 
 
-SITE_TITLE = os.getenv("SITE_TITLE", "Greater Boston Mesh Live Map")
+SITE_TITLE = os.getenv("SITE_TITLE", "MeshCore Live Map")
 SITE_DESCRIPTION = os.getenv(
   "SITE_DESCRIPTION",
-  "Live view of Greater Boston Mesh nodes, message routes, and advert paths.",
+  "Live view of MeshCore nodes, message routes, and advert paths.",
 )
 SITE_OG_IMAGE = os.getenv("SITE_OG_IMAGE", "")
 SITE_URL = os.getenv("SITE_URL", "/")
 SITE_ICON = os.getenv("SITE_ICON", "/static/logo.png")
-SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "Feed: Boston MQTT.")
+SITE_FEED_NOTE = os.getenv("SITE_FEED_NOTE", "")
 CUSTOM_LINK_URL = os.getenv("CUSTOM_LINK_URL", "").strip()
 PACKET_ANALYZER_URL = os.getenv("PACKET_ANALYZER_URL", "").strip()
 CORESCOPE_URL = os.getenv("CORESCOPE_URL", "").strip()
@@ -336,12 +352,22 @@ VERSION_FILE_CANDIDATES = (
   os.path.join(os.path.dirname(APP_DIR), "VERSION.txt"),
   os.path.join(APP_DIR, "VERSION.txt"),
 )
-APP_VERSION = "dev"
-for VERSION_FILE in VERSION_FILE_CANDIDATES:
-  try:
-    with open(VERSION_FILE, "r", encoding="utf-8") as handle:
-      APP_VERSION = handle.read().strip() or "dev"
-      break
-  except Exception:
-    continue
+
+
+def _load_app_version() -> str:
+  env_version = os.getenv("APP_VERSION", "").strip()
+  if env_version:
+    return env_version
+  for version_file in VERSION_FILE_CANDIDATES:
+    try:
+      with open(version_file, "r", encoding="utf-8") as handle:
+        file_version = handle.read().strip()
+      if file_version:
+        return file_version
+    except Exception:
+      continue
+  return "dev"
+
+
+APP_VERSION = _load_app_version()
 NODE_SCRIPT_PATH = os.path.join(APP_DIR, "meshcore_decode.mjs")

@@ -93,3 +93,55 @@ def test_choose_neighbor_device_priority_manual_then_auto_then_observed():
     assert picked_auto == "CC001111"
   finally:
     _clear_state()
+
+
+def test_collided_neighbor_resolution_is_silent_by_default(capsys, monkeypatch):
+  _clear_state()
+  monkeypatch.setattr(decoder, "ROUTE_NEIGHBOR_DEBUG", False)
+  try:
+    _add_device("AA001111", 42.0000, -71.0000)
+    _add_device("BC001111", 42.0002, -71.0002)
+    _add_device("ABCD1111", 42.0004, -71.0004)
+    _add_device("ABEF2222", 42.0006, -71.0006)
+    state.neighbor_edges["BC001111"] = {
+      "ABEF2222": {"count": 5, "last_seen": time.time(), "manual": True}
+    }
+    decoder._rebuild_node_hash_map()
+
+    decoder._route_points_from_hashes(
+      path_hashes=["BC", "AB"],
+      origin_id="AA001111",
+      receiver_id=None,
+      ts=time.time(),
+    )
+
+    assert "[route] neighbor pick" not in capsys.readouterr().out
+  finally:
+    _clear_state()
+
+
+def test_collided_neighbor_resolution_logs_when_enabled(capsys, monkeypatch):
+  _clear_state()
+  monkeypatch.setattr(decoder, "ROUTE_NEIGHBOR_DEBUG", True)
+  try:
+    _add_device("AA001111", 42.0000, -71.0000)
+    _add_device("BC001111", 42.0002, -71.0002)
+    _add_device("ABCD1111", 42.0004, -71.0004)
+    _add_device("ABEF2222", 42.0006, -71.0006)
+    state.neighbor_edges["BC001111"] = {
+      "ABEF2222": {"count": 5, "last_seen": time.time(), "manual": True}
+    }
+    decoder._rebuild_node_hash_map()
+
+    decoder._route_points_from_hashes(
+      path_hashes=["BC", "AB"],
+      origin_id="AA001111",
+      receiver_id=None,
+      ts=time.time(),
+    )
+
+    output = capsys.readouterr().out
+    assert "[route] neighbor pick manual hash=AB" in output
+    assert "BC001111 -> ABEF2222" in output
+  finally:
+    _clear_state()

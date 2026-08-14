@@ -394,6 +394,11 @@
       color: #dcfce7;
     }
 
+    .role-filter-button {
+      min-width: 54px;
+      border-radius: 6px;
+    }
+
     .legend-line {
       width: 30px;
       height: 0;
@@ -560,7 +565,8 @@
       cursor: pointer;
     }
 
-    .legend-collapsed .legend {
+    .legend-collapsed .legend,
+    .legend-collapsed .route-node-filter {
       display: none;
     }
 
@@ -672,6 +678,37 @@
       font-size: 11px;
       letter-spacing: .04em;
       text-transform: uppercase;
+    }
+
+    .route-node-filter {
+      display: grid;
+      gap: 4px;
+      margin-top: 8px;
+      position: relative;
+      color: rgba(255, 255, 255, .78);
+      font-size: 11px;
+    }
+
+    .route-node-filter input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 8px;
+      border: 1px solid rgba(255, 255, 255, .2);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, .72);
+      color: #fff;
+      font-size: 12px;
+    }
+
+    .route-node-filter input::placeholder {
+      color: rgba(255, 255, 255, .55);
+    }
+
+    .route-node-filter-results {
+      position: fixed;
+      top: auto;
+      right: auto;
+      color: #fff;
     }
 
     .byte-dropdown {
@@ -1332,6 +1369,22 @@
 
     .peer-item:hover {
       background: rgba(255, 255, 255, .08);
+    }
+
+    .peer-identity {
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .peer-rank {
+      flex: 0 0 auto;
+      min-width: 3ch;
+      color: rgba(148, 163, 184, .9);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
     }
 
     .peer-item .peer-name {

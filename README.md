@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.9.4` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.9.4.2` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -222,12 +222,15 @@ Device + route tuning:
 - `DEVICE_TTL_HOURS` (advert/device stale window; default `96`)
 - `PATH_TTL_SECONDS` (path stale window; default `172800`)
 - `TRAIL_LEN` (points per device trail; `0` disables trails)
+- `TRAIL_MAX_SEGMENT_KM` (max drawn distance between consecutive trail points; default `10`, `0` disables splitting)
 - `ROUTE_TTL_SECONDS`
 - `ROUTE_PATH_MAX_LEN` (skip oversized path-hash lists)
 - `ROUTE_PAYLOAD_TYPES` (packet types used for live routes)
 - `ROUTE_MAX_HOP_DISTANCE` (km; prunes unrealistic hops)
 - `ROUTE_INFRA_ONLY` (true = only repeaters/rooms in route lines)
+- `ROUTE_NEIGHBOR_DEBUG` (logs collided-neighbor route selections; default `false` to avoid high-volume log noise)
 - `ROUTE_BYTE_FILTER_DEFAULT` (default live Path bytes checkbox state; `all`, `1b`, `2b`, `3b`, or comma combos)
+- `SHOW_REPEATERS_DEFAULT`, `SHOW_COMPANIONS_DEFAULT`, `SHOW_ROOM_SERVERS_DEFAULT`, and `SHOW_UNKNOWN_DEFAULT` (initial role visibility before browser/share overrides)
 - `MESSAGE_ORIGIN_TTL_SECONDS`
 
 History overlay:
@@ -288,6 +291,7 @@ Decoder helpers:
 - Tests: `pip install -r requirements-dev.txt && pytest -q`
 - Snapshot: `curl -s http://localhost:8080/snapshot`
 - Stats: `curl -s http://localhost:8080/stats`
+- Health: `curl -s http://localhost:8080/health`
 
 ## Production Token
 Enable protection by setting:
@@ -340,7 +344,7 @@ Use it:
 - History tool always loads off (use the button or `history=on` in the URL).
 - Peers tool uses dedicated rolling peer-history buckets so 24h counts stay accurate even on high-volume meshes; peer links are still counted from route `point_ids` even when a hop could not be drawn on the map, distances are shown in the selected km/mi units when both endpoints have coordinates, compact headings show Rx/Tx packet totals and unique peer counts, and forced MQTT listeners are excluded from peer lists.
 - Route History and Peers are now independent: `ROUTE_HISTORY_ENABLED=false` disables the History tool and history payloads, but peer counts continue updating from live routes.
-- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, `history_bytes`, and direct node focus via `node`/`repeater`/`device_id`.
+- URL params override stored settings: `lat`, `lon`/`lng`/`long`, `zoom`, `layer`, `history`, `heat`, `coverage`, `weather`, `weather_radar`, `weather_wind`, `labels`, `nodes`, `legend`, `menu`, `units`, `history_filter`, `route_bytes`, `route_nodes`, `history_bytes`, `roles`, and direct node focus via `node`/`repeater`/`device_id`.
 - Dark map also darkens node popups for readability.
 - Route styling uses payload type: 2/5 = Message (blue), 8/9 = Trace (orange), 4 = Advert (green).
 - Turnstile browser auth (`meshmap_auth`/`?auth=`) is for map + WS session flow;
