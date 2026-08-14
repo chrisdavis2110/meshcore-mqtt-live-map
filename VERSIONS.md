@@ -1,5 +1,8 @@
 # Versions
 
+## v1.9.4.7 (08-14-2026)
+- Made the Compose `.env` file optional. Deployments with an existing `.env` still pass every configured setting to the container, while clean/default deployments without one continue using the application's built-in defaults.
+
 ## v1.9.4.6 (08-14-2026)
 - Simplified Compose configuration to load the complete deployment `.env` file into the container. New configuration values no longer require matching Compose allowlist updates, and server-specific `.env` settings remain the single source of runtime configuration.
 
