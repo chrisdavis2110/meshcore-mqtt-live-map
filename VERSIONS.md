@@ -1,5 +1,8 @@
 # Versions
 
+## v1.9.4.6 (08-14-2026)
+- Simplified Compose configuration to load the complete deployment `.env` file into the container. New configuration values no longer require matching Compose allowlist updates, and server-specific `.env` settings remain the single source of runtime configuration.
+
 ## v1.9.4.5 (08-14-2026)
 - Added `COVERAGE_API_KEYS` for comma-separated MeshMapper API keys. The server fetches each configured key independently, merges and de-duplicates coverage squares into the existing persistent cache, and isolates rate-limit cooldowns to the affected key so another key can still refresh coverage.
 
