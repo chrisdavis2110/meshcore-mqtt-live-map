@@ -1,5 +1,11 @@
 # Versions
 
+## v1.9.5 (08-14-2026)
+- Promoted the tested v1.9.4.1 through v1.9.4.4 development track to the v1.9.5 release while retaining the incremental entries below as the detailed working history.
+- Added deployment-neutral fallback metadata, split trails across implausible coordinate jumps, added configurable role visibility and defaults, improved live-route filtering, and kept Peers rankings stable while filtering or changing units.
+- Hardened MQTT shared-state access and listener error handling, exposed listener health through `/health` and `/stats`, and made high-volume collided-neighbor diagnostics opt-in through `ROUTE_NEIGHBOR_DEBUG`.
+- Refreshed the tested Python, Docker, decoder, and GitHub Actions dependencies; added Dependabot updates targeting `dev`; and made published multi-architecture images reproducible and version-aware.
+
 ## v1.9.4.4 (08-14-2026)
 - Added `ROUTE_NEIGHBOR_DEBUG`, disabled by default, so high-volume collided-neighbor route selections no longer flood stdout. Compose deployments can opt back into the diagnostic log, and both silent-default and enabled-output behavior are covered by regression tests.
 - Updated FastAPI from `0.139.0` to the thread-safety fix in `0.139.2` while keeping the existing `0.139` release line.
