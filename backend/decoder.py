@@ -22,6 +22,7 @@ from config import (
   PAYLOAD_PREVIEW_MAX,
   ROUTE_PATH_MAX_LEN,
   ROUTE_MAX_HOP_DISTANCE,
+  ROUTE_NEIGHBOR_DEBUG,
   ROUTE_INFRA_ONLY,
   ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK,
   ROUTE_PAYLOAD_TYPES,
@@ -590,9 +591,11 @@ def _route_points_from_hashes(
             device_id = neighbor_id
             edge = neighbor_edges.get(current_id, {}).get(neighbor_id, {})
             manual = " manual" if edge.get("manual") else ""
-            print(
-              f"[route] neighbor pick{manual} hash={key} {current_id[:8]} -> {neighbor_id[:8]}"
-            )
+            if ROUTE_NEIGHBOR_DEBUG:
+              print(
+                f"[route] neighbor pick{manual} hash={key} "
+                f"{current_id[:8]} -> {neighbor_id[:8]}"
+              )
 
     # If we have a location fix, try to find the "closest" candidate for this hash
     if (
