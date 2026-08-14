@@ -1,5 +1,8 @@
 # Versions
 
+## v1.9.4.5 (08-14-2026)
+- Added `COVERAGE_API_KEYS` for comma-separated MeshMapper API keys. The server fetches each configured key independently, merges and de-duplicates coverage squares into the existing persistent cache, and isolates rate-limit cooldowns to the affected key so another key can still refresh coverage.
+
 ## v1.9.4.4 (08-14-2026)
 - Added `ROUTE_NEIGHBOR_DEBUG`, disabled by default, so high-volume collided-neighbor route selections no longer flood stdout. Compose deployments can opt back into the diagnostic log, and both silent-default and enabled-output behavior are covered by regression tests.
 - Updated FastAPI from `0.139.0` to the thread-safety fix in `0.139.2` while keeping the existing `0.139` release line.

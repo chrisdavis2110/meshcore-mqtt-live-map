@@ -198,6 +198,7 @@ from config import (
   LOS_PEAKS_MAX,
   COVERAGE_API_URL,
   COVERAGE_API_KEY,
+  COVERAGE_API_KEYS,
   COVERAGE_MAX_AGE_DAYS,
   COVERAGE_CACHE_FILE,
   COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS,
@@ -432,7 +433,11 @@ def _normalize_route_hashes_for_path_length(
   return normalized if changed else list(path_hashes)
 
 
-def _coverage_request_url(base_url: str, api_key: str) -> str:
+def _coverage_request_url(
+  base_url: str,
+  api_key: str,
+  replace_existing_key: bool = False,
+) -> str:
   raw = (base_url or "").strip()
   if not raw:
     return raw
@@ -447,7 +452,7 @@ def _coverage_request_url(base_url: str, api_key: str) -> str:
     elif not path.endswith("/coverage.php") and not path.endswith("coverage.php"):
       path = path.rstrip("/") + "/coverage.php"
     query_items = dict(parse_qsl(parts.query, keep_blank_values=True))
-    if api_key and not query_items.get("key"):
+    if api_key and (replace_existing_key or not query_items.get("key")):
       query_items["key"] = api_key
     return urlunsplit(
       (
@@ -633,21 +638,14 @@ def _apply_meshmapper_rate_limit_cooldown(
   now: float,
   response: Optional[httpx.Response] = None,
 ) -> int:
-  cooldown_seconds = max(1, int(COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS))
+  cooldown_seconds = _meshmapper_rate_limit_seconds(response) if response else max(
+    1, int(COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS)
+  )
   if response is not None:
     try:
-      data = response.json()
+      coverage_cache["last_error"] = response.json()
     except Exception:
-      data = None
-    if isinstance(data, dict):
-      coverage_cache["last_error"] = data
-      resets_in_hours = data.get("resets_in_hours")
-      try:
-        resets_hours_value = float(resets_in_hours)
-      except (TypeError, ValueError):
-        resets_hours_value = None
-      if resets_hours_value and resets_hours_value > 0:
-        cooldown_seconds = max(1, int(math.ceil(resets_hours_value * 3600.0)))
+      pass
   coverage_cache["cooldown_until"] = now + cooldown_seconds
   return cooldown_seconds
 
@@ -720,7 +718,18 @@ def _save_coverage_cache_file() -> None:
 
 
 async def _fetch_coverage_upstream() -> Tuple[List[Dict[str, Any]], str, Dict[str, Any]]:
-  url = _coverage_request_url(COVERAGE_API_URL, COVERAGE_API_KEY)
+  return await _fetch_coverage_upstream_for_key(COVERAGE_API_KEY)
+
+
+async def _fetch_coverage_upstream_for_key(
+  api_key: str,
+  replace_existing_key: bool = False,
+) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any]]:
+  url = _coverage_request_url(
+    COVERAGE_API_URL,
+    api_key,
+    replace_existing_key=replace_existing_key,
+  )
   print(f"[coverage] Fetching from {url}")
   async with httpx.AsyncClient(timeout=10.0) as client:
     response = await client.get(url)
@@ -738,6 +747,61 @@ async def _fetch_coverage_upstream() -> Tuple[List[Dict[str, Any]], str, Dict[st
     return samples, provider, meta
 
 
+def _meshmapper_api_keys() -> Tuple[str, ...]:
+  if COVERAGE_API_KEYS:
+    return COVERAGE_API_KEYS
+  return (COVERAGE_API_KEY, )
+
+
+def _coverage_item_identity(item: Dict[str, Any]) -> str:
+  grid_id = item.get("grid_id")
+  if isinstance(grid_id, str) and grid_id.strip():
+    return f"grid_id:{grid_id.strip()}"
+  bounds = item.get("bounds")
+  if isinstance(bounds, dict):
+    values = tuple(bounds.get(key) for key in ("south", "west", "north", "east"))
+    if all(value is not None for value in values):
+      return f"bounds:{values!r}"
+  return json.dumps(item, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _merge_meshmapper_coverage(
+  collections: List[List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+  merged: Dict[str, Dict[str, Any]] = {}
+  for items in collections:
+    for item in items:
+      if not isinstance(item, dict):
+        continue
+      identity = _coverage_item_identity(item)
+      existing = merged.get(identity)
+      if existing is None:
+        merged[identity] = item
+        continue
+      existing_ts = _coverage_item_timestamp(existing) or 0.0
+      item_ts = _coverage_item_timestamp(item) or 0.0
+      if item_ts >= existing_ts:
+        merged[identity] = item
+  return list(merged.values())
+
+
+def _meshmapper_rate_limit_seconds(response: httpx.Response) -> int:
+  cooldown_seconds = max(1, int(COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS))
+  try:
+    data = response.json()
+  except Exception:
+    data = None
+  if isinstance(data, dict):
+    resets_in_hours = data.get("resets_in_hours")
+    try:
+      resets_hours_value = float(resets_in_hours)
+    except (TypeError, ValueError):
+      resets_hours_value = None
+    if resets_hours_value and resets_hours_value > 0:
+      cooldown_seconds = max(1, int(math.ceil(resets_hours_value * 3600.0)))
+  return cooldown_seconds
+
+
 async def _fetch_coverage_upstream_for_test(
   base_url: str,
   api_key: str,
@@ -749,53 +813,85 @@ async def _fetch_coverage_upstream_for_test(
     return _normalize_coverage_response(response.json())
 
 
+coverage_key_cooldowns: Dict[int, float] = {}
+
+
 async def _sync_meshmapper_coverage_once() -> bool:
   now = time.time()
-  cooldown_until = float(coverage_cache.get("cooldown_until") or 0.0)
-  if cooldown_until > now:
-    remaining = int(max(1, math.ceil(cooldown_until - now)))
-    print(f"[coverage] MeshMapper sync cooldown active ({remaining}s remaining)")
-    return _coverage_cache_has_data()
-  try:
-    samples, provider, meta = await _fetch_coverage_upstream()
-    if provider != "meshmapper":
-      return False
+  api_keys = _meshmapper_api_keys()
+  replace_existing_key = bool(COVERAGE_API_KEYS)
+  collections: List[List[Dict[str, Any]]] = []
+  regions: Set[str] = set()
+  generated_at: Optional[float] = None
+  retry_times: List[float] = []
+
+  for index, api_key in enumerate(api_keys):
+    cooldown_until = coverage_key_cooldowns.get(index, 0.0)
+    if cooldown_until > now:
+      retry_times.append(cooldown_until)
+      continue
+    try:
+      samples, provider, meta = await _fetch_coverage_upstream_for_key(
+        api_key,
+        replace_existing_key=replace_existing_key,
+      )
+      if provider != "meshmapper":
+        continue
+      coverage_key_cooldowns.pop(index, None)
+      collections.append(samples)
+      region = meta.get("region")
+      if isinstance(region, str) and region.strip():
+        regions.add(region.strip().upper())
+      item_generated_at = meta.get("generated_at")
+      if item_generated_at is not None:
+        generated_at = max(generated_at or 0.0, float(item_generated_at))
+    except httpx.TimeoutException:
+      print(f"[coverage] MeshMapper key {index + 1} sync timeout")
+    except httpx.HTTPStatusError as exc:
+      if exc.response.status_code == 429:
+        cooldown_seconds = _meshmapper_rate_limit_seconds(exc.response)
+        cooldown_until = now + cooldown_seconds
+        coverage_key_cooldowns[index] = cooldown_until
+        retry_times.append(cooldown_until)
+        print(
+          f"[coverage] MeshMapper key {index + 1} rate limited "
+          f"cooldown={cooldown_seconds}s"
+        )
+      else:
+        print(
+          f"[coverage] MeshMapper key {index + 1} HTTP error "
+          f"status={exc.response.status_code}"
+        )
+    except httpx.HTTPError as exc:
+      print(f"[coverage] MeshMapper key {index + 1} HTTP error: {exc}")
+    except Exception as exc:
+      print(f"[coverage] MeshMapper key {index + 1} sync failed: {exc}")
+
+  if collections:
+    merged_samples = _merge_meshmapper_coverage(collections)
+    meta: Dict[str, Any] = {}
+    if len(regions) == 1:
+      meta["region"] = next(iter(regions))
+    if generated_at is not None:
+      meta["generated_at"] = generated_at
     _update_coverage_cache(
-      provider,
-      samples,
+      "meshmapper",
+      merged_samples,
       now,
-      source="meshmapper_sync",
+      source="meshmapper_multi_key_sync" if len(api_keys) > 1 else
+      "meshmapper_sync",
       meta=meta,
     )
     _save_coverage_cache_file()
     return True
-  except httpx.TimeoutException:
-    coverage_cache["last_error"] = {"error": "coverage_api_timeout"}
-    print("[coverage] MeshMapper sync timeout")
-    return _coverage_cache_has_data()
-  except httpx.HTTPStatusError as exc:
-    if exc.response.status_code == 429:
-      cooldown_seconds = _apply_meshmapper_rate_limit_cooldown(now, exc.response)
-      print(
-        f"[coverage] MeshMapper sync rate limited cooldown={cooldown_seconds}s"
-      )
-      return _coverage_cache_has_data()
-    coverage_cache["last_error"] = {
-      "error": "coverage_api_error",
-      "status_code": exc.response.status_code,
-    }
-    print(
-      f"[coverage] MeshMapper sync HTTP error status={exc.response.status_code}"
-    )
-    return _coverage_cache_has_data()
-  except httpx.HTTPError as exc:
-    coverage_cache["last_error"] = {"error": f"coverage_api_error: {exc}"}
-    print(f"[coverage] MeshMapper sync HTTP error: {exc}")
-    return _coverage_cache_has_data()
-  except Exception as exc:
-    coverage_cache["last_error"] = {"error": f"coverage_fetch_error: {exc}"}
-    print(f"[coverage] MeshMapper sync failed: {exc}")
-    return _coverage_cache_has_data()
+
+  if retry_times:
+    next_retry = min(retry_times)
+    coverage_cache["cooldown_until"] = next_retry
+    coverage_cache["last_error"] = {"error": "coverage_api_rate_limited"}
+  else:
+    coverage_cache["last_error"] = {"error": "coverage_fetch_error"}
+  return _coverage_cache_has_data()
 
 
 async def _meshmapper_coverage_sync_loop() -> None:
