@@ -26,6 +26,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Read app version
+        id: app-version
+        run: |
+          APP_VERSION="$(tr -d '\r\n' < VERSION.txt)"
+          test -n "$APP_VERSION"
+          echo "value=$APP_VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
@@ -56,6 +63,8 @@ jobs:
           file: ./backend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            APP_VERSION=${{ steps.app-version.outputs.value }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

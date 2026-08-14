@@ -4,6 +4,10 @@
 - Added `ROUTE_NEIGHBOR_DEBUG`, disabled by default, so high-volume collided-neighbor route selections no longer flood stdout. Compose deployments can opt back into the diagnostic log, and both silent-default and enabled-output behavior are covered by regression tests.
 - Updated FastAPI from `0.139.0` to the thread-safety fix in `0.139.2` while keeping the existing `0.139` release line.
 - Updated Uvicorn from `0.50.2` to `0.52.3`, pinned the Docker runtime to Python `3.12.14-slim`, and pinned the MeshCore decoder package to `0.3.0` for reproducible builds.
+- Updated the development test client `httpx2` from `2.5.0` to `2.10.0`.
+- Added weekly Dependabot checks for Python, Docker, and GitHub Actions with update pull requests targeting `dev`.
+- Updated the CI and Docker publishing actions to their Node 24-backed releases: `actions/checkout` and `actions/setup-python` v7, `docker/setup-qemu-action`, `docker/setup-buildx-action`, and `docker/login-action` v4, `docker/metadata-action` v6, and `docker/build-push-action` v7.
+- Published Docker images now receive the release version at build time instead of reporting `dev` when the source tree is not mounted.
 
 ## v1.9.4.3 (08-07-2026)
 - Fixed issue #79: MQTT presence, snapshot, stats, peer-history, route-hash, and persisted-state readers now iterate stable copies of shared dictionaries instead of racing Paho's network thread. Unexpected message-handler exceptions are logged and counted without terminating MQTT processing, while `/health` and `/stats` expose MQTT connection and network-loop health.

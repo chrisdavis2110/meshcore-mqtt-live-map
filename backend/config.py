@@ -352,12 +352,22 @@ VERSION_FILE_CANDIDATES = (
   os.path.join(os.path.dirname(APP_DIR), "VERSION.txt"),
   os.path.join(APP_DIR, "VERSION.txt"),
 )
-APP_VERSION = "dev"
-for VERSION_FILE in VERSION_FILE_CANDIDATES:
-  try:
-    with open(VERSION_FILE, "r", encoding="utf-8") as handle:
-      APP_VERSION = handle.read().strip() or "dev"
-      break
-  except Exception:
-    continue
+
+
+def _load_app_version() -> str:
+  env_version = os.getenv("APP_VERSION", "").strip()
+  if env_version:
+    return env_version
+  for version_file in VERSION_FILE_CANDIDATES:
+    try:
+      with open(version_file, "r", encoding="utf-8") as handle:
+        file_version = handle.read().strip()
+      if file_version:
+        return file_version
+    except Exception:
+      continue
+  return "dev"
+
+
+APP_VERSION = _load_app_version()
 NODE_SCRIPT_PATH = os.path.join(APP_DIR, "meshcore_decode.mjs")

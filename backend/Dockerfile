@@ -1,5 +1,8 @@
 FROM python:3.12.14-slim
 
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
+
 WORKDIR /app
 
 RUN apt-get update \
