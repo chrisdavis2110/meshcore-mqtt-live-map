@@ -1,5 +1,8 @@
 # Versions
 
+## v1.9.4.8 (08-14-2026)
+- Restored the required Compose `.env` file for production deployments. Individual omitted settings still use application defaults, but every deployment must explicitly provide its configuration file.
+
 ## v1.9.4.7 (08-14-2026)
 - Made the Compose `.env` file optional. Deployments with an existing `.env` still pass every configured setting to the container, while clean/default deployments without one continue using the application's built-in defaults.
 
