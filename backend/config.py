@@ -64,7 +64,9 @@ ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK = (
   os.getenv("ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK", "false").lower() ==
   "true"
 )
-ROUTE_NEIGHBOR_DEBUG = os.getenv("ROUTE_NEIGHBOR_DEBUG", "false").lower() == "true"
+ROUTE_NEIGHBOR_DEBUG = (
+  os.getenv("ROUTE_NEIGHBOR_DEBUG", "false").strip().lower() == "true"
+)
 ROUTE_BYTE_FILTER_DEFAULT = os.getenv("ROUTE_BYTE_FILTER_DEFAULT", "all")
 HISTORY_BYTE_FILTER_DEFAULT = os.getenv("HISTORY_BYTE_FILTER_DEFAULT", "all")
 ROUTE_HISTORY_ENABLED = os.getenv(
