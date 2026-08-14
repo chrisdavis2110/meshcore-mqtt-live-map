@@ -67,6 +67,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - `ROUTE_MAX_HOP_DISTANCE` prunes hops longer than the configured km distance.
 - `ROUTE_INFRA_ONLY` limits route lines to repeaters/rooms (companions excluded from routes).
 - `ROUTE_ALLOW_AMBIGUOUS_ONE_BYTE_FALLBACK` restores the legacy route fallback for colliding 1-byte prefixes when conservative routing is too strict; default is `false`.
+- `ROUTE_NEIGHBOR_DEBUG=true` logs collided-neighbor route selections for route-resolution diagnostics. It defaults to `false` to prevent high-volume MQTT feeds from flooding stdout.
 - The live and History `Path bytes` filters can limit route rendering to `All`, `1-byte`, `2-byte`, `3-byte`, or checkbox combinations without affecting ingest. Browser choices persist locally, env defaults are `ROUTE_BYTE_FILTER_DEFAULT` / `HISTORY_BYTE_FILTER_DEFAULT`, and share links use `route_bytes` / `history_bytes` values such as `all` or `2b,3b`.
 - `DEVICE_TTL_HOURS` controls advert/device staleness (default `96` hours).
 - `PATH_TTL_SECONDS` controls path staleness (default `172800` seconds / 48h).

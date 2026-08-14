@@ -228,6 +228,7 @@ Device + route tuning:
 - `ROUTE_PAYLOAD_TYPES` (packet types used for live routes)
 - `ROUTE_MAX_HOP_DISTANCE` (km; prunes unrealistic hops)
 - `ROUTE_INFRA_ONLY` (true = only repeaters/rooms in route lines)
+- `ROUTE_NEIGHBOR_DEBUG` (logs collided-neighbor route selections; default `false` to avoid high-volume log noise)
 - `ROUTE_BYTE_FILTER_DEFAULT` (default live Path bytes checkbox state; `all`, `1b`, `2b`, `3b`, or comma combos)
 - `SHOW_REPEATERS_DEFAULT`, `SHOW_COMPANIONS_DEFAULT`, `SHOW_ROOM_SERVERS_DEFAULT`, and `SHOW_UNKNOWN_DEFAULT` (initial role visibility before browser/share overrides)
 - `MESSAGE_ORIGIN_TTL_SECONDS`

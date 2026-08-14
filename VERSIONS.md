@@ -1,5 +1,8 @@
 # Versions
 
+## v1.9.4.4 (08-14-2026)
+- Added `ROUTE_NEIGHBOR_DEBUG`, disabled by default, so high-volume collided-neighbor route selections no longer flood stdout. Compose deployments can opt back into the diagnostic log, and both silent-default and enabled-output behavior are covered by regression tests.
+
 ## v1.9.4.3 (08-07-2026)
 - Fixed issue #79: MQTT presence, snapshot, stats, peer-history, route-hash, and persisted-state readers now iterate stable copies of shared dictionaries instead of racing Paho's network thread. Unexpected message-handler exceptions are logged and counted without terminating MQTT processing, while `/health` and `/stats` expose MQTT connection and network-loop health.
 - Fixed role visibility filtering so hiding Companion or Room Server removes only route sections connected through those hidden roles while preserving contiguous Repeater-to-Repeater sections; also corrected the `Room Server` label capitalization.
