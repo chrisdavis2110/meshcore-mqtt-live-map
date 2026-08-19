@@ -190,7 +190,8 @@ MQTT:
 
 Coverage layer:
 - `COVERAGE_API_URL` (legacy coverage-map base URL, or `https://meshmapper.net`; button hidden when blank)
-- `COVERAGE_API_KEY` (MeshMapper only; optional key for `https://meshmapper.net/coverage.php`; not used by legacy coverage maps)
+- `COVERAGE_API_KEY` (MeshMapper only; optional single key for `https://meshmapper.net/coverage.php`; not used by legacy coverage maps)
+- `COVERAGE_API_KEYS` (MeshMapper only; optional comma-separated replacement for `COVERAGE_API_KEY`. Each key is fetched independently, then coverage squares are merged and duplicate squares are removed. Set `COVERAGE_API_URL=https://meshmapper.net` rather than embedding a key in the URL.)
 - `COVERAGE_MAX_AGE_DAYS` (MeshMapper only; default `30`; only coverage from the last N days is sent to the map, while MeshMapper can still cache the full upstream dataset locally; not used by legacy coverage maps)
 - `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS` (MeshMapper only; fallback cooldown after HTTP 429 if the API does not report `resets_in_hours`)
 - `COVERAGE_CACHE_FILE` (MeshMapper only; local JSON file served to users after server-side sync)

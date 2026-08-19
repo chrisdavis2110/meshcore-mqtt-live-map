@@ -55,6 +55,7 @@ class _SequenceClient:
   def __init__(self, responses):
     self.responses = list(responses)
     self.last_url = None
+    self.urls = []
     self.call_count = 0
 
   async def __aenter__(self):
@@ -65,6 +66,7 @@ class _SequenceClient:
 
   async def get(self, _url):
     self.last_url = _url
+    self.urls.append(_url)
     self.call_count += 1
     if not self.responses:
       raise AssertionError("No more queued responses")
@@ -83,6 +85,7 @@ def _json_body(response):
 
 @pytest.fixture(autouse=True)
 def clear_coverage_cache():
+  app.coverage_key_cooldowns.clear()
   app.coverage_cache["provider"] = None
   app.coverage_cache["data"] = None
   app.coverage_cache["fetched_at"] = 0.0
@@ -91,6 +94,7 @@ def clear_coverage_cache():
   app.coverage_cache["source"] = None
   app.coverage_cache["region"] = None
   app.coverage_cache["generated_at"] = None
+  app.coverage_key_cooldowns.clear()
   yield
   app.coverage_cache["provider"] = None
   app.coverage_cache["data"] = None
@@ -270,6 +274,51 @@ def test_meshmapper_sync_writes_local_cache_file(monkeypatch, tmp_path):
   assert saved["generated_at"] == 1710548200.0
   assert saved["data"] == payload["grid_squares"]
   assert saved["fetched_at"] == 1000.0
+
+
+def test_meshmapper_multi_key_sync_merges_and_deduplicates(monkeypatch, tmp_path):
+  monkeypatch.setattr(
+    app,
+    "COVERAGE_API_URL",
+    "https://meshmapper.net/coverage.php?key=old-key",
+  )
+  monkeypatch.setattr(app, "COVERAGE_API_KEYS", ("first-key", "second-key"))
+  monkeypatch.setattr(app, "COVERAGE_CACHE_FILE", str(tmp_path / "cache.json"))
+  monkeypatch.setattr(app.time, "time", lambda: 1000.0)
+  client = _SequenceClient([
+    _DummyResponse({
+      "success": True,
+      "region": "ONE",
+      "grid_squares": [
+        {"grid_id": "same", "timestamp": 100, "coverage_type": "RX"},
+        {"grid_id": "first-only", "timestamp": 100},
+      ],
+    }),
+    _DummyResponse({
+      "success": True,
+      "region": "TWO",
+      "grid_squares": [
+        {"grid_id": "same", "timestamp": 200, "coverage_type": "BIDIR"},
+        {"grid_id": "second-only", "timestamp": 200},
+      ],
+    }),
+  ])
+  monkeypatch.setattr(app.httpx, "AsyncClient", lambda timeout: client)
+
+  result = asyncio.run(app._sync_meshmapper_coverage_once())
+
+  assert result is True
+  assert client.urls == [
+    "https://meshmapper.net/coverage.php?key=first-key",
+    "https://meshmapper.net/coverage.php?key=second-key",
+  ]
+  assert app.coverage_cache["source"] == "meshmapper_multi_key_sync"
+  assert app.coverage_cache["region"] is None
+  assert app.coverage_cache["data"] == [
+    {"grid_id": "same", "timestamp": 200, "coverage_type": "BIDIR"},
+    {"grid_id": "first-only", "timestamp": 100},
+    {"grid_id": "second-only", "timestamp": 200},
+  ]
 
 
 def test_meshmapper_get_coverage_reads_local_cache_file_without_upstream(monkeypatch, tmp_path):

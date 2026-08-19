@@ -1,10 +1,16 @@
 # Versions
 
-## v1.9.5 (08-14-2026)
-- Promoted the tested v1.9.4.1 through v1.9.4.4 development track to the v1.9.5 release while retaining the incremental entries below as the detailed working history.
-- Added deployment-neutral fallback metadata, split trails across implausible coordinate jumps, added configurable role visibility and defaults, improved live-route filtering, and kept Peers rankings stable while filtering or changing units.
-- Hardened MQTT shared-state access and listener error handling, exposed listener health through `/health` and `/stats`, and made high-volume collided-neighbor diagnostics opt-in through `ROUTE_NEIGHBOR_DEBUG`.
-- Refreshed the tested Python, Docker, decoder, and GitHub Actions dependencies; added Dependabot updates targeting `dev`; and made published multi-architecture images reproducible and version-aware.
+## v1.9.4.8 (08-14-2026)
+- Restored the required Compose `.env` file for production deployments. Individual omitted settings still use application defaults, but every deployment must explicitly provide its configuration file.
+
+## v1.9.4.7 (08-14-2026)
+- Made the Compose `.env` file optional. Deployments with an existing `.env` still pass every configured setting to the container, while clean/default deployments without one continue using the application's built-in defaults.
+
+## v1.9.4.6 (08-14-2026)
+- Simplified Compose configuration to load the complete deployment `.env` file into the container. New configuration values no longer require matching Compose allowlist updates, and server-specific `.env` settings remain the single source of runtime configuration.
+
+## v1.9.4.5 (08-14-2026)
+- Added `COVERAGE_API_KEYS` for comma-separated MeshMapper API keys. The server fetches each configured key independently, merges and de-duplicates coverage squares into the existing persistent cache, and isolates rate-limit cooldowns to the affected key so another key can still refresh coverage.
 
 ## v1.9.4.4 (08-14-2026)
 - Added `ROUTE_NEIGHBOR_DEBUG`, disabled by default, so high-volume collided-neighbor route selections no longer flood stdout. Compose deployments can opt back into the diagnostic log, and both silent-default and enabled-output behavior are covered by regression tests.

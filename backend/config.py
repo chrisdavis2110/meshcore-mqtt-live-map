@@ -286,6 +286,11 @@ LOS_PEAKS_MAX = int(os.getenv("LOS_PEAKS_MAX", "4"))
 
 COVERAGE_API_URL = os.getenv("COVERAGE_API_URL", "").strip()
 COVERAGE_API_KEY = os.getenv("COVERAGE_API_KEY", "").strip()
+COVERAGE_API_KEYS = tuple(
+  key.strip()
+  for key in os.getenv("COVERAGE_API_KEYS", "").split(",")
+  if key.strip()
+)
 COVERAGE_MAX_AGE_DAYS = float(os.getenv("COVERAGE_MAX_AGE_DAYS", "30"))
 COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS = int(
   os.getenv("COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS", "3600")
