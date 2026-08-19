@@ -86,6 +86,8 @@ def _json_body(response):
 @pytest.fixture(autouse=True)
 def clear_coverage_cache():
   app.coverage_key_cooldowns.clear()
+  app.coverage_key_snapshots.clear()
+  app.coverage_legacy_data.clear()
   app.coverage_cache["provider"] = None
   app.coverage_cache["data"] = None
   app.coverage_cache["fetched_at"] = 0.0
@@ -94,7 +96,6 @@ def clear_coverage_cache():
   app.coverage_cache["source"] = None
   app.coverage_cache["region"] = None
   app.coverage_cache["generated_at"] = None
-  app.coverage_key_cooldowns.clear()
   yield
   app.coverage_cache["provider"] = None
   app.coverage_cache["data"] = None
@@ -104,6 +105,9 @@ def clear_coverage_cache():
   app.coverage_cache["source"] = None
   app.coverage_cache["region"] = None
   app.coverage_cache["generated_at"] = None
+  app.coverage_key_cooldowns.clear()
+  app.coverage_key_snapshots.clear()
+  app.coverage_legacy_data.clear()
 
 
 def test_filter_coverage_by_age_uses_30_day_default(monkeypatch):
@@ -231,6 +235,17 @@ def test_meshmapper_domain_uses_coverage_php_with_key(monkeypatch):
   assert dummy.last_url == "https://meshmapper.net/coverage.php?key=abc123"
 
 
+def test_meshmapper_fetch_does_not_log_api_key(monkeypatch, capsys):
+  monkeypatch.setattr(app, "COVERAGE_API_URL", "https://meshmapper.net")
+  payload = {"success": True, "grid_squares": []}
+  dummy = _DummyClient(response=_DummyResponse(payload))
+  monkeypatch.setattr(app.httpx, "AsyncClient", lambda timeout: dummy)
+
+  asyncio.run(app._fetch_coverage_upstream_for_key("private-api-key"))
+
+  assert "private-api-key" not in capsys.readouterr().out
+
+
 def test_meshmapper_full_url_preserves_existing_key(monkeypatch):
   monkeypatch.setattr(
     app,
@@ -318,6 +333,88 @@ def test_meshmapper_multi_key_sync_merges_and_deduplicates(monkeypatch, tmp_path
     {"grid_id": "same", "timestamp": 200, "coverage_type": "BIDIR"},
     {"grid_id": "first-only", "timestamp": 100},
     {"grid_id": "second-only", "timestamp": 200},
+  ]
+
+
+def test_meshmapper_multi_key_sync_retains_cached_key_on_partial_failure(
+  monkeypatch, tmp_path
+):
+  monkeypatch.setattr(app, "COVERAGE_API_URL", "https://meshmapper.net")
+  monkeypatch.setattr(app, "COVERAGE_API_KEYS", ("first-key", "second-key"))
+  monkeypatch.setattr(app, "COVERAGE_CACHE_FILE", str(tmp_path / "cache.json"))
+  monkeypatch.setattr(app.time, "time", lambda: 1000.0)
+  app.coverage_cache["data"] = [
+    {"grid_id": "first-cached", "timestamp": 100},
+    {"grid_id": "second-old", "timestamp": 100},
+  ]
+  client = _SequenceClient([
+    _DummyResponse({
+      "success": False,
+      "error": "rate_limit_exceeded",
+      "resets_in_hours": 1,
+    }, status_code=429),
+    _DummyResponse({
+      "success": True,
+      "grid_squares": [
+        {"grid_id": "second-new", "timestamp": 200},
+      ],
+    }),
+  ])
+  monkeypatch.setattr(app.httpx, "AsyncClient", lambda timeout: client)
+
+  result = asyncio.run(app._sync_meshmapper_coverage_once())
+
+  assert result is True
+  assert app.coverage_cache["data"] == [
+    {"grid_id": "first-cached", "timestamp": 100},
+    {"grid_id": "second-old", "timestamp": 100},
+    {"grid_id": "second-new", "timestamp": 200},
+  ]
+  assert app.coverage_cache["cooldown_until"] == 4600.0
+  assert app.coverage_cache["last_error"] == {
+    "error": "coverage_partial_failure",
+    "failed_keys": 1,
+  }
+
+  saved_text = (tmp_path / "cache.json").read_text(encoding="utf-8")
+  assert "first-key" not in saved_text
+  assert "second-key" not in saved_text
+  app.coverage_key_cooldowns.clear()
+
+  assert app._load_coverage_cache_file() is True
+  assert list(app.coverage_key_cooldowns.values()) == [4600.0]
+
+
+def test_meshmapper_multi_key_successful_empty_snapshot_removes_old_key_data(
+  monkeypatch, tmp_path
+):
+  monkeypatch.setattr(app, "COVERAGE_API_URL", "https://meshmapper.net")
+  monkeypatch.setattr(app, "COVERAGE_API_KEYS", ("first-key", "second-key"))
+  monkeypatch.setattr(app, "COVERAGE_CACHE_FILE", str(tmp_path / "cache.json"))
+  monkeypatch.setattr(app.time, "time", lambda: 1000.0)
+  client = _SequenceClient([
+    _DummyResponse({
+      "success": True,
+      "grid_squares": [{"grid_id": "first", "timestamp": 100}],
+    }),
+    _DummyResponse({
+      "success": True,
+      "grid_squares": [{"grid_id": "second-old", "timestamp": 100}],
+    }),
+    _DummyResponse({
+      "success": False,
+      "error": "rate_limit_exceeded",
+      "resets_in_hours": 1,
+    }, status_code=429),
+    _DummyResponse({"success": True, "grid_squares": []}),
+  ])
+  monkeypatch.setattr(app.httpx, "AsyncClient", lambda timeout: client)
+
+  assert asyncio.run(app._sync_meshmapper_coverage_once()) is True
+  assert asyncio.run(app._sync_meshmapper_coverage_once()) is True
+
+  assert app.coverage_cache["data"] == [
+    {"grid_id": "first", "timestamp": 100}
   ]
 
 

@@ -107,6 +107,12 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
     volumes:
       - ./data:/data
@@ -117,6 +123,16 @@ Repo examples:
 - `deploy/docker-compose.image.yaml`
 - `deploy/swarm-stack.yaml`
 - `deploy/kubernetes-meshmap.yaml`
+
+Do not bind-mount a copied `app.py` over `/app/app.py`. A whole-file override
+masks the application bundled in every newer image, so image upgrades cannot
+deliver backend fixes. Keep custom behavior in configuration or upstream it;
+if a temporary override is unavoidable, rebase and retest it for every image.
+
+The Compose healthcheck marks the container unhealthy when MQTT or the
+WebSocket broadcaster stops. Docker Compose does not restart an unhealthy
+container by itself; use an orchestrator/autoheal policy if automatic recovery
+from process-wide hangs is required.
 
 ## Configuration (.env)
 Debugging:
@@ -136,6 +152,7 @@ Storage + server:
 - `NEIGHBOR_OVERRIDES_FILE` (optional JSON mapping for neighbor overrides)
 - `CHANNEL_SECRETS_FILE` (optional JSON file of MeshCore channel secrets for decrypting sender names from group text packets)
 - `STATE_SAVE_INTERVAL` (seconds between state saves)
+- `WEBSOCKET_SEND_TIMEOUT_SECONDS` (per-client WebSocket send timeout; default `10`, allowing time for JWT authentication swaps)
 - `WEB_PORT` (host port for the web UI)
 - `PROD_MODE` (true to require a token for API + WS)
 - `PROD_TOKEN` (required token; send via `?token=` or `Authorization: Bearer`)

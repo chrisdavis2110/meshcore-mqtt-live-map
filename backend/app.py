@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import hashlib
 import json
 import logging
 import os
@@ -108,6 +109,7 @@ from config import (
   BACKUP_DIR,
   BACKUP_RETENTION_DAYS,
   STATE_SAVE_INTERVAL,
+  WEBSOCKET_SEND_TIMEOUT_SECONDS,
   DEVICE_TTL_WINDOW_SECONDS,
   PATH_TTL_SECONDS,
   TRAIL_LEN,
@@ -388,8 +390,19 @@ def _history_window_seconds_value() -> int:
 
 mqtt_client: Optional[mqtt.Client] = None
 background_tasks: Set[asyncio.Task[Any]] = set()
+broadcaster_task: Optional[asyncio.Task[Any]] = None
 clients: Set[WebSocket] = set()
 update_queue: asyncio.Queue[Dict[str, Any]] = asyncio.Queue()
+broadcaster_stats: Dict[str, Any] = {
+  "running": False,
+  "started_at": None,
+  "last_event_ts": None,
+  "last_send_ts": None,
+  "last_error_ts": None,
+  "last_error": None,
+  "send_failures_total": 0,
+  "restarts_total": 0,
+}
 
 
 def _stable_dict_copy(mapping: Dict[Any, Any]) -> Dict[Any, Any]:
@@ -470,6 +483,23 @@ def _coverage_request_url(
   return f"{raw.rstrip('/')}/get-samples"
 
 
+def _coverage_log_url(url: str) -> str:
+  parts = urlsplit(url)
+  query_items = [
+    (key, "[redacted]" if key.lower() in {"key", "api_key", "token"} else value)
+    for key, value in parse_qsl(parts.query, keep_blank_values=True)
+  ]
+  return urlunsplit(
+    (
+      parts.scheme,
+      parts.netloc,
+      parts.path,
+      urlencode(query_items),
+      parts.fragment,
+    )
+  )
+
+
 coverage_cache: Dict[str, Any] = {
   "provider": None,
   "data": None,
@@ -478,6 +508,9 @@ coverage_cache: Dict[str, Any] = {
   "last_error": None,
   "source": None,
 }
+coverage_key_cooldowns: Dict[str, float] = {}
+coverage_key_snapshots: Dict[str, List[Dict[str, Any]]] = {}
+coverage_legacy_data: List[Dict[str, Any]] = []
 
 
 def _is_meshmapper_coverage_url(base_url: str) -> bool:
@@ -672,7 +705,9 @@ def _load_coverage_cache_file() -> bool:
     fetched_at_value = 0.0
   provider = str(payload.get("provider") or "meshmapper")
   coverage_cache["provider"] = provider
-  coverage_cache["data"] = list(data)
+  coverage_cache["data"] = (
+    list(data) if payload.get("data_available") is not False else None
+  )
   coverage_cache["fetched_at"] = fetched_at_value
   coverage_cache["cooldown_until"] = float(payload.get("cooldown_until") or 0.0)
   coverage_cache["last_error"] = payload.get("last_error")
@@ -686,6 +721,26 @@ def _load_coverage_cache_file() -> bool:
     coverage_cache["generated_at"] = float(generated_at) if generated_at else None
   except (TypeError, ValueError):
     coverage_cache["generated_at"] = None
+  raw_key_cooldowns = payload.get("key_cooldowns")
+  coverage_key_cooldowns.clear()
+  if isinstance(raw_key_cooldowns, dict):
+    for key_id, cooldown_until in raw_key_cooldowns.items():
+      try:
+        coverage_key_cooldowns[str(key_id)] = float(cooldown_until)
+      except (TypeError, ValueError):
+        continue
+  raw_key_snapshots = payload.get("key_snapshots")
+  coverage_key_snapshots.clear()
+  if isinstance(raw_key_snapshots, dict):
+    for key_id, snapshot in raw_key_snapshots.items():
+      if isinstance(snapshot, list):
+        coverage_key_snapshots[str(key_id)] = list(snapshot)
+  raw_legacy_data = payload.get("legacy_data")
+  coverage_legacy_data.clear()
+  if isinstance(raw_legacy_data, list):
+    coverage_legacy_data.extend(raw_legacy_data)
+  elif not coverage_key_snapshots and data:
+    coverage_legacy_data.extend(data)
   print(
     f"[coverage] Loaded cached coverage file {path} entries={len(data)} fetched_at={int(fetched_at_value) if fetched_at_value > 0 else 0}"
   )
@@ -694,15 +749,21 @@ def _load_coverage_cache_file() -> bool:
 
 def _save_coverage_cache_file() -> None:
   path = (COVERAGE_CACHE_FILE or "").strip()
-  if not path or not _coverage_cache_has_data():
+  if not path:
+    return
+  if not _coverage_cache_has_data() and not coverage_key_cooldowns:
     return
   payload = {
     "provider": coverage_cache.get("provider") or "meshmapper",
+    "data_available": _coverage_cache_has_data(),
     "fetched_at": float(coverage_cache.get("fetched_at") or 0.0),
     "cooldown_until": float(coverage_cache.get("cooldown_until") or 0.0),
     "last_error": coverage_cache.get("last_error"),
     "region": coverage_cache.get("region"),
     "generated_at": coverage_cache.get("generated_at"),
+    "key_cooldowns": dict(coverage_key_cooldowns),
+    "key_snapshots": dict(coverage_key_snapshots),
+    "legacy_data": list(coverage_legacy_data),
     "data": coverage_cache.get("data") or [],
   }
   try:
@@ -730,7 +791,7 @@ async def _fetch_coverage_upstream_for_key(
     api_key,
     replace_existing_key=replace_existing_key,
   )
-  print(f"[coverage] Fetching from {url}")
+  print(f"[coverage] Fetching from {_coverage_log_url(url)}")
   async with httpx.AsyncClient(timeout=10.0) as client:
     response = await client.get(url)
     response.raise_for_status()
@@ -813,12 +874,19 @@ async def _fetch_coverage_upstream_for_test(
     return _normalize_coverage_response(response.json())
 
 
-coverage_key_cooldowns: Dict[int, float] = {}
+def _coverage_key_id(api_key: str) -> str:
+  return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
 
 
 async def _sync_meshmapper_coverage_once() -> bool:
   now = time.time()
   api_keys = _meshmapper_api_keys()
+  configured_key_ids = [_coverage_key_id(api_key) for api_key in api_keys]
+  if (
+    not coverage_key_snapshots and not coverage_legacy_data and
+    isinstance(coverage_cache.get("data"), list)
+  ):
+    coverage_legacy_data.extend(coverage_cache["data"])
   replace_existing_key = bool(COVERAGE_API_KEYS)
   collections: List[List[Dict[str, Any]]] = []
   regions: Set[str] = set()
@@ -826,7 +894,8 @@ async def _sync_meshmapper_coverage_once() -> bool:
   retry_times: List[float] = []
 
   for index, api_key in enumerate(api_keys):
-    cooldown_until = coverage_key_cooldowns.get(index, 0.0)
+    key_id = _coverage_key_id(api_key)
+    cooldown_until = coverage_key_cooldowns.get(key_id, 0.0)
     if cooldown_until > now:
       retry_times.append(cooldown_until)
       continue
@@ -837,7 +906,8 @@ async def _sync_meshmapper_coverage_once() -> bool:
       )
       if provider != "meshmapper":
         continue
-      coverage_key_cooldowns.pop(index, None)
+      coverage_key_cooldowns.pop(key_id, None)
+      coverage_key_snapshots[key_id] = list(samples)
       collections.append(samples)
       region = meta.get("region")
       if isinstance(region, str) and region.strip():
@@ -851,7 +921,7 @@ async def _sync_meshmapper_coverage_once() -> bool:
       if exc.response.status_code == 429:
         cooldown_seconds = _meshmapper_rate_limit_seconds(exc.response)
         cooldown_until = now + cooldown_seconds
-        coverage_key_cooldowns[index] = cooldown_until
+        coverage_key_cooldowns[key_id] = cooldown_until
         retry_times.append(cooldown_until)
         print(
           f"[coverage] MeshMapper key {index + 1} rate limited "
@@ -867,8 +937,22 @@ async def _sync_meshmapper_coverage_once() -> bool:
     except Exception as exc:
       print(f"[coverage] MeshMapper key {index + 1} sync failed: {exc}")
 
+  for key_id in list(coverage_key_snapshots):
+    if key_id not in configured_key_ids:
+      coverage_key_snapshots.pop(key_id, None)
+
   if collections:
-    merged_samples = _merge_meshmapper_coverage(collections)
+    full_success = len(collections) == len(api_keys)
+    if full_success:
+      coverage_legacy_data.clear()
+    merge_collections = []
+    if coverage_legacy_data:
+      merge_collections.append(list(coverage_legacy_data))
+    merge_collections.extend(
+      coverage_key_snapshots[key_id]
+      for key_id in configured_key_ids if key_id in coverage_key_snapshots
+    )
+    merged_samples = _merge_meshmapper_coverage(merge_collections)
     meta: Dict[str, Any] = {}
     if len(regions) == 1:
       meta["region"] = next(iter(regions))
@@ -882,6 +966,14 @@ async def _sync_meshmapper_coverage_once() -> bool:
       "meshmapper_sync",
       meta=meta,
     )
+    failed_keys = len(api_keys) - len(collections)
+    if failed_keys:
+      coverage_cache["last_error"] = {
+        "error": "coverage_partial_failure",
+        "failed_keys": failed_keys,
+      }
+    if retry_times:
+      coverage_cache["cooldown_until"] = min(retry_times)
     _save_coverage_cache_file()
     return True
 
@@ -891,6 +983,7 @@ async def _sync_meshmapper_coverage_once() -> bool:
     coverage_cache["last_error"] = {"error": "coverage_api_rate_limited"}
   else:
     coverage_cache["last_error"] = {"error": "coverage_fetch_error"}
+  _save_coverage_cache_file()
   return _coverage_cache_has_data()
 
 
@@ -905,9 +998,29 @@ async def _meshmapper_coverage_sync_loop() -> None:
     await _sync_meshmapper_coverage_once()
 
 
+async def _broadcaster_supervisor():
+  while True:
+    broadcaster_stats["running"] = True
+    broadcaster_stats["started_at"] = time.time()
+    try:
+      await broadcaster()
+    except asyncio.CancelledError:
+      broadcaster_stats["running"] = False
+      raise
+    except Exception as exc:
+      broadcaster_stats["running"] = False
+      broadcaster_stats["last_error_ts"] = time.time()
+      broadcaster_stats["last_error"] = str(exc)
+      broadcaster_stats["restarts_total"] = (
+        int(broadcaster_stats.get("restarts_total") or 0) + 1
+      )
+      logger.exception("WebSocket broadcaster crashed; restarting")
+      await asyncio.sleep(1)
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-  global mqtt_client
+  global mqtt_client, broadcaster_task
 
   print(f"[startup] meshmap version={APP_VERSION}")
   load_map_boundary(force=True)
@@ -961,8 +1074,9 @@ async def _lifespan(_app: FastAPI):
   mqtt_client.loop_start()
 
   background_tasks.clear()
+  broadcaster_task = asyncio.create_task(_broadcaster_supervisor())
+  background_tasks.add(broadcaster_task)
   for coro in (
-    broadcaster(),
     reaper(),
     _state_saver(),
     _route_history_saver(),
@@ -980,6 +1094,7 @@ async def _lifespan(_app: FastAPI):
     if background_tasks:
       await asyncio.gather(*background_tasks, return_exceptions=True)
     background_tasks.clear()
+    broadcaster_task = None
 
     if mqtt_client is not None:
       try:
@@ -1093,15 +1208,34 @@ def _blocked_name_remove_payloads(device_id: Any) -> List[Dict[str, Any]]:
 
 
 async def _broadcast_payloads(payloads: List[Dict[str, Any]]) -> None:
-  dead = []
-  for ws in list(clients):
-    try:
-      for payload in payloads:
-        await ws.send_text(json.dumps(payload))
-    except Exception:
-      dead.append(ws)
-  for ws in dead:
+  client_snapshot = list(clients)
+  if not client_snapshot or not payloads:
+    return
+  messages = [json.dumps(payload) for payload in payloads]
+
+  async def _send(ws: WebSocket) -> None:
+    for message in messages:
+      await asyncio.wait_for(
+        ws.send_text(message),
+        timeout=max(0.01, WEBSOCKET_SEND_TIMEOUT_SECONDS),
+      )
+
+  results = await asyncio.gather(
+    *(_send(ws) for ws in client_snapshot),
+    return_exceptions=True,
+  )
+  now = time.time()
+  for ws, result in zip(client_snapshot, results):
+    if not isinstance(result, BaseException):
+      broadcaster_stats["last_send_ts"] = now
+      continue
     clients.discard(ws)
+    broadcaster_stats["send_failures_total"] = (
+      int(broadcaster_stats.get("send_failures_total") or 0) + 1
+    )
+    broadcaster_stats["last_error_ts"] = now
+    broadcaster_stats["last_error"] = type(result).__name__
+    logger.warning("Dropped WebSocket client after send failure: %s", result)
 
 
 def _visible_device_payloads() -> Dict[str, Dict[str, Any]]:
@@ -2625,6 +2759,7 @@ def _handle_mqtt_message(client, userdata, msg: mqtt.MQTTMessage):
 async def broadcaster():
   while True:
     event = await update_queue.get()
+    broadcaster_stats["last_event_ts"] = time.time()
 
     if isinstance(event, dict) and event.get("type") in (
       "device_name",
@@ -2645,14 +2780,7 @@ async def broadcaster():
           "device": _device_payload(device_id, device_state),
           "trail": trails.get(device_id, []),
         }
-        dead = []
-        for ws in list(clients):
-          try:
-            await ws.send_text(json.dumps(payload))
-          except Exception:
-            dead.append(ws)
-        for ws in dead:
-          clients.discard(ws)
+        await _broadcast_payloads([payload])
       continue
 
     if isinstance(event, dict) and event.get("type") == "device_seen":
@@ -2694,28 +2822,14 @@ async def broadcaster():
           mqtt_packets_seen[device_id] = packets_ts
 
       payload = _mqtt_presence_payload(device_id, seen_devices.get(device_id))
-      dead = []
-      for ws in list(clients):
-        try:
-          await ws.send_text(json.dumps(payload))
-        except Exception:
-          dead.append(ws)
-      for ws in dead:
-        clients.discard(ws)
+      await _broadcast_payloads([payload])
       continue
 
     if isinstance(event, dict) and event.get("type") == "device_remove":
       device_id = event.get("device_id")
       if device_id and _evict_device(device_id):
         payload = {"type": "stale", "device_ids": [device_id]}
-        dead = []
-        for ws in list(clients):
-          try:
-            await ws.send_text(json.dumps(payload))
-          except Exception:
-            dead.append(ws)
-        for ws in dead:
-          clients.discard(ws)
+        await _broadcast_payloads([payload])
       continue
 
     if isinstance(event, dict) and event.get("type") == "route":
@@ -2816,14 +2930,7 @@ async def broadcaster():
       history_updates, history_removed = _record_route_history(route)
 
       payload = {"type": "route", "route": _route_payload(route)}
-      dead = []
-      for ws in list(clients):
-        try:
-          await ws.send_text(json.dumps(payload))
-        except Exception:
-          dead.append(ws)
-      for ws in dead:
-        clients.discard(ws)
+      await _broadcast_payloads([payload])
       if history_updates or history_removed:
         history_payload = {}
         if history_updates:
@@ -2838,17 +2945,12 @@ async def broadcaster():
           }
         else:
           history_payload_remove = None
-        dead = []
-        for ws in list(clients):
-          try:
-            if history_updates:
-              await ws.send_text(json.dumps(history_payload))
-            if history_payload_remove:
-              await ws.send_text(json.dumps(history_payload_remove))
-          except Exception:
-            dead.append(ws)
-        for ws in dead:
-          clients.discard(ws)
+        history_payloads = []
+        if history_updates:
+          history_payloads.append(history_payload)
+        if history_payload_remove:
+          history_payloads.append(history_payload_remove)
+        await _broadcast_payloads(history_payloads)
       continue
 
     upd = (
@@ -2869,14 +2971,7 @@ async def broadcaster():
     if not _within_map_radius(check_lat, check_lon):
       if _evict_device(device_id):
         payload = {"type": "stale", "device_ids": [device_id]}
-        dead = []
-        for ws in list(clients):
-          try:
-            await ws.send_text(json.dumps(payload))
-          except Exception:
-            dead.append(ws)
-        for ws in dead:
-          clients.discard(ws)
+        await _broadcast_payloads([payload])
       continue
     is_new_device = device_id not in devices
     # Normalize timestamp: if it's too far in the future (> 1 hour), use current time
@@ -2925,14 +3020,7 @@ async def broadcaster():
     dropped_duplicate_ids = _dedupe_loaded_devices()
     if dropped_duplicate_ids and device_id in dropped_duplicate_ids:
       payload = {"type": "stale", "device_ids": sorted(dropped_duplicate_ids)}
-      dead = []
-      for ws in list(clients):
-        try:
-          await ws.send_text(json.dumps(payload))
-        except Exception:
-          dead.append(ws)
-      for ws in dead:
-        clients.discard(ws)
+      await _broadcast_payloads([payload])
       continue
 
     if TRAIL_LEN > 0 and not _coords_are_zero(
@@ -2953,25 +3041,11 @@ async def broadcaster():
       "trail": trails.get(device_id, []),
     }
 
-    dead = []
-    for ws in list(clients):
-      try:
-        await ws.send_text(json.dumps(payload))
-      except Exception:
-        dead.append(ws)
-    for ws in dead:
-      clients.discard(ws)
+    await _broadcast_payloads([payload])
 
     if dropped_duplicate_ids:
       payload = {"type": "stale", "device_ids": sorted(dropped_duplicate_ids)}
-      dead = []
-      for ws in list(clients):
-        try:
-          await ws.send_text(json.dumps(payload))
-        except Exception:
-          dead.append(ws)
-      for ws in dead:
-        clients.discard(ws)
+      await _broadcast_payloads([payload])
 
 
 async def reaper():
@@ -2985,8 +3059,14 @@ async def reaper():
       for dev_id, st in _stable_dict_copy(devices).items():
         if dev_id in mqtt_seen:
           continue
+        last_observed_ts = max(
+          float(st.ts or 0.0),
+          float(seen_devices.get(dev_id) or 0.0),
+          float(last_seen_in_advert.get(dev_id) or 0.0),
+        )
         device_stale = (
-          DEVICE_TTL_WINDOW_SECONDS > 0 and (now - st.ts > DEVICE_TTL_WINDOW_SECONDS)
+          DEVICE_TTL_WINDOW_SECONDS > 0 and
+          (now - last_observed_ts > DEVICE_TTL_WINDOW_SECONDS)
         )
         last_path_ts = state.last_seen_in_path.get(dev_id, 0.0)
         path_stale = (
@@ -3005,14 +3085,7 @@ async def reaper():
           stale.append(dev_id)
       if stale:
         payload = {"type": "stale", "device_ids": stale}
-        dead = []
-        for ws in list(clients):
-          try:
-            await ws.send_text(json.dumps(payload))
-          except Exception:
-            dead.append(ws)
-        for ws in dead:
-          clients.discard(ws)
+        await _broadcast_payloads([payload])
 
         for dev_id in stale:
           devices.pop(dev_id, None)
@@ -3034,14 +3107,7 @@ async def reaper():
           bad_routes.append(route_id)
       if bad_routes:
         payload = {"type": "route_remove", "route_ids": bad_routes}
-        dead = []
-        for ws in list(clients):
-          try:
-            await ws.send_text(json.dumps(payload))
-          except Exception:
-            dead.append(ws)
-        for ws in dead:
-          clients.discard(ws)
+        await _broadcast_payloads([payload])
         for route_id in bad_routes:
           routes.pop(route_id, None)
 
@@ -3051,42 +3117,24 @@ async def reaper():
     ]
     if stale_routes:
       payload = {"type": "route_remove", "route_ids": stale_routes}
-      dead = []
-      for ws in list(clients):
-        try:
-          await ws.send_text(json.dumps(payload))
-        except Exception:
-          dead.append(ws)
-      for ws in dead:
-        clients.discard(ws)
+      await _broadcast_payloads([payload])
       for route_id in stale_routes:
         routes.pop(route_id, None)
 
     history_updates, history_removed = _prune_route_history()
     if history_updates or history_removed:
-      dead = []
-      for ws in list(clients):
-        try:
-          if history_updates:
-            await ws.send_text(
-              json.dumps({
-                "type": "history_edges",
-                "edges": history_updates
-              })
-            )
-          if history_removed:
-            await ws.send_text(
-              json.dumps(
-                {
-                  "type": "history_edges_remove",
-                  "edge_ids": history_removed,
-                }
-              )
-            )
-        except Exception:
-          dead.append(ws)
-      for ws in dead:
-        clients.discard(ws)
+      history_payloads = []
+      if history_updates:
+        history_payloads.append({
+          "type": "history_edges",
+          "edges": history_updates,
+        })
+      if history_removed:
+        history_payloads.append({
+          "type": "history_edges_remove",
+          "edge_ids": history_removed,
+        })
+      await _broadcast_payloads(history_payloads)
 
     if HEAT_TTL_SECONDS > 0 and heat_events:
       cutoff = now - HEAT_TTL_SECONDS
@@ -3105,14 +3153,7 @@ async def reaper():
     if presence_summary != mqtt_presence_last_summary:
       mqtt_presence_last_summary = dict(presence_summary)
       payload = {"type": "mqtt_presence", "mqtt_presence": presence_summary}
-      dead = []
-      for ws in list(clients):
-        try:
-          await ws.send_text(json.dumps(payload))
-        except Exception:
-          dead.append(ws)
-      for ws in dead:
-        clients.discard(ws)
+      await _broadcast_payloads([payload])
 
     retention_window = max(
       DEVICE_TTL_WINDOW_SECONDS if DEVICE_TTL_WINDOW_SECONDS > 0 else 0,
@@ -3980,13 +4021,36 @@ def _mqtt_listener_health() -> Dict[str, Any]:
   }
 
 
+def _broadcaster_health() -> Dict[str, Any]:
+  task = broadcaster_task
+  task_running = bool(
+    task is not None and not task.done() and broadcaster_stats.get("running")
+  )
+  return {
+    "status": "ok" if task_running else "unhealthy",
+    "task_running": task_running,
+    "connected_clients": len(clients),
+    "queue_depth": update_queue.qsize(),
+    "send_timeout_seconds": WEBSOCKET_SEND_TIMEOUT_SECONDS,
+    **dict(broadcaster_stats),
+  }
+
+
 @app.get("/health")
 def health():
   mqtt_health = _mqtt_listener_health()
-  status_code = 200 if mqtt_health["status"] == "ok" else 503
+  broadcaster_health = _broadcaster_health()
+  healthy = (
+    mqtt_health["status"] == "ok" and
+    broadcaster_health["status"] == "ok"
+  )
   return JSONResponse(
-    status_code=status_code,
-    content={"status": mqtt_health["status"], "mqtt": mqtt_health},
+    status_code=200 if healthy else 503,
+    content={
+      "status": "ok" if healthy else "unhealthy",
+      "mqtt": mqtt_health,
+      "broadcaster": broadcaster_health,
+    },
   )
 
 
@@ -4011,6 +4075,7 @@ def snapshot(request: Request):
 def get_stats():
   presence_summary = _mqtt_presence_summary()
   mqtt_health = _mqtt_listener_health()
+  broadcaster_health = _broadcaster_health()
   stats_snapshot = _stable_dict_copy(stats)
   result_counts_snapshot = _stable_dict_copy(result_counts)
   seen_devices_snapshot = _stable_dict_copy(seen_devices)
@@ -4033,6 +4098,7 @@ def get_stats():
       "seen_devices": len(seen_devices_snapshot),
       "mqtt_presence": presence_summary,
       "mqtt_health": mqtt_health,
+      "broadcaster_health": broadcaster_health,
       "server_time": time.time(),
     }
 
@@ -4061,6 +4127,8 @@ def get_stats():
       presence_summary,
     "mqtt_health":
       mqtt_health,
+    "broadcaster_health":
+      broadcaster_health,
     "top_topics":
       top_topics,
     "decoder":
@@ -4573,27 +4641,29 @@ async def ws_endpoint(ws: WebSocket):
   await ws.accept()
   clients.add(ws)
 
-  await ws.send_text(
-    json.dumps(
-      {
-        "type": "snapshot",
-        "devices": _visible_device_payloads(),
-        "trails": _visible_trails(),
-        "routes": _snapshot_routes(time.time()),
-        "history_edges": _history_edge_payloads(),
-        "history_window_seconds": _history_window_seconds_value(),
-        "heat": _serialize_heat_events(),
-        "update": git_update_info,
-        "mqtt_presence": _mqtt_presence_summary(),
-        "server_time": time.time(),
-      }
-    )
-  )
-
   try:
+    await asyncio.wait_for(
+      ws.send_text(
+        json.dumps(
+          {
+            "type": "snapshot",
+            "devices": _visible_device_payloads(),
+            "trails": _visible_trails(),
+            "routes": _snapshot_routes(time.time()),
+            "history_edges": _history_edge_payloads(),
+            "history_window_seconds": _history_window_seconds_value(),
+            "heat": _serialize_heat_events(),
+            "update": git_update_info,
+            "mqtt_presence": _mqtt_presence_summary(),
+            "server_time": time.time(),
+          }
+        )
+      ),
+      timeout=max(0.01, WEBSOCKET_SEND_TIMEOUT_SECONDS),
+    )
     while True:
       await ws.receive_text()
-  except WebSocketDisconnect:
+  except (WebSocketDisconnect, asyncio.TimeoutError):
     pass
   except RuntimeError:
     pass

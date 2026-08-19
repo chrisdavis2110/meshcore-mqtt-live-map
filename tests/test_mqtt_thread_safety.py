@@ -48,6 +48,23 @@ class _ConnectedClientWithDeadThread:
     return True
 
 
+class _AliveThread:
+  def is_alive(self):
+    return True
+
+
+class _ConnectedClient:
+  _thread = _AliveThread()
+
+  def is_connected(self):
+    return True
+
+
+class _DoneTask:
+  def done(self):
+    return True
+
+
 def test_presence_summary_uses_stable_dictionary_snapshots(monkeypatch):
   now = 1000.0
   device = state.DeviceState("NODE", 42.0, -71.0, now)
@@ -134,6 +151,16 @@ def test_health_endpoint_fails_when_mqtt_network_thread_is_dead(monkeypatch):
 
   assert response.status_code == 503
   assert response.json()["mqtt"]["status"] == "unhealthy"
+
+
+def test_health_endpoint_fails_when_broadcaster_task_stops(monkeypatch):
+  monkeypatch.setattr(app, "mqtt_client", _ConnectedClient())
+  monkeypatch.setattr(app, "broadcaster_task", _DoneTask())
+
+  response = TestClient(app.app).get("/health")
+
+  assert response.status_code == 503
+  assert response.json()["broadcaster"]["status"] == "unhealthy"
 
 
 def test_snapshot_helpers_use_stable_shared_state_copies(monkeypatch):

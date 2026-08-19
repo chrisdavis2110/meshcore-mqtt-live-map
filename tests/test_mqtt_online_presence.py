@@ -133,3 +133,44 @@ def test_reaper_keeps_mqtt_online_device_with_last_known_location(monkeypatch):
   assert "NODE" in app.devices
   assert "NODE" in app.mqtt_seen
   assert state.last_seen_in_path["NODE"] == now - 600
+
+
+@pytest.mark.parametrize("freshness_source", ["advert", "observation"])
+def test_reaper_keeps_device_with_recent_non_coordinate_observation(
+  monkeypatch, freshness_source
+):
+  _reset_presence_state()
+  app.devices.clear()
+  app.trails.clear()
+  app.seen_devices.clear()
+  app.last_seen_in_advert.clear()
+  state.last_seen_in_path.clear()
+  app.clients.clear()
+
+  now = 1000.0
+  app.devices["NODE"] = state.DeviceState(
+    device_id="NODE",
+    lat=42.36,
+    lon=-71.05,
+    ts=now - 600,
+    role="repeater",
+  )
+  state.last_seen_in_path["NODE"] = now - 600
+  if freshness_source == "advert":
+    app.last_seen_in_advert["NODE"] = now - 10
+  else:
+    app.seen_devices["NODE"] = now - 10
+
+  monkeypatch.setattr(app, "DEVICE_TTL_WINDOW_SECONDS", 60)
+  monkeypatch.setattr(app, "PATH_TTL_SECONDS", 60)
+  monkeypatch.setattr(app.time, "time", lambda: now)
+
+  async def _cancel_sleep(_seconds):
+    raise asyncio.CancelledError()
+
+  monkeypatch.setattr(app.asyncio, "sleep", _cancel_sleep)
+
+  with pytest.raises(asyncio.CancelledError):
+    asyncio.run(app.reaper())
+
+  assert "NODE" in app.devices

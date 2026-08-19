@@ -1,16 +1,18 @@
 # Versions
 
-## v1.9.4.8 (08-14-2026)
-- Restored the required Compose `.env` file for production deployments. Individual omitted settings still use application defaults, but every deployment must explicitly provide its configuration file.
+## v1.9.6 (08-18-2026)
+- Added comma-separated `COVERAGE_API_KEYS` through [PR #94](https://github.com/yellowcooln/meshcore-mqtt-live-map/pull/94) by [@Littleaton](https://github.com/Littleaton). MeshMapper coverage now fetches each key independently, merges and de-duplicates grid squares, preserves the existing single-key setting, and isolates rate-limit cooldowns per configured key.
+- Fixed the PR #94 partial-refresh path by persisting per-key snapshots and hashed per-key cooldowns, so a failed key retains its last successful coverage while successful empty responses still remove obsolete squares. Partial failures remain visible across restarts, and API keys are redacted from coverage request logs. Compose now passes the complete required deployment `.env` into the container instead of maintaining a setting allowlist that can drift from the application.
+- Updated the Docker runtime from Python `3.12.14-slim` to `3.14.7-slim` through [PR #95](https://github.com/yellowcooln/meshcore-mqtt-live-map/pull/95).
+- Hardened live WebSocket delivery with concurrent per-client sends, a configurable 10-second default send timeout that allows JWT authentication swaps, failed-client isolation, crash logging, and an internal broadcaster supervisor. `/health` and `/stats` now expose broadcaster task state, queue depth, connected clients, send failures, restart count, and last activity/error timestamps.
+- Added Docker Compose healthchecks for source and prebuilt-image deployments. Documented that Compose only marks unhealthy containers—it does not restart them by itself—and that bind-mounting a copied `app.py` masks backend fixes from future image upgrades.
+- Fixed device reaping so TTL decisions use the newest coordinate, direct observation, or advert timestamp, while retaining the existing MQTT-presence and route-path freshness checks. Nodes with fresh non-coordinate activity are no longer deleted because their last coordinate is old.
 
-## v1.9.4.7 (08-14-2026)
-- Made the Compose `.env` file optional. Deployments with an existing `.env` still pass every configured setting to the container, while clean/default deployments without one continue using the application's built-in defaults.
-
-## v1.9.4.6 (08-14-2026)
-- Simplified Compose configuration to load the complete deployment `.env` file into the container. New configuration values no longer require matching Compose allowlist updates, and server-specific `.env` settings remain the single source of runtime configuration.
-
-## v1.9.4.5 (08-14-2026)
-- Added `COVERAGE_API_KEYS` for comma-separated MeshMapper API keys. The server fetches each configured key independently, merges and de-duplicates coverage squares into the existing persistent cache, and isolates rate-limit cooldowns to the affected key so another key can still refresh coverage.
+## v1.9.5 (08-14-2026)
+- Promoted the tested v1.9.4.1 through v1.9.4.4 development track to the v1.9.5 release while retaining the incremental entries below as the detailed working history.
+- Added deployment-neutral fallback metadata, split trails across implausible coordinate jumps, added configurable role visibility and defaults, improved live-route filtering, and kept Peers rankings stable while filtering or changing units.
+- Hardened MQTT shared-state access and listener error handling, exposed listener health through `/health` and `/stats`, and made high-volume collided-neighbor diagnostics opt-in through `ROUTE_NEIGHBOR_DEBUG`.
+- Refreshed the tested Python, Docker, decoder, and GitHub Actions dependencies; added Dependabot updates targeting `dev`; and made published multi-architecture images reproducible and version-aware.
 
 ## v1.9.4.4 (08-14-2026)
 - Added `ROUTE_NEIGHBOR_DEBUG`, disabled by default, so high-volume collided-neighbor route selections no longer flood stdout. Compose deployments can opt back into the diagnostic log, and both silent-default and enabled-output behavior are covered by regression tests.
