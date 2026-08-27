@@ -187,6 +187,7 @@ from config import (
   MAP_BOUNDARY_FILE,
   MAP_BOUNDARY_SHOW,
   MAP_DEFAULT_LAYER,
+  CARTO_BASEMAP_KEY,
   PROD_MODE,
   PROD_TOKEN,
   LOS_ELEVATION_URL,
@@ -3422,6 +3423,8 @@ def root(request: Request):
       get_map_boundary_name(),
     "MAP_DEFAULT_LAYER":
       MAP_DEFAULT_LAYER,
+    "CARTO_BASEMAP_KEY":
+      CARTO_BASEMAP_KEY,
     "LOS_ELEVATION_URL":
       LOS_ELEVATION_URL,
     "LOS_ELEVATION_PROXY_URL":
@@ -3480,6 +3483,23 @@ def root(request: Request):
     content = content.replace(f"{{{{{key}}}}}", safe_value)
 
   return HTMLResponse(content, headers={"Cache-Control": "no-store"})
+
+
+def _preview_tile_url(
+  theme: str,
+  zoom: int,
+  tile_x: int,
+  tile_y: int,
+  api_key: Optional[str] = None,
+) -> str:
+  key = CARTO_BASEMAP_KEY if api_key is None else str(api_key).strip()
+  if theme == "dark" and key:
+    query = urlencode({"key": key})
+    return (
+      "https://a.basemaps.cartocdn.com/dark_all/"
+      f"{zoom}/{tile_x}/{tile_y}.png?{query}"
+    )
+  return f"https://tile.openstreetmap.org/{zoom}/{tile_x}/{tile_y}.png"
 
 
 @app.get("/preview.png")
@@ -3566,19 +3586,15 @@ async def preview_image(
       # Fetch and composite tiles
       tiles_fetched = 0
       tiles_failed = 0
-      async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+      async with httpx.AsyncClient(timeout=10.0) as client:
         for ty in range(tiles_y):
           for tx in range(tiles_x):
             tile_x = start_tile_x + tx
             tile_y = start_tile_y + ty
 
-            # Use theme-appropriate tile server
-            if theme_str == "dark":
-              # CartoDB Dark Matter tiles
-              tile_url = f"https://a.basemaps.cartocdn.com/dark_all/{zoom_val}/{tile_x}/{tile_y}.png"
-            else:
-              # Standard OSM light tiles
-              tile_url = f"https://tile.openstreetmap.org/{zoom_val}/{tile_x}/{tile_y}.png"
+            tile_url = _preview_tile_url(
+              theme_str, zoom_val, tile_x, tile_y
+            )
 
             try:
               response = await client.get(tile_url)
@@ -3608,7 +3624,7 @@ async def preview_image(
             except Exception as tile_error:
               tiles_failed += 1
               print(
-                f"[preview] Failed to fetch tile {tile_x}/{tile_y} from {tile_url}: {tile_error}"
+                f"[preview] Failed to fetch tile {tile_x}/{tile_y}: {tile_error}"
               )
               continue
 

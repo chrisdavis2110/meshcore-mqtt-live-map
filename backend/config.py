@@ -248,6 +248,7 @@ try:
 except ValueError:
   MAP_START_ZOOM = 10
 MAP_DEFAULT_LAYER = os.getenv("MAP_DEFAULT_LAYER", "light").strip().lower()
+CARTO_BASEMAP_KEY = os.getenv("CARTO_BASEMAP_KEY", "").strip()
 try:
   MAP_RADIUS_KM = float(os.getenv("MAP_RADIUS_KM", "0"))
 except ValueError:
