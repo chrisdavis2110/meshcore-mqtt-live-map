@@ -124,7 +124,7 @@ This project renders live MeshCore traffic on a Leaflet + OpenStreetMap map. A F
 - Radius filter: `MAP_RADIUS_KM=0` disables filtering; `.env.example` uses `241.4` km (150mi). `MAP_RADIUS_SHOW=true` draws a debug circle.
 - Default base layer can be set with `MAP_DEFAULT_LAYER` (`light`, `dark`, `topo`, or `satellite`; localStorage overrides).
 - The `satellite` layer uses open Sentinel-2 cloudless imagery from EOX with OpenStreetMap/CARTO labels and borders overlaid.
-- `CARTO_BASEMAP_KEY` enables CARTO Dark Matter and satellite label tiles. The key is intentionally exposed in browser tile requests and should be domain-restricted. Without it, the dark-map control is hidden and satellite imagery loads without the CARTO label overlay.
+- As of August 26, 2026, CARTO requires an API key for its Dark Matter tiles. CARTO offers a free key covering up to 5 million tile requests per calendar month. Set `CARTO_BASEMAP_KEY` to enable dark mode and CARTO satellite labels until a suitable replacement is found. The key is intentionally exposed in browser tile requests and should be domain-restricted. Without it, the dark-mode control is hidden and satellite imagery loads without the CARTO label overlay.
 - Units toggle (km/mi) is site-wide; default from `DISTANCE_UNITS` and stored in localStorage.
 - Heat toggle defaults from `HEAT_DEFAULT_ON` on first load before any browser-local override exists.
 - Node size slider defaults from `NODE_MARKER_RADIUS` and persists in localStorage.
