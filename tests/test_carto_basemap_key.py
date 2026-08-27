@@ -50,6 +50,30 @@ def test_browser_only_requests_carto_when_key_is_configured():
   assert "mapToggle.disabled = !darkTiles" not in source
 
 
+def test_embed_preview_uses_current_request_host(monkeypatch):
+  monkeypatch.setattr(app, "SITE_URL", "https://canonical.example")
+  monkeypatch.setattr(app, "TURNSTILE_ENABLED", False)
+
+  response = TestClient(app.app).get(
+    "/?lat=42.41717&lon=-71.74484&zoom=9",
+    headers={
+      "host": "mcmap.example",
+      "x-forwarded-proto": "https",
+    },
+  )
+
+  assert response.status_code == 200
+  assert (
+    'property="og:image" content="https://mcmap.example/preview.png?'
+    in response.text
+  )
+  assert (
+    'property="og:url" content="https://mcmap.example?lat=42.41717'
+    in response.text
+  )
+  assert "https://canonical.example/preview.png" not in response.text
+
+
 def test_preview_errors_do_not_log_key_bearing_tile_url():
   source = APP_PY.read_text(encoding="utf-8")
 

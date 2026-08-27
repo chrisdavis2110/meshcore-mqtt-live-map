@@ -270,13 +270,9 @@ def _session_cookie_path() -> str:
 
 
 def _http_site_origin(request: Request) -> str:
-  """Scheme + host for absolute public URLs (OG previews, embeds)."""
-  su = (SITE_URL or "").strip()
-  if su.startswith("http"):
-    parsed = urlparse(su)
-    if parsed.netloc:
-      return f"{parsed.scheme}://{parsed.netloc}"
-  scheme = request.url.scheme
+  """Current request origin for absolute OG preview and canonical URLs."""
+  forwarded_proto = request.headers.get("x-forwarded-proto", "")
+  scheme = forwarded_proto.split(",", 1)[0].strip() or request.url.scheme
   host = request.headers.get("host", request.url.hostname or "localhost")
   return f"{scheme}://{host}"
 
