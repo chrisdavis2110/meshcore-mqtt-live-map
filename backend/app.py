@@ -3867,6 +3867,7 @@ def map_page(request: Request):
     "MAP_BOUNDARY_SHOW": str(MAP_BOUNDARY_SHOW).lower(),
     "MAP_BOUNDARY_NAME": get_map_boundary_name(),
     "MAP_DEFAULT_LAYER": MAP_DEFAULT_LAYER,
+    "CARTO_BASEMAP_KEY": CARTO_BASEMAP_KEY,
     "LOS_ELEVATION_URL": LOS_ELEVATION_URL,
     "LOS_ELEVATION_PROXY_URL": _client_los_proxy_url(),
     "LOS_SAMPLE_MIN": LOS_SAMPLE_MIN,

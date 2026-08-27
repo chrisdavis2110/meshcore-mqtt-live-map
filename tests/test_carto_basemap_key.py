@@ -37,6 +37,17 @@ def test_map_page_exposes_configured_carto_key(monkeypatch):
   assert 'data-carto-basemap-key="public-test-key"' in response.text
 
 
+def test_authenticated_map_page_exposes_configured_carto_key(monkeypatch):
+  monkeypatch.setattr(app, "CARTO_BASEMAP_KEY", "public-test-key")
+  monkeypatch.setattr(app, "TURNSTILE_ENABLED", False)
+
+  response = TestClient(app.app).get("/map")
+
+  assert response.status_code == 200
+  assert 'data-carto-basemap-key="public-test-key"' in response.text
+  assert "{{CARTO_BASEMAP_KEY}}" not in response.text
+
+
 def test_browser_only_requests_carto_when_key_is_configured():
   source = APP_JS.read_text(encoding="utf-8")
 
