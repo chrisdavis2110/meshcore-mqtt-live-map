@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.9.4.2` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.9.6` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -286,7 +286,7 @@ Map + LOS:
 - `MAP_START_LAT` / `MAP_START_LON` / `MAP_START_ZOOM` (default map view)
 - `MAP_DEFAULT_LAYER` (`light`, `dark`, `topo`, or `satellite`; localStorage overrides)
   - `satellite` uses open Sentinel-2 cloudless imagery from EOX with OpenStreetMap/CARTO labels and borders overlaid.
-- As of August 26, 2026, CARTO requires an API key for its Dark Matter tiles. CARTO offers a free key covering up to 5 million tile requests per calendar month. Set `CARTO_BASEMAP_KEY` to enable dark mode and CARTO satellite labels until a suitable replacement is found. CARTO exposes this public key in browser tile requests, so restrict it to the deployment domain. Without a key, the dark-mode control is hidden and satellite imagery remains available without the CARTO label overlay.
+- As of August 26, 2026, CARTO requires an API key for its Dark Matter tiles. CARTO offers a free key covering up to 5 million tile requests per calendar month. Set `CARTO_BASEMAP_KEY` to enable dark mode and CARTO satellite labels until a suitable replacement is found. CARTO's documented Leaflet integration exposes this project key in browser tile requests, so keep it out of Git, list the deployment domains when requesting it, and do not reuse it for unrelated projects. Without a key, the dark-mode control is hidden and satellite imagery remains available without the CARTO label overlay.
 - `MAP_RADIUS_KM` (`0` disables radius filtering; `.env.example` uses `241.4` km ≈ 150mi)
 - `MAP_RADIUS_SHOW` (`true` draws the radius debug circle)
 - `LOS_ELEVATION_URL` (elevation API for LOS tool)
