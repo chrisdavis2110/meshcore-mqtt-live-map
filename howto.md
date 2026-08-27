@@ -191,6 +191,10 @@ CARTO says the key is emailed immediately without an approval queue. See the
    localhost
    ```
 
+   Register hostnames, not individual map paths. One `map.example.com` entry
+   covers related maps served at paths such as `/socal/`, `/bayarea/`, and
+   `/centralcoast/`. Do not enter each full URL separately.
+
 4. Answer the commercial-use and estimated-map-load questions accurately.
 5. Select **Raster (PNG tiles)** because this live map currently uses CARTO's
    raster Dark Matter tiles.
@@ -202,6 +206,14 @@ CARTO says the key is emailed immediately without an approval queue. See the
    ```env
    CARTO_BASEMAP_KEY=your-carto-key
    ```
+
+   If one website runs several related map instances, each instance must receive
+   `CARTO_BASEMAP_KEY` in its own process/container environment. The same
+   project-specific key can be used by those related maps on the registered
+   hostname. Their tile requests all count against that key's shared monthly
+   allowance. For example, a site with maps at `/socal/`, `/bayarea/`, `/sac/`,
+   `/centralcoast/`, and `/centralvalley/` must pass the key to all five map
+   services; setting it only on the landing page or one container is not enough.
 
 8. Recreate the map container so it reads the updated environment:
 
