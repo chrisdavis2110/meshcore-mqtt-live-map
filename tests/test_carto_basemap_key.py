@@ -46,6 +46,8 @@ def test_browser_only_requests_carto_when_key_is_configured():
   assert "config.cartoBasemapKey" in source
   assert "encodeURIComponent(cartoBasemapKey)" in source
   assert "const darkTiles = cartoBasemapKey" in source
+  assert "mapToggle.hidden = !darkTiles" in source
+  assert "mapToggle.disabled = !darkTiles" not in source
 
 
 def test_preview_errors_do_not_log_key_bearing_tile_url():

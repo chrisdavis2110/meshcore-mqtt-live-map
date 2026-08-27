@@ -7980,10 +7980,9 @@ function setBaseLayer(name) {
   baseLayer = name;
   localStorage.setItem('meshmapBaseLayer', baseLayer);
   if (mapToggle) {
-    mapToggle.disabled = !darkTiles;
-    mapToggle.textContent = !darkTiles ? 'Dark map needs CARTO key' :
-      (baseLayer === 'dark' ? 'Light map' : 'Dark map');
-    mapToggle.title = !darkTiles ? 'Set CARTO_BASEMAP_KEY to enable Dark Matter tiles' : '';
+    mapToggle.hidden = !darkTiles;
+    mapToggle.textContent = baseLayer === 'dark' ? 'Light map' : 'Dark map';
+    mapToggle.title = '';
   }
   if (topoToggle) {
     if (baseLayer === 'topo') {
