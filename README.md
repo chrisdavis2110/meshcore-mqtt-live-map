@@ -1,6 +1,6 @@
 # Mesh Live Map
 
-Version: `1.9.4.2` (see [VERSIONS.md](VERSIONS.md))
+Version: `1.9.6` (see [VERSIONS.md](VERSIONS.md))
 
 Live MeshCore traffic map that renders nodes, routes, and activity in real time on a Leaflet map. The backend subscribes to MQTT over WebSockets+TLS or TCP, decodes MeshCore packets with the official [`@michaelhart/meshcore-decoder`](https://www.npmjs.com/package/@michaelhart/meshcore-decoder), and streams updates to the browser via WebSockets.
 
@@ -107,6 +107,12 @@ services:
       - "8080:8080"
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
     volumes:
       - ./data:/data
@@ -117,6 +123,16 @@ Repo examples:
 - `deploy/docker-compose.image.yaml`
 - `deploy/swarm-stack.yaml`
 - `deploy/kubernetes-meshmap.yaml`
+
+Do not bind-mount a copied `app.py` over `/app/app.py`. A whole-file override
+masks the application bundled in every newer image, so image upgrades cannot
+deliver backend fixes. Keep custom behavior in configuration or upstream it;
+if a temporary override is unavoidable, rebase and retest it for every image.
+
+The Compose healthcheck marks the container unhealthy when MQTT or the
+WebSocket broadcaster stops. Docker Compose does not restart an unhealthy
+container by itself; use an orchestrator/autoheal policy if automatic recovery
+from process-wide hangs is required.
 
 ## Configuration (.env)
 Debugging:
@@ -136,6 +152,7 @@ Storage + server:
 - `NEIGHBOR_OVERRIDES_FILE` (optional JSON mapping for neighbor overrides)
 - `CHANNEL_SECRETS_FILE` (optional JSON file of MeshCore channel secrets for decrypting sender names from group text packets)
 - `STATE_SAVE_INTERVAL` (seconds between state saves)
+- `WEBSOCKET_SEND_TIMEOUT_SECONDS` (per-client WebSocket send timeout; default `10`, allowing time for JWT authentication swaps)
 - `WEB_PORT` (host port for the web UI)
 - `PROD_MODE` (true to require a token for API + WS)
 - `PROD_TOKEN` (required token; send via `?token=` or `Authorization: Bearer`)
@@ -190,7 +207,8 @@ MQTT:
 
 Coverage layer:
 - `COVERAGE_API_URL` (legacy coverage-map base URL, or `https://meshmapper.net`; button hidden when blank)
-- `COVERAGE_API_KEY` (MeshMapper only; optional key for `https://meshmapper.net/coverage.php`; not used by legacy coverage maps)
+- `COVERAGE_API_KEY` (MeshMapper only; optional single key for `https://meshmapper.net/coverage.php`; not used by legacy coverage maps)
+- `COVERAGE_API_KEYS` (MeshMapper only; optional comma-separated replacement for `COVERAGE_API_KEY`. Each key is fetched independently, then coverage squares are merged and duplicate squares are removed. Set `COVERAGE_API_URL=https://meshmapper.net` rather than embedding a key in the URL.)
 - `COVERAGE_MAX_AGE_DAYS` (MeshMapper only; default `30`; only coverage from the last N days is sent to the map, while MeshMapper can still cache the full upstream dataset locally; not used by legacy coverage maps)
 - `COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS` (MeshMapper only; fallback cooldown after HTTP 429 if the API does not report `resets_in_hours`)
 - `COVERAGE_CACHE_FILE` (MeshMapper only; local JSON file served to users after server-side sync)
@@ -268,6 +286,7 @@ Map + LOS:
 - `MAP_START_LAT` / `MAP_START_LON` / `MAP_START_ZOOM` (default map view)
 - `MAP_DEFAULT_LAYER` (`light`, `dark`, `topo`, or `satellite`; localStorage overrides)
   - `satellite` uses open Sentinel-2 cloudless imagery from EOX with OpenStreetMap/CARTO labels and borders overlaid.
+- As of August 26, 2026, CARTO requires an API key for its Dark Matter tiles. CARTO offers a free key covering up to 5 million tile requests per calendar month. Set `CARTO_BASEMAP_KEY` to enable dark mode and CARTO satellite labels until a suitable replacement is found. CARTO's documented Leaflet integration exposes this project key in browser tile requests, so keep it out of Git, list the deployment domains when requesting it, and do not reuse it for unrelated projects. Without a key, the dark-mode control is hidden and satellite imagery remains available without the CARTO label overlay. See [Get and configure a CARTO API key for dark mode](howto.md#get-and-configure-a-carto-api-key-for-dark-mode).
 - `MAP_RADIUS_KM` (`0` disables radius filtering; `.env.example` uses `241.4` km ≈ 150mi)
 - `MAP_RADIUS_SHOW` (`true` draws the radius debug circle)
 - `LOS_ELEVATION_URL` (elevation API for LOS tool)

@@ -45,7 +45,7 @@ A deployment may contact third-party services, including:
 - MeshMapper coverage/wardriving services when coverage features are enabled; MeshMapper has its own privacy policy at https://wiki.meshmapper.net/privacy/
 - Optional weather, radar, coverage, elevation, packet-analyzer, or CoreScope services when configured by the operator
 
-Those services may receive normal browser request information such as IP address, user agent, referrer, and requested tile/API URL.
+Those services may receive normal browser request information such as IP address, user agent, referrer, and requested tile/API URL. When CARTO basemaps are enabled, its per-project key is included in browser tile-request URLs as required by CARTO's documented Leaflet integration; operators must not commit or reuse that key for unrelated projects.
 
 ## Sale or sharing of personal information
 

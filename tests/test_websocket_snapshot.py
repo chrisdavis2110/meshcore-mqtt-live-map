@@ -28,6 +28,11 @@ class DummyWebSocket:
     raise WebSocketDisconnect()
 
 
+class HangingWebSocket(DummyWebSocket):
+  async def send_text(self, text):
+    await asyncio.Event().wait()
+
+
 def test_ws_endpoint_sends_snapshot_payload(monkeypatch):
   ws = DummyWebSocket()
   app.clients.clear()
@@ -127,3 +132,47 @@ def test_ws_snapshot_omits_history_when_route_history_disabled(monkeypatch):
   assert payload["history_edges"] == []
   assert payload["history_window_seconds"] == 0
   app.route_history_edges.clear()
+
+
+def test_broadcast_timeout_does_not_block_healthy_clients(monkeypatch):
+  hanging = HangingWebSocket()
+  healthy = DummyWebSocket()
+  app.clients.clear()
+  app.clients.update({hanging, healthy})
+  monkeypatch.setattr(app, "WEBSOCKET_SEND_TIMEOUT_SECONDS", 0.01)
+
+  asyncio.run(app._broadcast_payloads([{"type": "test"}]))
+
+  assert [json.loads(message) for message in healthy.sent_messages] == [
+    {"type": "test"}
+  ]
+  assert hanging not in app.clients
+  assert healthy in app.clients
+  app.clients.clear()
+
+
+def test_broadcaster_supervisor_restarts_after_crash(monkeypatch):
+  calls = 0
+
+  async def _crash_then_cancel():
+    nonlocal calls
+    calls += 1
+    if calls == 1:
+      raise RuntimeError("injected broadcaster crash")
+    raise asyncio.CancelledError()
+
+  async def _skip_delay(_seconds):
+    return None
+
+  monkeypatch.setattr(app, "broadcaster", _crash_then_cancel)
+  monkeypatch.setattr(app.asyncio, "sleep", _skip_delay)
+  before = int(app.broadcaster_stats.get("restarts_total") or 0)
+
+  try:
+    asyncio.run(app._broadcaster_supervisor())
+  except asyncio.CancelledError:
+    pass
+
+  assert calls == 2
+  assert app.broadcaster_stats["restarts_total"] == before + 1
+  assert app.broadcaster_stats["last_error"] == "injected broadcaster crash"

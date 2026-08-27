@@ -50,6 +50,9 @@ except ValueError:
 if BACKUP_RETENTION_DAYS < 0:
   BACKUP_RETENTION_DAYS = 0
 STATE_SAVE_INTERVAL = float(os.getenv("STATE_SAVE_INTERVAL", "5"))
+WEBSOCKET_SEND_TIMEOUT_SECONDS = float(
+  os.getenv("WEBSOCKET_SEND_TIMEOUT_SECONDS", "10")
+)
 
 DEVICE_TTL_HOURS = float(os.getenv("DEVICE_TTL_HOURS", "96"))  # 4 days default
 DEVICE_TTL_WINDOW_SECONDS = int(DEVICE_TTL_HOURS * 3600)
@@ -245,6 +248,7 @@ try:
 except ValueError:
   MAP_START_ZOOM = 10
 MAP_DEFAULT_LAYER = os.getenv("MAP_DEFAULT_LAYER", "light").strip().lower()
+CARTO_BASEMAP_KEY = os.getenv("CARTO_BASEMAP_KEY", "").strip()
 try:
   MAP_RADIUS_KM = float(os.getenv("MAP_RADIUS_KM", "0"))
 except ValueError:
@@ -286,6 +290,11 @@ LOS_PEAKS_MAX = int(os.getenv("LOS_PEAKS_MAX", "4"))
 
 COVERAGE_API_URL = os.getenv("COVERAGE_API_URL", "").strip()
 COVERAGE_API_KEY = os.getenv("COVERAGE_API_KEY", "").strip()
+COVERAGE_API_KEYS = tuple(
+  key.strip()
+  for key in os.getenv("COVERAGE_API_KEYS", "").split(",")
+  if key.strip()
+)
 COVERAGE_MAX_AGE_DAYS = float(os.getenv("COVERAGE_MAX_AGE_DAYS", "30"))
 COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS = int(
   os.getenv("COVERAGE_RATE_LIMIT_COOLDOWN_SECONDS", "3600")

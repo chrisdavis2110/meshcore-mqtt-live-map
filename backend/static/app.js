@@ -5,6 +5,7 @@ const cleanConfigValue = (value) => {
   const str = String(value || '').trim();
   return /^\{\{[^{}]+\}\}$/.test(str) ? '' : str;
 };
+const cartoBasemapKey = cleanConfigValue(config.cartoBasemapKey);
 const newEnglandCoreScopeFallback = () => {
   const host = window.location.hostname.toLowerCase();
   return host === 'map.newenglandme.sh' ? 'https://analyzer.newenglandme.sh' : '';
@@ -229,10 +230,14 @@ const lightTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.p
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
-const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+const cartoRasterTileUrl = (style) => (
+  `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png` +
+  `?key=${encodeURIComponent(cartoBasemapKey)}`
+);
+const darkTiles = cartoBasemapKey ? L.tileLayer(cartoRasterTileUrl('dark_all'), {
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-});
+}) : null;
 const topoTiles = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
   maxZoom: 17,
   attribution: '&copy; OpenStreetMap contributors &copy; OpenTopoMap'
@@ -244,14 +249,16 @@ const satelliteImageryTiles = L.tileLayer(
     attribution: 'Sentinel-2 cloudless &copy; EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024)'
   }
 );
-const satelliteLabelTiles = L.tileLayer(
-  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
+const satelliteLabelTiles = cartoBasemapKey ? L.tileLayer(
+  cartoRasterTileUrl('rastertiles/voyager_only_labels'),
   {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
   }
+) : null;
+const satelliteTiles = L.layerGroup(
+  satelliteLabelTiles ? [satelliteImageryTiles, satelliteLabelTiles] : [satelliteImageryTiles]
 );
-const satelliteTiles = L.layerGroup([satelliteImageryTiles, satelliteLabelTiles]);
 let mapRadiusCircle = null;
 const activeBoundaryShow = mapBoundaryShow || mapRadiusShow;
 if (mapBoundaryMode === 'radius' && activeBoundaryShow && mapRadiusKm > 0) {
@@ -7955,11 +7962,12 @@ if (shareToggle) {
 const mapToggle = document.getElementById('map-toggle');
 const topoToggle = document.getElementById('topo-toggle');
 function setBaseLayer(name) {
+  if (name === 'dark' && !darkTiles) name = 'light';
   if (map.hasLayer(lightTiles)) map.removeLayer(lightTiles);
-  if (map.hasLayer(darkTiles)) map.removeLayer(darkTiles);
+  if (darkTiles && map.hasLayer(darkTiles)) map.removeLayer(darkTiles);
   if (map.hasLayer(topoTiles)) map.removeLayer(topoTiles);
   if (map.hasLayer(satelliteTiles)) map.removeLayer(satelliteTiles);
-  if (name === 'dark') {
+  if (name === 'dark' && darkTiles) {
     map.addLayer(darkTiles);
   } else if (name === 'topo') {
     map.addLayer(topoTiles);
@@ -7972,7 +7980,9 @@ function setBaseLayer(name) {
   baseLayer = name;
   localStorage.setItem('meshmapBaseLayer', baseLayer);
   if (mapToggle) {
+    mapToggle.hidden = !darkTiles;
     mapToggle.textContent = baseLayer === 'dark' ? 'Light map' : 'Dark map';
+    mapToggle.title = '';
   }
   if (topoToggle) {
     if (baseLayer === 'topo') {
